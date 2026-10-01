@@ -522,3 +522,94 @@ select, .btn {
 /* the built-in page covers the lower part of the window: messages show over our toolbar instead */
 body.paneon .toast { top: 66px; bottom: auto; transform: translate(-50%, -6px); }
 body.paneon .toast.on { transform: translate(-50%, 0); }
+
+/* one-click import and netdisk downloads in the details panel */
+.where .acts { flex-wrap: wrap; }
+.act.imp { color: #8fe3c8; }
+.act.edit.bare span { display: none; }
+.sec.imp { padding: 12px 14px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+.sec.imp h4 { color: var(--text); font-size: 13.5px; }
+.impform { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.impform .projsel { flex: 1; min-width: 0; background: var(--bg); }
+.impform .btn { flex: none; display: inline-flex; align-items: center; gap: 6px; }
+.impform .btn svg { width: 16px; height: 16px; }
+.impopts { display: flex; gap: 6px 12px; align-items: center; flex-wrap: wrap; }
+.impopts input:not([type]) { flex: 1; min-width: 170px; height: 32px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-ctl); padding: 0 10px; outline: none; }
+.impopts input:not([type]):focus { border-color: var(--accent); }
+.impopts .check { padding: 4px 0; }
+.hint2 { font-size: 12px; color: var(--faint); margin-top: 6px; line-height: 1.6; }
+.impprog { margin-bottom: 4px; }
+.impprog .t { font-size: 13px; margin-bottom: 7px; overflow-wrap: anywhere; }
+.impprog .small { margin-top: 5px; }
+.impprog .fn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar.wide { width: 100%; height: 6px; border-radius: 3px; }
+.bar.wide i { background: var(--ok); transition: width .3s; }
+.impres { padding: 9px 11px; border-radius: 8px; margin-bottom: 10px; font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.impres.ok { background: rgba(63, 208, 166, .08); border: 1px solid rgba(63, 208, 166, .3); }
+.impres.err { background: var(--accent-soft); border: 1px solid rgba(255, 90, 106, .38); }
+.impres .small { margin-top: 3px; color: var(--muted); }
+.impres .small.warnline { color: var(--warn); }
+.impchoose { font-size: 13px; }
+.impchoose .check { padding: 6px 0; color: var(--text); flex-wrap: wrap; }
+.impchoose .n { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.impchoose .s { color: var(--faint); font-size: 12px; flex: none; }
+.bdacct { display: flex; gap: 12px; align-items: baseline; font-size: 13px; margin-bottom: 10px; }
+.bdacct > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.bdacct .linkbtn { font-size: 12px; flex: none; }
+.sec.imp .news { margin-bottom: 10px; }
+.wnote { font-size: 12px; color: var(--muted); flex: none; max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* picking parts of a netdisk card */
+.pantree.picking .pf { padding-left: 2px; gap: 6px; }
+.pantree .psel { flex: none; width: 15px; height: 15px; margin: 0; accent-color: var(--pan); cursor: pointer; }
+.pantree .fi { flex: none; width: 15px; }
+.pantree summary .s { margin-left: 4px; }
+.ktag.got { color: var(--ok); border-color: rgba(63, 208, 166, .4); flex: none; }
+.pickhint { margin: 0 0 6px; }
+.panselbar { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 8px 10px; border: 1px solid rgba(76, 141, 255, .45);
+  border-radius: var(--r-ctl); background: rgba(76, 141, 255, .1); font-size: 12.5px; }
+.panselbar .spacer { flex: 1; }
+.panselbar .btn { display: inline-flex; align-items: center; gap: 6px; }
+.panselbar .btn svg { width: 14px; height: 14px; }
+.selline { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 13px; }
+
+/* 工程 */
+.grid.projgrid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px 18px; }
+.pcard { background: var(--card); border-radius: var(--r-card); overflow: hidden; border: 1px solid transparent; display: flex; flex-direction: column; }
+.pcard:hover { border-color: #3a3f58; }
+.pcover { position: relative; aspect-ratio: 4 / 3; background: #52545c; overflow: hidden; }
+.pcover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pcover.empty { background: repeating-linear-gradient(135deg, var(--raised) 0 14px, #2b2e41 14px 28px); }
+.pph { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  padding: 24px; text-align: center; color: var(--faint); font-size: 12.5px; line-height: 1.6; }
+.pph svg { width: 34px; height: 34px; stroke: currentColor; fill: none; stroke-width: 1.4; opacity: .8; }
+.badge-run { position: absolute; top: 8px; right: 8px; background: rgba(20, 21, 31, .85); color: var(--ok); border: 1px solid rgba(63, 208, 166, .5);
+  border-radius: 12px; padding: 1px 9px; font-size: 12px; }
+.pbody { padding: 12px 14px 12px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.pbody .title { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pbody .sub { font-size: 11.5px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pmeta { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 12px; color: var(--muted); }
+.uver { border: 1px solid var(--line); border-radius: 4px; padding: 0 6px; color: #c9cbe0; }
+.uver.missing { color: var(--warn); border-color: rgba(255, 181, 71, .45); }
+.okline { color: var(--ok); }
+.pacts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.pacts .btn { display: inline-flex; align-items: center; gap: 5px; }
+.pacts .btn svg { width: 14px; height: 14px; }
+.pacts .btn.ghost { margin-left: auto; }
+.puse { margin-top: 2px; align-self: flex-start; background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px; color: var(--ok); cursor: pointer; }
+.puse:hover { text-decoration: underline; }
+.puse.none { color: var(--faint); cursor: default; }
+.puse.none:hover { text-decoration: none; }
+
+/* folding parts of the side bar */
+.navfold { padding-right: 26px; } /* room for the fold buttons, so the counts stay in one column */
+.navrow { display: flex; align-items: center; gap: 2px; margin-right: -26px; }
+.navrow .navitem { flex: 1; min-width: 0; }
+.foldbtn { flex: none; width: 24px; height: 24px; display: grid; place-items: center; border: 0; background: none; border-radius: 6px;
+  color: var(--faint); cursor: pointer; padding: 0; }
+.foldbtn:hover { background: var(--card); color: var(--text); }
+.foldbtn svg { width: 14px; height: 14px; transition: transform .12s ease-out; }
+.foldbtn.folded svg { transform: rotate(-90deg); }
+.side h3.withact .foldbtn { margin-left: auto; }
+.side h3 .foldn { margin-left: 6px; font-weight: 400; }
+@media (prefers-reduced-motion: reduce) { .foldbtn svg { transition: none; } }

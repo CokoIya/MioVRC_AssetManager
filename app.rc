@@ -1,8 +1,8 @@
 1 ICON "app.ico"
 1 24 "app.manifest"
 1 VERSIONINFO
-FILEVERSION 1,7,0,0
-PRODUCTVERSION 1,7,0,0
+FILEVERSION 1,7,1,0
+PRODUCTVERSION 1,7,1,0
 FILEOS 0x40004
 FILETYPE 0x1
 BEGIN
@@ -12,11 +12,11 @@ BEGIN
     BEGIN
       VALUE "CompanyName", "Coko_Iya"
       VALUE "FileDescription", "MioVRC素材托管工具"
-      VALUE "FileVersion", "1.7.0"
+      VALUE "FileVersion", "1.7.1"
       VALUE "InternalName", "MioVRC_AssetManager"
       VALUE "OriginalFilename", "MioVRC_AssetManager.exe"
       VALUE "ProductName", "MioVRC素材托管工具"
-      VALUE "ProductVersion", "1.7.0"
+      VALUE "ProductVersion", "1.7.1"
     END
   END
   BLOCK "VarFileInfo"

@@ -36,6 +36,8 @@ var (
 	pipeMu     sync.Mutex
 	pipeBusy   bool
 	boothAgain bool
+	scanAgain  bool
+	usageAgain bool
 	revision   int64 = 1
 	revMu      sync.Mutex
 )
@@ -76,6 +78,8 @@ func StartPipeline(st *Store, doScan, doUsage, doBooth bool, forceBooth bool, bo
 		if doBooth && len(boothOnly) == 0 {
 			boothAgain = true // Booth matching / fetching runs again when the current pipeline ends
 		}
+		scanAgain = scanAgain || doScan // a download or an import finished meanwhile: look again after
+		usageAgain = usageAgain || doUsage
 		pipeMu.Unlock()
 		return false
 	}
@@ -90,13 +94,13 @@ func StartPipeline(st *Store, doScan, doUsage, doBooth bool, forceBooth bool, bo
 		RunPipeline(st, doScan, doUsage, doBooth, forceBooth, boothOnly)
 		for {
 			pipeMu.Lock()
-			again := boothAgain
-			boothAgain = false
+			again, scan, usage := boothAgain, scanAgain, usageAgain
+			boothAgain, scanAgain, usageAgain = false, false, false
 			pipeMu.Unlock()
-			if !again {
+			if !again && !scan && !usage {
 				break
 			}
-			RunPipeline(st, false, false, true, false, nil)
+			RunPipeline(st, scan, usage || scan, again, false, nil)
 		}
 	}()
 	return true

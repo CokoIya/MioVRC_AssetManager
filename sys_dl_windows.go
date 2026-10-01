@@ -3,6 +3,8 @@
 package main
 
 import (
+	"os"
+	"strings"
 	"syscall"
 	"unsafe"
 )
@@ -72,4 +74,52 @@ func unprotectData(b []byte) ([]byte, error) {
 	}
 	defer procLocalFree.Call(uintptr(unsafe.Pointer(out.p)))
 	return out.bytes(), nil
+}
+
+var (
+	procGetLogicalDrives    = modKernel32DL.NewProc("GetLogicalDrives")
+	procGetDriveTypeW       = modKernel32DL.NewProc("GetDriveTypeW")
+	procGetDiskFreeSpaceExW = modKernel32DL.NewProc("GetDiskFreeSpaceExW")
+)
+
+func systemDrive() string {
+	if d := os.Getenv("SystemDrive"); d != "" {
+		return strings.ToUpper(d)
+	}
+	return "C:"
+}
+
+// fixedDrives: the hard disks other than the system's ("D:", "E:" …).
+func fixedDrives() []string {
+	mask, _, _ := procGetLogicalDrives.Call()
+	var out []string
+	for i := 0; i < 26; i++ {
+		if mask&(1<<uint(i)) == 0 {
+			continue
+		}
+		d := string(rune('A'+i)) + ":"
+		if strings.EqualFold(d, systemDrive()) {
+			continue
+		}
+		root, _ := syscall.UTF16PtrFromString(d + `\`)
+		if t, _, _ := procGetDriveTypeW.Call(uintptr(unsafe.Pointer(root))); t == 3 { // DRIVE_FIXED
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// diskFree: free bytes on the disk holding p (0 when unknown).
+func diskFree(p string) uint64 {
+	root, err := syscall.UTF16PtrFromString(p)
+	if err != nil {
+		return 0
+	}
+	var free, total, totalFree uint64
+	r, _, _ := procGetDiskFreeSpaceExW.Call(uintptr(unsafe.Pointer(root)), uintptr(unsafe.Pointer(&free)),
+		uintptr(unsafe.Pointer(&total)), uintptr(unsafe.Pointer(&totalFree)))
+	if r == 0 {
+		return 0
+	}
+	return free
 }

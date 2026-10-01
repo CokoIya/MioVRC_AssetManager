@@ -5,6 +5,7 @@ const CAT_COLOR = { "素体": "#c78bff", "衣服": "#ff7aa8", "头发": "#ffb547
   "面捕": "#5ee0c5", "插件": "#8aa2ff", "动作": "#f0e26b", "音效": "#b9b2ff", "字体": "#d0d0d0", "其他": "#8b8fa6" };
 const ICON = {
   folder: '<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  chev: '<svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>',
   cloud: '<svg viewBox="0 0 24 24"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 9.5a4.25 4.25 0 0 1-.5 8.5z"/></svg>',
   bag: '<svg viewBox="0 0 24 24"><path d="M5 8h14l-1 12H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>',
   edit: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg>',
@@ -18,31 +19,34 @@ const ICON = {
   fwd: '<svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>',
   x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
   ext: '<svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
+  cube: '<svg viewBox="0 0 24 24"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></svg>',
 };
 
 const S = {
   data: null, rev: 0,
   q: "", cat: "全部", style: "", recent: "", bases: new Set(), usage: "all", share: "all", root: "all", purchase: "all", showHidden: false, sort: "recent",
-  openKey: null, setup: null, bs: null, desc: {}, dirty: new Set(), coverPick: null, stylePick: null, groups: new Map(), panOpen: new Set(), panClosed: new Set(),
-  view: "lib", shopOpen: null,
-  // Booth / 闲鱼 pages inside the program: open.shop = a page covers the Booth list; loaded = whose page
-  // the pane holds; back = where 「返回」 goes
-  web: { open: { shop: false }, loaded: "", st: {}, last: { booth: "", xianyu: "" }, back: null, xq: "" },
+  openKey: null, setup: null, bs: null, desc: {}, dirty: new Set(), coverPick: null, stylePick: null, groups: new Map(), panOpen: new Set(), panClosed: new Set(), panSel: new Set(),
+  view: "lib", shopOpen: null, projs: null, pq: "",
+  fold: { cat: false, cloth: false, bases: false }, // side bar parts folded away
+  // Booth / 闲鱼 / 百度网盘 pages inside the program: open.shop = a page covers the Booth list, open.lib =
+  // a netdisk page covers the library; loaded = whose page the pane holds; back = where 「返回」 goes
+  web: { open: { shop: false, lib: false }, loaded: "", st: {}, last: { booth: "", xianyu: "", pan: "" }, back: null, xq: "" },
   shop: { cats: new Set(), bases: new Set(), styles: new Set(), q: "", sort: "popular", hideBought: false, hideOwned: false, adult: false,
     page: 1, items: [], more: false, loading: false, err: "", seq: 0, allBases: false, started: false, detail: null },
 };
 try {
   const saved = JSON.parse(localStorage.getItem("vrclib.ui") || "{}");
   if (saved.sort) S.sort = saved.sort;
-  if (saved.view === "shop" || saved.view === "xianyu") S.view = saved.view;
+  if (saved.view === "shop" || saved.view === "xianyu" || saved.view === "proj") S.view = saved.view;
   if (saved.web) { S.web.last.xianyu = saved.web.xianyu || ""; S.web.xq = saved.web.xq || ""; }
+  for (const k in S.fold) if (saved.fold && saved.fold[k]) S.fold[k] = true;
   const sh = saved.shop || {};
   for (const k of ["cats", "bases", "styles"]) if (Array.isArray(sh[k])) S.shop[k] = new Set(sh[k]);
   for (const k of ["sort", "hideBought", "hideOwned", "adult"]) if (sh[k] !== undefined) S.shop[k] = sh[k];
 } catch (e) {}
 function saveUI() {
   const sh = S.shop;
-  try { localStorage.setItem("vrclib.ui", JSON.stringify({ sort: S.sort, view: S.view, web: { xianyu: S.web.last.xianyu, xq: S.web.xq },
+  try { localStorage.setItem("vrclib.ui", JSON.stringify({ sort: S.sort, view: S.view, fold: S.fold, web: { xianyu: S.web.last.xianyu, xq: S.web.xq },
     shop: { cats: [...sh.cats], bases: [...sh.bases], styles: [...sh.styles], sort: sh.sort, hideBought: sh.hideBought, hideOwned: sh.hideOwned, adult: sh.adult } })); } catch (e) {}
 }
 
@@ -87,11 +91,14 @@ async function load() {
   if (!S.data && (d.whatsNew || []).length && !d.setupNeeded) setTimeout(() => openWhatsNew(d.version, d.whatsNew), 500);
   else if (!S.data && d.updatedFrom && d.updatedFrom !== d.version) setTimeout(() => toast(`已更新到 ${d.version}`, 4000), 600);
   const prev = S.data ? new Map((S.data.assets || []).map(a => [a.key, a])) : null;
+  const bdWas = S.data && S.data.baidu && S.data.baidu.loggedIn;
   S.data = d; S.rev = d.rev;
+  if (prev && !bdWas && d.baidu && d.baidu.loggedIn) baiduLoggedIn();
   if (d.xyBase) { XY_BASE = d.xyBase; XY_HOME = XY_BASE + "/"; }
   S.groups = new Map();
   for (const a of d.assets || []) if (a.group) { if (!S.groups.has(a.group)) S.groups.set(a.group, []); S.groups.get(a.group).push(a); }
   renderAll();
+  if (S.view === "proj") loadProjects();
   if (prev) announceChanges(prev, d.assets || []);
 }
 // "新增 3 个素材": things the folder watcher or a share re-read brought in while the window was open
@@ -199,6 +206,7 @@ function renderAll() {
   applyView();
   if (S.view === "shop") { renderShopSide(); renderShopGrid(); }
   else if (S.view === "xianyu") renderXySide();
+  else if (S.view === "proj") { renderProjSide(); renderProjGrid(); }
   else { renderSide(); renderGrid(); }
   if (webVisible()) renderWeb();
   renderStatus();
@@ -209,6 +217,12 @@ function renderAll() {
 function navItem(label, count, on, attrs, color) {
   return `<button class="navitem${on ? " on" : ""}" ${attrs}>${color ? `<span class="dot" style="background:${color}"></span>` : ""}<span>${esc(label)}</span><span class="n">${count}</span></button>`;
 }
+
+// a row with a fold button at its end; what the button folds away is drawn (or not) by the caller
+function foldBtn(k, what) {
+  return `<button class="foldbtn${S.fold[k] ? " folded" : ""}" data-fold="${k}" aria-expanded="${!S.fold[k]}" title="${S.fold[k] ? "展开" : "收起"}${what}">${ICON.chev}</button>`;
+}
+function foldRow(item, k, what) { return `<div class="navrow">${item}${foldBtn(k, what)}</div>`; }
 
 function renderSide() {
   const d = S.data; if (!d) return;
@@ -224,22 +238,30 @@ function renderSide() {
   }
   const base = all.filter(a => matches(a, "cat"));
   const cc = tally(base, a => [a.category]);
-  h += `<h3>分类</h3>` + navItem("全部", countUnits(base), S.cat === "全部", `data-cat="全部"`);
+  // folded: only 全部 and the category in use stay; under 衣服 only the style in use
+  h += `<h3>分类</h3><div class="navfold">` + foldRow(navItem("全部", countUnits(base), S.cat === "全部", `data-cat="全部"`), "cat", "分类");
   for (const c of d.categories) if (cc[c]) {
-    h += navItem(c, cc[c], S.cat === c, `data-cat="${esc(c)}"`, CAT_COLOR[c]);
-    if (c === "衣服" && S.cat === "衣服") {
-      const sb = all.filter(a => matches(a, "style"));
-      const sc = tally(sb, a => (a.styles || []).length ? a.styles : ["__none"]);
-      let sub = "";
-      for (const st of styleList()) if (sc[st]) sub += `<button class="subitem${S.style === st ? " on" : ""}" data-style="${esc(st)}"><span>${esc(st)}</span><span class="n">${sc[st]}</span></button>`;
-      if (sc.__none) sub += `<button class="subitem none${S.style === "__none" ? " on" : ""}" data-style="__none"><span>未加标签</span><span class="n">${sc.__none}</span></button>`;
-      h += `<div class="subnav">${sub}<button class="subitem edit" id="btnStyles">编辑标签…</button></div>`;
-    }
+    if (S.fold.cat && S.cat !== c) continue;
+    const row = navItem(c, cc[c], S.cat === c, `data-cat="${esc(c)}"`, CAT_COLOR[c]);
+    if (c !== "衣服" || S.cat !== "衣服") { h += row; continue; }
+    h += foldRow(row, "cloth", "风格标签");
+    const sb = all.filter(a => matches(a, "style"));
+    const sc = tally(sb, a => (a.styles || []).length ? a.styles : ["__none"]);
+    let sub = "";
+    for (const st of styleList()) if (sc[st] && (!S.fold.cloth || S.style === st)) sub += `<button class="subitem${S.style === st ? " on" : ""}" data-style="${esc(st)}"><span>${esc(st)}</span><span class="n">${sc[st]}</span></button>`;
+    if (sc.__none && (!S.fold.cloth || S.style === "__none")) sub += `<button class="subitem none${S.style === "__none" ? " on" : ""}" data-style="__none"><span>未加标签</span><span class="n">${sc.__none}</span></button>`;
+    if (!S.fold.cloth) sub += `<button class="subitem edit" id="btnStyles">编辑标签…</button>`;
+    if (sub) h += `<div class="subnav">${sub}</div>`;
   }
+  h += `</div>`;
 
   const bc = tally(all.filter(a => matches(a, "bases")), a => a.bases || []);
   const bl = Object.keys(bc).sort((x, y) => bc[y] - bc[x]);
-  if (bl.length) h += `<h3>适配素体</h3><div class="chips">` + bl.map(b => `<button class="chip${S.bases.has(b) ? " on" : ""}" data-base="${esc(b)}">${esc(b)}<span class="n">${bc[b]}</span></button>`).join("") + `</div>`;
+  if (bl.length) {
+    const shown = S.fold.bases ? bl.filter(b => S.bases.has(b)) : bl;
+    h += `<h3 class="withact">适配素体${S.fold.bases ? `<span class="foldn">${bl.length}</span>` : ""}${foldBtn("bases", "适配素体")}</h3>` +
+      (shown.length ? `<div class="chips">` + shown.map(b => `<button class="chip${S.bases.has(b) ? " on" : ""}" data-base="${esc(b)}">${esc(b)}<span class="n">${bc[b]}</span></button>`).join("") + `</div>` : "");
+  }
 
   const pb = all.filter(a => matches(a, "purchase"));
   const nU = f => countUnits(pb.filter(f));
@@ -343,18 +365,20 @@ function cardHTML(a) {
   const shop = (a.booth && a.booth.shop) || (p && p.shop);
   const subline = shop ? shop : (a.booth && a.booth.name && a.booth.name !== a.name ? a.booth.name : rootLabel(loc ? loc.root : ""));
   const where = a.virtual ? `${orderLine(p)}，本地还没有` : a.panOnly ? panLine(a) : shortPath(loc);
-  const tip = a.virtual ? "查看并下载" : a.panOnly ? "打开网盘分享（自动复制提取码）" : "打开文件夹";
+  const tip = a.virtual ? "查看并下载" : a.panOnly ? "查看内容并下载" : "打开文件夹";
   const zh = !S.data.settings.hideZh && a.nameZh ? `<div class="zh" title="${esc(a.nameZh)}">${esc(a.nameZh)}</div>` : "";
   return `<article class="card${a.hidden ? " hiddenasset" : ""}${a.virtual ? " virtual" : ""}${a.panOnly ? " panonly" : ""}" data-key="${esc(a.key)}" tabindex="0" title="${tip}">
-    <div class="cover">${coverHTML(a)}${boughtBadge(a)}${a.panOnly ? `<span class="badge-pan">网盘</span>` : ""}${usedBadge(a)}${a.virtual ? dlBar(a.boothId) : ""}
+    <div class="cover">${coverHTML(a)}${boughtBadge(a)}${a.panOnly ? `<span class="badge-pan">网盘</span>` : ""}${usedBadge(a)}${a.virtual ? dlBar(a.boothId) : a.panOnly ? panBar(a.key) : ""}
       <div class="where"><div class="path" title="${esc(loc ? loc.path : where)}">${esc(where)}</div>
         <div class="acts">
           ${a.virtual ? `<button class="act buy" data-act="dl" title="下载到素材文件夹">${ICON.download}<span>下载</span></button>`
-            : a.panOnly ? "" : `<button class="act" data-act="open" title="打开文件夹">${ICON.folder}</button>`}
-          ${pan ? `<button class="act pan" data-act="pan" title="打开网盘">${ICON.cloud}${a.panOnly ? "<span>网盘</span>" : ""}</button>` : ""}
+            : a.panOnly ? (a.user.shareUrl ? `<button class="act buy" data-act="pandl" title="下载到素材库">${ICON.download}<span>下载</span></button>` : "")
+            : `<button class="act" data-act="open" title="打开文件夹">${ICON.folder}</button>`}
+          ${canImport(a) ? `<button class="act imp" data-act="import" title="一键导入 Unity 工程">${ICON.cube}<span>导入</span></button>` : ""}
+          ${pan ? `<button class="act pan" data-act="pan" title="${a.panOnly ? "打开网盘分享（自动复制提取码）" : "打开网盘"}">${ICON.cloud}${a.panOnly ? "<span>网盘</span>" : ""}</button>` : ""}
           ${p && !a.virtual ? `<button class="act buy" data-act="buypage" title="购买页">${ICON.receipt}</button>` : ""}
           <button class="act booth${a.boothId ? "" : " nobooth"}" data-act="booth" title="${a.boothId ? "打开 Booth 商品页" : "在 Booth 上搜「" + esc(a.boothQuery || a.name) + "」"}">${a.boothId ? ICON.bag : ICON.search}</button>
-          <button class="act edit" data-act="edit" title="详情">${ICON.edit}<span>详情</span></button>
+          <button class="act edit${canImport(a) ? " bare" : ""}" data-act="edit" title="详情">${ICON.edit}<span>详情</span></button>
         </div></div>
     </div>
     <div class="body">
@@ -409,6 +433,12 @@ function renderStatus() {
   }
   if (d.dlNeedLogin) h += `<span class="err">下载需要登录 Booth <button class="verbtn linkish" id="btnDLLogin">登录</button></span>`;
   if (running.some(t => t.name === "download")) h += `<button class="verbtn linkish" id="btnDLCancel">取消下载</button>`;
+  if ((d.panJobs || []).some(j => j.stage === "login")) h += `<span class="err">下载网盘分享需要登录百度网盘 <button class="verbtn linkish" id="btnBdLogin">登录</button></span>`;
+  if (running.some(t => t.name === "pandl")) h += `<button class="verbtn linkish" id="btnPanCancel">取消网盘下载</button>`;
+  if (!running.length) {
+    const pt = (d.tasks || []).find(t => t.name === "pandl"), it = (d.tasks || []).find(t => t.name === "import");
+    for (const t of [pt, it]) if (t && t.msg && t.ended && Date.now() / 1000 - t.ended < 600) h += `<span class="${/完成|已导入/.test(t.msg) ? "okline" : "err"}">${esc(t.msg)}</span>`;
+  }
   h += `<span class="right"><button class="verbtn" id="btnFeedback">反馈和建议</button><button class="verbtn" id="btnVersion" title="更新公告">v${esc(d.version)}</button></span>`;
   $("#status").innerHTML = h;
   renderUpdateBtn();
@@ -421,15 +451,17 @@ function renderStatus() {
 // Tags instead of Japanese search words: a kind of item (several add up), base bodies and styles
 // (all of them have to match). Cards say what was bought and what is in the library already.
 function applyView() {
-  const v = S.view, shop = v === "shop", xy = v === "xianyu";
+  const v = S.view, shop = v === "shop", xy = v === "xianyu", proj = v === "proj";
   document.body.classList.toggle("shopview", shop);
   document.body.classList.toggle("xyview", xy);
-  for (const [id, name] of [["#vLib", "lib"], ["#vShop", "shop"], ["#vXy", "xianyu"]]) {
+  document.body.classList.toggle("projview", proj);
+  $("#grid").classList.toggle("projgrid", proj);
+  for (const [id, name] of [["#vLib", "lib"], ["#vProj", "proj"], ["#vShop", "shop"], ["#vXy", "xianyu"]]) {
     $(id).classList.toggle("on", v === name); $(id).setAttribute("aria-selected", String(v === name));
   }
-  $("#q").placeholder = shop ? "在 Booth 里搜索（可不填）" : xy ? "在闲鱼搜索，按回车" : "搜索名称、店铺、标签、路径";
+  $("#q").placeholder = shop ? "在 Booth 里搜索（可不填）" : xy ? "在闲鱼搜索，按回车" : proj ? "搜索工程" : "搜索名称、店铺、标签、路径";
   $("#sort").hidden = v !== "lib"; $("#shopSort").hidden = !shop;
-  $("#btnPanAdd").hidden = shop; $("#btnScan").hidden = v !== "lib";
+  $("#btnPanAdd").hidden = shop || proj; $("#btnScan").hidden = v !== "lib";
   const web = webVisible();
   $("#webview").hidden = !web; $("#resultbar").hidden = web; $("#grid").hidden = web;
   $(".main").classList.toggle("webon", web);
@@ -437,19 +469,20 @@ function applyView() {
 function setView(v) {
   if (S.view === v) return;
   S.view = v; saveUI(); closeDrawer();
-  $("#q").value = v === "shop" ? S.shop.q : v === "xianyu" ? S.web.xq : S.q;
+  $("#q").value = v === "shop" ? S.shop.q : v === "xianyu" ? S.web.xq : v === "proj" ? S.pq : S.q;
   $(".main").scrollTop = 0;
   renderAll();
+  if (v === "proj") loadProjects();
   if (v === "shop" && !S.shop.started) shopSearch(true);
   if (S.data.paneMode && webVisible()) ensurePaneFor(v);
 }
 // coming back to a tab whose page the other tab (or a background login check) replaced: reopen it
 async function ensurePaneFor(v) {
-  const want = v === "xianyu" ? "xianyu" : "booth";
+  const want = v === "xianyu" ? "xianyu" : v === "lib" ? "pan" : "booth";
   let st = {};
   try { st = await api("/api/pane/state", {}); } catch (e) {}
   if (S.view !== v) return;
-  if (!st.open || st.kind !== want) return openWeb(S.web.last[want] || (want === "xianyu" ? XY_HOME : boothHome()), want);
+  if (!st.open || st.kind !== want) return openWeb(S.web.last[want] || (want === "xianyu" ? XY_HOME : want === "pan" ? S.data.panWeb + "/disk/main" : boothHome()), want);
   S.web.loaded = want; S.web.st = st; placedKey = ""; renderWeb(); webPoll(true);
 }
 // base bodies to offer: the ones in the library first
@@ -584,28 +617,34 @@ let XY_BASE = "https://www.goofish.com", XY_HOME = XY_BASE + "/";
 function boothHome() { return (S.data.boothWeb || "https://booth.pm") + "/ja"; }
 function webKind(u) {
   if (S.data && S.data.xyBase && u.startsWith(S.data.xyBase)) return "xianyu";
+  if (isPanURL(u)) return "pan";
   return /^https?:\/\/([^/]*\.)?(goofish\.com|taobao\.com|tmall\.com|alipay\.com|xianyu\.com)(\/|$)/i.test(u) ? "xianyu" : "booth";
 }
+function isPanURL(u) {
+  if (S.data && [S.data.panWeb, S.data.baiduLogin].some(b => b && u.startsWith(b))) return true;
+  return /^https?:\/\/([^/]*\.)?baidu\.com(\/|$)/i.test(u);
+}
+function webView(kind) { return kind === "xianyu" ? "xianyu" : kind === "pan" ? "lib" : "shop"; }
 function isBoothURL(u) {
   if (S.data && [S.data.boothWeb, S.data.boothAccounts].some(b => b && u.startsWith(b))) return true;
   return /^https?:\/\/([^/]*\.)?(booth\.pm|pixiv\.net)(\/|$)/i.test(u);
 }
-function webVisible() { return (S.view === "shop" && S.web.open.shop) || S.view === "xianyu"; }
-// Booth and 闲鱼 links open inside; anything else in the default browser
-function openLink(u) { if (isBoothURL(u) || webKind(u) === "xianyu") return openWeb(u); return openURL(u); }
+function webVisible() { return (S.view === "shop" && S.web.open.shop) || S.view === "xianyu" || (S.view === "lib" && S.web.open.lib); }
+// Booth, 闲鱼 and netdisk links open inside; anything else in the default browser
+function openLink(u) { if (isBoothURL(u) || webKind(u) !== "booth") return openWeb(u); return openURL(u); }
 async function openWeb(u, kind) {
   kind = kind || webKind(u);
   if (!S.data.paneMode) return openURL(u);
-  const v = kind === "xianyu" ? "xianyu" : "shop";
+  const v = webView(kind), covers = v !== "xianyu"; // a page over the Booth list or over the library
   const prevBack = S.web.back;
   S.web.back = S.openKey ? { view: S.view, key: S.openKey }
-    : v === "shop" && S.view !== "shop" ? { view: S.view }
-    : v === "shop" && S.web.open.shop ? prevBack : null;
+    : covers && S.view !== v ? { view: S.view }
+    : covers && S.web.open[v] ? prevBack : null;
   closeDrawer();
-  if (v === "shop") S.web.open.shop = true;
+  if (covers) S.web.open[v] = true;
   S.web.loaded = kind; S.web.st = { url: u, title: "", loading: true, open: true };
   if (S.view !== v) {
-    S.view = v; saveUI(); $("#q").value = v === "shop" ? S.shop.q : S.web.xq;
+    S.view = v; saveUI(); $("#q").value = v === "shop" ? S.shop.q : v === "xianyu" ? S.web.xq : S.q;
     if (v === "shop" && !S.shop.started) shopSearch(true);
   }
   renderAll();
@@ -613,7 +652,7 @@ async function openWeb(u, kind) {
   try { r = await api("/api/pane/open", { url: u, kind }); } catch (e) { r = { ok: false, err: "软件内部出错" }; }
   if (!r.ok) {
     toast(r.err || "页面打不开", 4000);
-    if (v === "shop") { S.web.open.shop = false; renderAll(); }
+    if (covers) { S.web.open[v] = false; renderAll(); }
     return;
   }
   placedKey = ""; webPoll(true);
@@ -626,9 +665,9 @@ function goBooth(a) {
   S.shop.q = a.boothQuery || a.name; $("#q").value = S.shop.q; saveUI(); shopSearch(true);
 }
 function closeWeb() {
-  const back = S.web.back; S.web.back = null;
+  const back = S.web.back; S.web.back = null; S.web.forLogin = false;
   if (S.data.paneMode === "window") api("/api/pane/act", { act: "close" }).catch(() => {});
-  if (S.view === "shop") { S.web.open.shop = false; S.web.loaded = S.data.paneMode === "window" ? "" : S.web.loaded; }
+  if (S.view === "shop" || S.view === "lib") { S.web.open[S.view] = false; S.web.loaded = S.data.paneMode === "window" ? "" : S.web.loaded; }
   if (back && back.view !== S.view) { setView(back.view); if (back.key && findAsset(back.key)) renderDrawer(back.key); return; }
   renderAll();
   if (back && back.key && findAsset(back.key)) renderDrawer(back.key);
@@ -639,6 +678,86 @@ function renderXySide() {
     <p class="sidenote">在上面的搜索框输入想找的东西，按回车搜索。登录、聊天、下单都在这里完成，登录会保存在本机。</p>
     <h3>收进素材库</h3>
     <p class="sidenote">卖家发来网盘分享后，在聊天里选中整段分享文字（链接和提取码），点页面上方的「收录网盘链接」。</p>`;
+}
+// ---------- 工程 ----------
+async function loadProjects() {
+  let r;
+  try { r = await api("/api/projects", {}); } catch (e) { return; }
+  if (!r.ok) return;
+  const was = JSON.stringify(S.projs);
+  S.projs = r.projects || [];
+  if (S.view === "proj" && JSON.stringify(S.projs) !== was) { renderProjSide(); renderProjGrid(); }
+}
+function renderProjSide() {
+  const ps = S.projs || [], busy = (S.data.tasks || []).some(t => t.name === "usage" && t.running);
+  $("#side").innerHTML = `<h3>工程</h3>
+    <div class="sidelinks"><button class="navitem" id="btnProjAdd"><span>添加工程…</span></button>
+      <button class="navitem" id="btnProjUsage"${busy ? " disabled" : ""}><span>${busy ? "正在统计用到的素材…" : "重新统计用到的素材"}</span></button></div>
+    <p class="sidenote">${ps.length ? `${ps.length} 个工程，` : ""}从设置里的「Unity 工程」文件夹找到。工程里的插件和模型请用 VCC 或 ALCOM 管理。</p>
+    <h3>封面</h3>
+    <p class="sidenote">在卡片上点「开启封面」，会往那个工程的 Packages 里放一个小插件。之后每次打开工程、保存场景，它会给场景里的模型拍一张正面照当封面，旧的自动删掉。</p>
+    <p class="sidenote">插件只在 Unity 编辑器里运行，不改场景，也不会跟模型一起上传。点「关闭封面」会删掉插件和照片。</p>`;
+}
+function relDay(t) {
+  if (!t) return "";
+  const days = Math.floor((Date.now() / 1000 - t) / 86400);
+  return days <= 0 ? "今天" : days === 1 ? "昨天" : days < 30 ? `${days} 天前` : fmtTime(t).split(" ")[0];
+}
+function projCardHTML(p) {
+  const cover = p.cover ? `<img src="/thumb?w=640&p=${encodeURIComponent(p.cover)}&t=${p.coverAt}" alt="" loading="lazy">`
+    : `<div class="pph">${ICON.cube}<span>${p.helper ? "打开工程或保存场景后，这里会出现模型的正面照" : "开启封面后，会自动给模型拍一张正面照"}</span></div>`;
+  const ver = p.unity ? `<span class="uver${p.editor ? "" : " missing"}" title="${p.editor ? "" : esc(`这台电脑上没找到 Unity ${p.unity}`)}">Unity ${esc(p.unity)}</span>` : "";
+  const opened = p.running ? `<span class="okline">Unity 里开着</span>` : p.opened ? `<span>${relDay(p.opened)}打开过</span>` : "";
+  return `<article class="pcard" data-proj="${esc(p.path)}">
+    <div class="pcover${p.cover ? "" : " empty"}">${cover}${p.running ? `<span class="badge-run">已打开</span>` : ""}</div>
+    <div class="pbody">
+      <div class="title" title="${esc(p.name)}">${esc(p.name)}</div>
+      <div class="sub" title="${esc(p.path)}">${esc(p.path)}</div>
+      <div class="pmeta">${ver}${opened}</div>
+      <div class="pacts">
+        <button class="btn small primary" data-pa="unity"${p.running ? ` disabled title="已经在 Unity 里打开了"` : ""}>${ICON.cube}<span>打开 Unity</span></button>
+        <button class="btn small" data-pa="folder">${ICON.folder}<span>文件夹</span></button>
+        <button class="btn small ghost" data-pa="cover">${p.helper ? "关闭封面" : "开启封面"}</button>
+      </div>
+      ${p.assets ? `<button class="puse" data-pa="assets">用到素材库里的 ${p.assets} 个素材</button>` : `<div class="puse none">没用到素材库里的素材</div>`}
+    </div></article>`;
+}
+function renderProjGrid() {
+  const all = S.projs, q = S.pq.toLowerCase();
+  const g = $("#grid");
+  if (!all) { $("#resultbar").innerHTML = ""; g.innerHTML = `<div class="empty"><h2>正在读取工程</h2></div>`; return; }
+  const list = all.filter(p => !q || (p.name + " " + p.path).toLowerCase().includes(q))
+    .sort((a, b) => (b.running - a.running) || (b.opened || 0) - (a.opened || 0) || a.name.localeCompare(b.name));
+  $("#resultbar").innerHTML = `<b>${list.length}</b><span>个工程${q ? `（共 ${all.length} 个）` : ""}</span><span class="muted small">按最近打开排序</span>`;
+  g.innerHTML = list.length ? list.map(projCardHTML).join("")
+    : `<div class="empty">${all.length ? `<h2>没有符合条件的工程</h2>` : `<h2>还没有 Unity 工程</h2><p>在设置里添加放工程的文件夹，或者直接添加一个工程。</p><button class="btn primary" id="btnProjAdd">添加工程…</button>`}</div>`;
+}
+async function addProject() {
+  const p = await pickInto("选择 Unity 工程文件夹（里面有 Assets）");
+  if (!p) return;
+  const r = await api("/api/import/project", { path: p });
+  if (!r.ok) { toast(r.err || "这不是 Unity 工程", 4000); return; }
+  toast("已添加：" + r.name); await load(); loadProjects();
+}
+async function projAction(what, path, btn) {
+  const p = (S.projs || []).find(x => x.path === path); if (!p) return;
+  if (what === "folder") return openPath(p.path);
+  if (what === "assets") { S.usage = "p:" + p.name; setView("lib"); renderSide(); renderGrid(); return; }
+  if (what === "unity") {
+    btn.disabled = true;
+    const r = await api("/api/project/open", { path: p.path });
+    if (!r.ok) { btn.disabled = false; toast(r.err || "没能打开", 5000); return; }
+    toast(`正在用 Unity ${p.unity} 打开 ${p.name}`, 3500); setTimeout(loadProjects, 4000); return;
+  }
+  if (what === "cover") {
+    const on = !p.helper;
+    if (on && !confirm(`给「${p.name}」开启封面？\n\n会在这个工程的 Packages 里放一个小插件（com.miovrc.projectcard）。打开工程、保存场景时，它给场景里的模型拍一张正面照当封面。\n只在 Unity 编辑器里运行，不改场景，也不会跟模型一起上传。`)) return;
+    if (!on && !confirm(`关闭「${p.name}」的封面？会删掉插件和拍好的照片。`)) return;
+    const r = await api("/api/project/cover", { path: p.path, on });
+    if (!r.ok) { toast(r.err || "没能完成", 5000); return; }
+    toast(on ? (r.running ? "已开启。切回 Unity，等它编译完就会拍封面" : "已开启。下次打开这个工程时会拍封面") : "已关闭封面", 4500);
+    loadProjects();
+  }
 }
 function renderWeb() {
   const mode = S.data.paneMode, host = $("#webhost");
@@ -653,13 +772,15 @@ function renderWeb() {
   renderWebBar();
 }
 function renderWebBar() {
-  const st = S.web.st || {}, xy = S.view === "xianyu", back = S.web.back;
-  const backLabel = back ? (back.key ? "返回素材" : back.view === "lib" ? "返回素材库" : back.view === "xianyu" ? "返回闲鱼" : "返回") : "返回列表";
+  const st = S.web.st || {}, xy = S.view === "xianyu", pan = S.view === "lib", back = S.web.back;
+  const backLabel = back ? (back.key ? "返回素材" : back.view === "lib" ? "返回素材库" : back.view === "xianyu" ? "返回闲鱼" : "返回") : pan ? "返回素材库" : "返回列表";
+  const bd = S.data.baidu || {};
   const html = `<button class="wb" data-w="back" title="后退"${st.back ? "" : " disabled"}>${ICON.back}</button>
     <button class="wb" data-w="forward" title="前进"${st.fwd ? "" : " disabled"}>${ICON.fwd}</button>
     <button class="wb" data-w="${st.loading ? "stop" : "reload"}" title="${st.loading ? "停止" : "刷新"}">${st.loading ? ICON.x : ICON.upd}</button>
     <div class="wtitle" title="${esc(st.url || "")}"><b>${esc(st.title || (st.loading ? "正在打开…" : st.url || ""))}</b><span>${esc(st.url || "")}</span></div>
     ${xy ? `<button class="btn small" data-w="grab" title="把聊天里选中的网盘分享收进素材库">收录网盘链接</button>`
+      : pan ? `<span class="wnote">${bd.loggedIn ? "百度网盘：" + esc(bd.name || "已登录") : bd.waiting ? "登录后会自动保存" : ""}</span>`
       : `<button class="btn small" data-w="sync"${S.data.purchaseBusy ? " disabled" : ""}>${S.data.purchaseBusy ? "正在同步…" : "同步已购"}</button>`}
     <button class="wb" data-w="copy" title="复制链接"${st.url ? "" : " disabled"}>${ICON.copy}</button>
     <button class="wb" data-w="external" title="在默认浏览器中打开"${st.url ? "" : " disabled"}>${ICON.ext}</button>
@@ -675,6 +796,7 @@ async function webAction(w) {
     case "copy": try { await navigator.clipboard.writeText(st.url || ""); toast("已复制链接"); } catch (e) { toast("复制失败"); } return;
     case "reopen":
       if (!S.data.paneMode) return openURL(S.web.last.xianyu || XY_HOME);
+      if (S.view === "lib") return openWeb(S.web.last.pan || S.data.panWeb + "/disk/main", "pan");
       return openWeb(S.view === "xianyu" ? S.web.last.xianyu || XY_HOME : S.web.last.booth || boothHome(), S.view === "xianyu" ? "xianyu" : "booth");
     case "grab": {
       const r = await api("/api/pane/act", { act: "selection" });
@@ -694,12 +816,12 @@ async function webPoll(now) {
   try {
     const st = await api("/api/pane/state", {});
     const was = S.web.st || {};
-    if (st.open && st.url) S.web.last[S.web.loaded || (S.view === "xianyu" ? "xianyu" : "booth")] = st.url;
+    if (st.open && st.url) S.web.last[S.web.loaded || (S.view === "xianyu" ? "xianyu" : S.view === "lib" ? "pan" : "booth")] = st.url;
     if (st.dl !== S.web.dl) { if (st.dl > (S.web.dl || 0)) poll(true); S.web.dl = st.dl; }
     if (S.web.loaded === "xianyu" && st.url !== was.url) saveUI();
     if (!st.open && was.open && !was.loading && S.data.paneMode === "window") { // the window was closed
       S.web.st = { open: false };
-      if (S.view === "shop") { S.web.open.shop = false; S.web.loaded = ""; renderAll(); return; }
+      if (S.view !== "xianyu") { S.web.open[S.view] = false; S.web.loaded = ""; renderAll(); return; }
       renderWeb();
     } else if (st.open || !was.loading) {
       if (!was.open && st.open) placedKey = "";
@@ -745,8 +867,8 @@ async function openPan(a) {
   const u = a.user;
   if (u.shareUrl) {
     if (u.sharePwd) await copyText(u.sharePwd, "已复制提取码 " + u.sharePwd);
-    openURL(shareLink(u));
-  } else if (u.panPath) openURL(panPathURL(u.panPath));
+    openLink(shareLink(u)); // inside, with the netdisk login, when the program has a built-in page
+  } else if (u.panPath) openLink(panPathURL(u.panPath));
 }
 function boothItemURL(id) { return ((S.data && S.data.boothWeb) || "https://booth.pm") + "/ja/items/" + id; }
 function boothSearchURL(q) { return "https://booth.pm/ja/search/" + encodeURIComponent((q || "").trim()); }
@@ -807,16 +929,78 @@ function extTag(n) {
   const m = /\.(zip|rar|7z|unitypackage|psd|clip|png|jpe?g|gif|mp4|txt|pdf|blend|fbx|url)$/i.exec(n || "");
   return m ? `<span class="ext">${m[1].toLowerCase()}</span>` : "";
 }
-function panTree(files, depth, prefix, parts) {
+// pick: checkboxes to download only some of it ({set: picked paths, got: paths downloaded before})
+function panTree(files, depth, prefix, parts, pick) {
   const few = (files || []).length <= 3;
   return (files || []).map(f => {
     const path = prefix + "/" + f.n;
     const tag = parts ? partTag(parts.get(path)) : "";
-    if (!f.d) return `<div class="pf"><span class="nm">${esc(f.n)}</span>${tag ? `<span class="tags">${tag}</span>` : ""}${extTag(f.n)}<span class="s">${fmtSize(f.s)}</span></div>`;
+    let box = "", got = "";
+    if (pick) {
+      const on = panCov(path, pick.set), part = !on && f.d && [...pick.set].some(x => x.startsWith(path + "/"));
+      box = `<input type="checkbox" class="psel${part ? " part" : ""}" data-psel="${esc(path)}"${on ? " checked" : ""} aria-label="选择 ${esc(f.n)}">`;
+      if (pick.got.includes(path)) got = `<span class="ktag got">已下载</span>`;
+    }
+    if (!f.d) return `<div class="pf">${box}${pick ? `<i class="fi"></i>` : ""}<span class="nm">${esc(f.n)}</span>${got}${tag ? `<span class="tags">${tag}</span>` : ""}${extTag(f.n)}<span class="s">${fmtSize(f.s)}</span></div>`;
     const open = S.panOpen.has(path) || (depth === 0 && few && !S.panClosed.has(path));
-    return `<details data-pp="${esc(path)}"${open ? " open" : ""}><summary>${ICON.folder}<span class="nm">${esc(f.n)}</span>${tag ? `<span class="tags">${tag}</span>` : ""}${f.p ? `<span class="muted small">（未列全）</span>` : ""}</summary>
-      <div class="kids">${panTree(f.c, depth + 1, path, parts)}</div></details>`;
+    return `<details data-pp="${esc(path)}"${open ? " open" : ""}><summary>${box}${ICON.folder}<span class="nm">${esc(f.n)}</span>${got}${tag ? `<span class="tags">${tag}</span>` : ""}${f.p ? `<span class="muted small">（未列全）</span>` : ""}${pick ? `<span class="s">${fmtSize(panNodeSize(f))}</span>` : ""}</summary>
+      <div class="kids">${panTree(f.c, depth + 1, path, parts, pick)}</div></details>`;
   }).join("");
+}
+// ---- picking parts of a netdisk card to download ----
+function panCov(p, set) { for (const x of set) if (p === x || p.startsWith(x + "/")) return true; return false; }
+function panNode(files, p) {
+  let cur = files, node = null;
+  for (const seg of p.split("/").slice(1)) { node = (cur || []).find(f => f.n === seg); if (!node) return null; cur = node.c; }
+  return node;
+}
+function panNodeSize(f) { return f.d ? (f.c || []).reduce((n, c) => n + panNodeSize(c), 0) : (f.s || 0); }
+// can parts of this card be picked? (a share with more than one file, downloadable here)
+function panPickable(a) {
+  const l = a.pan;
+  return !!(a.user.shareUrl && l && (l.files || []).length && (a.panOnly || a.fromPan) && (l.count || 0) >= 2);
+}
+function togglePanSel(a, p) {
+  const files = a.pan.files, set = S.panSel;
+  if (panCov(p, set)) {
+    if (set.has(p)) set.delete(p);
+    else { // inside a picked folder: pick the rest of that folder instead
+      const top = [...set].find(x => p.startsWith(x + "/"));
+      set.delete(top);
+      let at = top;
+      for (const seg of p.slice(top.length + 1).split("/")) {
+        const node = panNode(files, at);
+        ((node && node.c) || []).forEach(k => { if (k.n !== seg) set.add(at + "/" + k.n); });
+        at += "/" + seg;
+      }
+    }
+  } else {
+    for (const x of [...set]) if (x.startsWith(p + "/")) set.delete(x);
+    set.add(p);
+    // every part of a folder picked: the folder itself
+    let at = p;
+    while (at.lastIndexOf("/") > 0) {
+      const parent = at.slice(0, at.lastIndexOf("/")), node = panNode(files, parent);
+      if (!node || node.p || !(node.c || []).every(k => set.has(parent + "/" + k.n))) break;
+      node.c.forEach(k => set.delete(parent + "/" + k.n)); set.add(parent); at = parent;
+    }
+  }
+}
+function panSelInfo(a) {
+  let size = 0, files = 0;
+  const count = f => f.d ? (f.c || []).reduce((n, c) => n + count(c), 0) : 1;
+  for (const p of S.panSel) { const f = panNode(a.pan.files, p); if (f) { size += panNodeSize(f); files += count(f); } }
+  return { n: S.panSel.size, size, files };
+}
+function panSelLine(a) {
+  const i = panSelInfo(a);
+  return `已选 ${i.n} 项${i.files > i.n ? `（${i.files} 个文件）` : ""}，${fmtSize(i.size)}`;
+}
+function panSelBar(a) {
+  if (!S.panSel.size) return "";
+  const busy = (j => j && !["done", "failed", "login"].includes(j.stage))(panJobFor(a));
+  return `<div class="panselbar" id="panselbar"><span>${esc(panSelLine(a))}</span><span class="spacer"></span>
+    ${busy ? "" : `<button class="btn small primary" data-d="pandlsel">${ICON.download}<span>下载所选</span></button>`}<button class="btn small ghost" data-d="panselclear">清除选择</button></div>`;
 }
 // one line on what the share holds: which base bodies, and what comes with them
 function panSummary(a) {
@@ -831,13 +1015,16 @@ function panSummary(a) {
 }
 function panSec(a) {
   const u = a.user, l = a.pan, running = taskRunning("pan");
+  const got = a.panGot || [];
+  const pick = panPickable(a) ? { set: S.panSel, got: got.includes("/") ? [] : got } : null;
   let list = "";
   if (u.shareUrl) {
     if (!l) list = `<div class="muted small panmsg">${running ? "读取中…" : "保存后读取文件列表"}</div>`;
     else if (l.err && !(l.files || []).length) list = `<div class="small err panmsg">读取失败：${esc(l.err)}</div>`;
     else list = `<div class="panhead"><b>${l.count} 个文件</b><span>${fmtSize(l.size)}</span>${l.truncated ? `<span class="muted small">只列出了一部分</span>` : ""}<span class="muted small right">读取于 ${esc(fmtTime(l.fetched))}</span></div>
       ${panSummary(a)}
-      <div class="pantree">${panTree(l.files, 0, "", new Map((a.panParts || []).map(p => [p.path, p])))}</div>${l.err ? `<div class="small err">重新读取失败：${esc(l.err)}</div>` : ""}`;
+      ${pick && !S.panSel.size ? `<div class="hint2 pickhint">只要其中一部分？勾选要下载的文件或文件夹。</div>` : ""}
+      <div class="pantree${pick ? " picking" : ""}">${panTree(l.files, 0, "", new Map((a.panParts || []).map(p => [p.path, p])), pick)}</div>${pick ? panSelBar(a) : ""}${l.err ? `<div class="small err">重新读取失败：${esc(l.err)}</div>` : ""}`;
   }
   if (a.panParent) return panItemSec(a, list);
   if (a.splitInto || a.canSplit) list = `<div class="splitnote">${a.splitInto ? `已拆成 ${a.splitInto} 个素材` : `包含 ${a.canSplit} 个素材`}
@@ -1035,6 +1222,197 @@ function purchaseSec(a) {
     ${p.matched ? `<div class="hint" style="margin-top:6px">按文件名对应</div>` : ""}
   </div>`;
 }
+// ---------- one-click import into a Unity project ----------
+function canImport(a) { return isLocal(a) && !a.psd && !!(a.packages || a.archives); }
+function lastProject() {
+  if (S.impProj !== undefined) return S.impProj;
+  try { return localStorage.getItem("vrclib.project") || ""; } catch (e) { return ""; }
+}
+function setProject(p) { S.impProj = p; try { localStorage.setItem("vrclib.project", p); } catch (e) {} }
+// the netdisk section has its own (a folder card shows the import section too)
+function projSelect(id) {
+  const ps = S.data.projects || [], cur = lastProject();
+  const has = ps.some(p => p.path === cur);
+  return `<select id="${id || "imp_proj"}" class="projsel" title="${esc(cur)}">${!cur ? `<option value="" selected>选择 Unity 工程…</option>` : ""}
+    ${ps.map(p => `<option value="${esc(p.path)}"${p.path === cur ? " selected" : ""}>${esc(p.name)}</option>`).join("")}
+    ${cur && !has ? `<option value="${esc(cur)}" selected>${esc(rootLabel(cur))}</option>` : ""}
+    <option value="__pick">选择其他工程…</option></select>`;
+}
+function chosenProject(id) {
+  const v = ($("#" + (id || "imp_proj")) || {}).value || "";
+  if (!v || v === "__pick") { toast("先选择要导入的 Unity 工程"); return ""; }
+  return v;
+}
+async function pickProject(sel) {
+  const p = await pickInto("选择 Unity 工程文件夹（里面有 Assets）");
+  if (!p) { sel.value = lastProject() || ""; return; }
+  const r = await api("/api/import/project", { path: p });
+  if (!r.ok) { toast(r.err || "这不是 Unity 工程", 4000); sel.value = lastProject() || ""; return; }
+  setProject(r.path); await load();
+}
+function impJobFor(a) {
+  const j = S.data.importJob; if (!j) return null;
+  return j.key === a.key || (a.fromPan && j.key === a.fromPan) || (a.purchase && j.key === "purchase:" + a.purchase.id) ? j : null;
+}
+function impBusy() { const j = S.data.importJob; return !!(j && !["done", "failed"].includes(j.stage)); }
+function impResult(j) {
+  const proj = rootLabel(j.project);
+  if (j.stage === "failed") {
+    const tool = /7-Zip/.test(j.err || "");
+    return `<div class="impres err"><div>${esc(j.err || j.msg || "导入失败")}</div>
+      ${(j.failed || []).length ? `<div class="small">${j.failed.map(esc).join("<br>")}</div>` : ""}
+      <div class="btnrow">${tool ? `<button class="btn small" data-url="https://www.7-zip.org/">下载 7-Zip</button>` : ""}<button class="btn small ghost" data-d="impdismiss">知道了</button></div></div>`;
+  }
+  const tops = (j.tops || []).slice(0, 4).join("、") + ((j.tops || []).length > 4 ? " 等" : "");
+  return `<div class="impres ok"><div>已导入到 <b>${esc(proj)}</b>：${(j.imported || []).length} 个 unitypackage，${j.files} 个文件</div>
+    <div class="small">${tops ? `放在 ${esc(tops)}。` : ""}Unity 开着的话，切回 Unity 就会刷新；没开就等下次打开工程。</div>
+    ${j.removed ? `<div class="small">已把 ${j.removed} 个压缩包移到回收站。</div>` : ""}
+    ${(j.failed || []).length ? `<div class="small warnline">没解压开：${j.failed.map(esc).join("；")}</div>` : ""}
+    <div class="btnrow"><button class="btn small" data-gopen="${esc(j.project)}">打开工程文件夹</button><button class="btn small ghost" data-d="impdismiss">知道了</button></div></div>`;
+}
+function impProgress(j) {
+  if (j.stage === "choose") {
+    return `<div class="impchoose"><div>这个素材有不同素体的版本，选要导入的：</div>
+      ${(j.choices || []).map((c, i) => `<label class="check"><input type="checkbox" data-ipick="${i}"${c.pick ? " checked" : ""}><span class="n">${esc(c.name)}</span>${(c.bases || []).map(b => `<span class="base">${esc(b)}</span>`).join("")}<span class="s">${fmtSize(c.size)}</span></label>`).join("")}
+      <div class="btnrow"><button class="btn small primary" data-d="impgo">导入所选</button><button class="btn small ghost" data-d="impcancel">取消</button></div></div>`;
+  }
+  const pct = j.total ? Math.round(j.done / j.total * 100) : 0;
+  return `<div class="impprog"><div class="t">${esc(j.msg || "正在准备")}</div><div class="bar wide"><i style="width:${pct}%"></i></div>
+    <div class="small muted">导入到 ${esc(rootLabel(j.project))}</div></div>`;
+}
+function importSec(a) {
+  const j = impJobFor(a);
+  if (!canImport(a) && !j) return "";
+  let body;
+  if (j && !["done", "failed"].includes(j.stage)) body = impProgress(j);
+  else {
+    const other = impBusy() && !j;
+    body = `${j ? impResult(j) : ""}
+      <div class="impform">${projSelect()}<button class="btn primary" data-d="import"${other ? " disabled title=\"正在导入另一个素材\"" : ""}>${ICON.cube}<span>一键导入</span></button></div>
+      <div class="impopts"><input id="imp_pwd" placeholder="解压密码（没有就不填）" autocomplete="off"><label class="check"><input type="checkbox" id="imp_recycle"${S.impRecycle === false ? "" : " checked"}>解压后把压缩包移到回收站</label></div>
+      <div class="hint2">先解压素材里的压缩包（PSD、分卷、带密码的也行），再把 unitypackage 导入工程的 Assets。${(S.data.arcTools || []).length ? `rar、7z 和分卷用你电脑上的 ${esc(S.data.arcTools[0])} 解压。` : "电脑上没找到解压软件，rar、7z 和分卷解不开，需要先装一个（7-Zip、Bandizip、WinRAR 都行）。"}</div>`;
+  }
+  return `<div class="sec imp" id="impsec"><h4>导入 Unity 工程</h4>${body}</div>`;
+}
+async function startImport(a) {
+  const project = chosenProject(); if (!project) return;
+  setProject(project);
+  const r = await api("/api/import/start", { key: a.key, project, pwd: ($("#imp_pwd") || {}).value || "", recycle: S.impRecycle !== false });
+  if (!r.ok) { toast(r.err || "没能开始导入", 4000); return; }
+  await load(); poll(true);
+}
+// a virtual Booth purchase: download, then import
+function dlImportSec(a) {
+  if (!a.virtual || !(a.purchase && (a.purchase.dls || []).length)) return "";
+  const j = impJobFor(a);
+  return `<div class="sec imp" id="impsec"><h4>下载并导入 Unity 工程</h4>${j && !["done", "failed"].includes(j.stage) ? impProgress(j) : (j ? impResult(j) : "")}
+    <div class="impform">${projSelect()}<button class="btn" data-d="dlimport">${ICON.download}<span>下载并导入</span></button></div>
+    <div class="hint2">下载完自动解压，再导入到选好的工程。</div></div>`;
+}
+
+// ---------- Baidu Netdisk downloads ----------
+function panJobFor(a) { return (S.data.panJobs || []).find(j => j.key === a.key || (a.fromPan && j.key === a.fromPan)); }
+function panJobBusy(a) { const j = panJobFor(a); return !!(j && !["done", "failed", "login"].includes(j.stage)); }
+function panBar(key) {
+  const j = (S.data.panJobs || []).find(x => x.key === key);
+  if (!j || ["done", "failed", "login"].includes(j.stage)) return "";
+  const pct = j.stage === "download" && j.total ? Math.floor(j.done / j.total * 100) : 0;
+  return `<div class="cdl" data-panitem="${esc(key)}"><i style="width:${pct}%"></i><span>${j.stage === "download" ? pct + "%" : j.stage === "unpack" ? "解压中" : j.stage === "save" ? "转存中" : "排队中"}</span></div>`;
+}
+const VIP = { 0: "普通账号", 1: "会员", 2: "超级会员" };
+function bdLine() {
+  const b = S.data.baidu || {};
+  if (!b.loggedIn) return "";
+  return `<div class="bdacct"><span>百度网盘：${esc(b.name || "已登录")}${VIP[b.vip] ? `<span class="muted">（${VIP[b.vip]}）</span>` : ""}</span>
+    <button class="linkbtn" data-d="bdswitch">更换账号</button><button class="linkbtn" data-d="bdlogout">退出</button></div>`;
+}
+function fmtSpeed(n) { return n > 0 ? fmtSize(n) + "/s" : ""; }
+function panJobHTML(j) {
+  const stageText = { queued: "排队中", save: "正在保存到你的网盘", download: "正在下载", unpack: "正在解压", login: "需要登录百度网盘" }[j.stage] || "";
+  if (j.stage === "done") {
+    return `<div class="impres ok"><div>${esc(j.msg)}</div><div class="small">${esc(j.dir || "")}</div>
+      ${(j.failed || []).length ? `<div class="small warnline">没解压开：${j.failed.map(esc).join("；")}（有密码的话，在下面填密码后点「一键导入」）</div>` : ""}
+      ${j.saved ? `<div class="small muted">网盘里的副本在「${esc(j.saved)}」，不需要的话可以自己在网盘里删掉。</div>` : ""}
+      <div class="btnrow">${j.dir ? `<button class="btn small" data-gopen="${esc(j.dir)}">打开文件夹</button>` : ""}<button class="btn small ghost" data-d="pandismiss">知道了</button></div></div>`;
+  }
+  if (j.stage === "failed") {
+    const captcha = /验证码/.test(j.err || "");
+    return `<div class="impres err"><div>${esc(j.err || "下载失败")}</div>
+      <div class="btnrow"><button class="btn small" data-d="panretry">重试</button>${captcha ? `<button class="btn small" data-d="pan">在软件里打开分享</button>` : ""}<button class="btn small ghost" data-d="pandismiss">知道了</button></div></div>`;
+  }
+  const pct = j.stage === "download" && j.total ? Math.floor(j.done / j.total * 100) : 0;
+  const line = j.stage === "download" ? `${stageText} ${j.files + 1 > j.fileN ? j.fileN : j.files + 1}/${j.fileN}　${fmtSize(j.done)} / ${fmtSize(j.total)}　${fmtSpeed(j.speed)}` : (j.msg || stageText);
+  return `<div class="impprog"><div class="t">${esc(line)}</div><div class="bar wide"><i style="width:${pct}%"></i></div>
+    ${j.file && j.stage === "download" ? `<div class="small muted fn">${esc(j.file)}</div>` : ""}
+    ${j.slow ? `<div class="small warnline">百度对非超级会员账号限速，大文件会很慢；开通百度网盘超级会员后会快很多。</div>` : ""}
+    ${(j.paths || []).length ? `<div class="small muted">只下载所选的 ${j.paths.length} 项</div>` : ""}
+    ${j.project ? `<div class="small muted">下载完会导入到 ${esc(rootLabel(j.project))}</div>` : ""}
+    <div class="btnrow"><button class="btn small ghost" data-d="pancancel">取消下载</button></div></div>`;
+}
+function panDLSec(a) {
+  if (!a.user.shareUrl || !(a.panOnly || a.fromPan)) return "";
+  const b = S.data.baidu || {}, j = panJobFor(a);
+  const busy = panJobBusy(a), sel = S.panSel.size > 0 && panPickable(a);
+  // a folder downloaded from the netdisk: more of the share, once parts of it are picked
+  if (!a.panOnly && !sel && !(j && j.stage !== "done")) return "";
+  let body = "";
+  if (!b.loggedIn) {
+    body += `<div class="news"><div class="t">先登录百度网盘，就能在软件里直接下载。</div>
+      <div class="d">登录信息加密保存在这台电脑上，不用每次登录。</div>
+      <div class="btnrow"><button class="btn small primary" data-d="bdlogin">登录百度网盘</button></div></div>`;
+  } else body += bdLine();
+  if (j && j.stage !== "login") body += panJobHTML(j);
+  const where = a.panOnly ? "下载到 " + esc(S.data.dlDir || "素材文件夹") : "下载到这个素材的文件夹";
+  if (!busy && sel) {
+    body += `<div class="selline">${esc(panSelLine(a))}<button class="linkbtn" data-d="panselclear">清除选择</button></div>
+      <div class="impform"><button class="btn${b.loggedIn ? " primary" : ""}" data-d="pandlsel">${ICON.download}<span>下载所选</span></button>${a.panOnly ? `<button class="btn ghost" data-d="pandl">下载全部</button>` : ""}</div>
+      <div class="impform">${projSelect("pan_proj")}<button class="btn" data-d="pandlselimp">${ICON.cube}<span>下载所选并导入</span></button></div>
+      <div class="hint2">只转存、下载勾选的部分，文件夹结构不变；${where}，压缩包自动解压。速度取决于百度网盘会员等级，普通账号会被百度限速。</div>`;
+  } else if (!busy && a.panOnly) {
+    body += `<div class="impform"><button class="btn${b.loggedIn ? " primary" : ""}" data-d="pandl">${ICON.download}<span>下载到素材库</span></button></div>
+      <div class="impform">${projSelect("pan_proj")}<button class="btn" data-d="pandlimp">${ICON.cube}<span>下载并导入</span></button></div>
+      <div class="hint2">先存到你网盘的「MioVRCA」文件夹，再${where}，压缩包自动解压。${panPickable(a) ? "只要其中一部分的话，在下面的「网盘内容」里勾选。" : ""}速度取决于百度网盘会员等级，普通账号会被百度限速。</div>`;
+  }
+  return `<div class="sec imp" id="pansec"><h4>${a.panOnly ? "下载到本地" : "从网盘下载"}</h4>${body}</div>`;
+}
+// the folder card of a finished netdisk download keeps its note until 「知道了」
+function panDoneSec(a) {
+  const j = !a.panOnly && a.fromPan && panJobFor(a);
+  return j && j.stage === "done" && !(S.panSel.size && panPickable(a)) ? `<div class="sec imp"><h4>网盘下载</h4>${panJobHTML(j)}</div>` : "";
+}
+// progress between full refreshes: the bar in place, a new stage redraws the drawer
+function refreshJobs(imp, pans) {
+  const d = S.data, oldImp = d.importJob || null, oldPans = d.panJobs || [];
+  d.importJob = imp || null; d.panJobs = pans || [];
+  const stages = (i, ps) => JSON.stringify([i && [i.key, i.stage], ps.map(j => [j.key, j.stage])]);
+  if (stages(oldImp, oldPans) !== stages(d.importJob, d.panJobs)) return load();
+  document.querySelectorAll("[data-panitem]").forEach(el => { const h = panBar(el.dataset.panitem); if (h) el.outerHTML = h; else el.remove(); });
+  const a = S.openKey && findAsset(S.openKey); if (!a) return;
+  const ij = impJobFor(a), pj = panJobFor(a);
+  const ip = $("#impsec .impprog"); if (ip && ij && ij.stage !== "choose") ip.outerHTML = impProgress(ij);
+  const pp = $("#pansec .impprog"); if (pp && pj) pp.outerHTML = panJobHTML(pj);
+}
+// paths: only these parts of the card's file list; importTo: a project (true: the one picked in the drawer)
+async function startPanDL(a, importTo, paths) {
+  if (importTo === true) { importTo = chosenProject("pan_proj"); if (!importTo) return; setProject(importTo); }
+  const r = await api("/api/pan/download", { key: a.fromPan || a.key, importTo: importTo || "", paths: paths || [] });
+  if (!r.ok) { toast(r.err || "没能开始下载", 4000); return; }
+  if (paths && paths.length) S.panSel = new Set();
+  if (r.login) { toast("先登录百度网盘，登录后会自动开始下载", 4000); baiduLogin(false); return; }
+  toast(paths && paths.length ? `开始下载所选的 ${paths.length} 项` : "开始下载"); await load(); poll(true);
+}
+async function baiduLogin(switching) {
+  if (switching) { await api("/api/baidu/logout", {}); await load(); }
+  if (!S.data.paneMode) { toast("这台电脑没有内置浏览器（WebView2 / Edge），没法在软件里登录百度网盘", 5000); return; }
+  S.web.forLogin = true;
+  openWeb(S.data.baiduLogin, "pan");
+}
+function baiduLoggedIn() {
+  const b = S.data.baidu || {};
+  toast("百度网盘已登录" + (b.name ? "：" + b.name : ""), 3500);
+  if (S.web.forLogin && S.view === "lib" && S.web.open.lib) closeWeb();
+}
+
 // ---------- Booth downloads ----------
 function jobFor(dl) { return (S.data.downloads || []).find(j => j.id === dl); }
 function jobText(j) {
@@ -1100,8 +1478,19 @@ function renderDrawer(key, keepScroll) {
     a = (S.data.assets || []).find(x => !x.virtual && x.boothId === key.slice(9) && x.purchase);
     if (a) { key = a.key; keepScroll = false; }
   }
+  if (!a && key.startsWith("pan:")) { // downloaded from the netdisk: its folder's card
+    a = (S.data.assets || []).find(x => x.fromPan === key);
+    if (a) { key = a.key; keepScroll = false; }
+  }
+  if (!a && S.drawerPan && S.drawerPan.key === key) { // more downloaded into it, and it is scanned as several cards now
+    a = (S.data.assets || []).find(x => x.fromPan === S.drawerPan.pan);
+    if (a) { key = a.key; keepScroll = false; S.panSelKey = key; }
+  }
+  S.drawerPan = a && a.fromPan ? { key: a.key, pan: a.fromPan } : null;
   if (!a) { closeDrawer(); return; }
-  if (S.openKey !== key) { S.panOpen = new Set(); S.panClosed = new Set(); S.dirty = new Set(); S.coverPick = null; S.stylePick = null; }
+  // the file list's picks and open folders stay while the card is left for the login page
+  if (S.panSelKey !== key) { S.panSel = new Set(); S.panOpen = new Set(); S.panClosed = new Set(); S.panSelKey = key; }
+  if (S.openKey !== key) { S.dirty = new Set(); S.coverPick = null; S.stylePick = null; }
   const u = a.user; const d = S.data;
   const dr = $("#drawer"); const scroll = keepScroll ? ($(".dbody", dr) || {}).scrollTop : 0;
   const kept = {}; let focusId = null, selS = null, selE = null;
@@ -1124,7 +1513,8 @@ function renderDrawer(key, keepScroll) {
       ${b && b.err && !a.virtual ? `<div class="small err">Booth：${esc(b.err)}</div>` : ""}
       <div class="rowbtn">
         ${a.virtual ? `<button class="btn primary" data-d="dlall">${ICON.download}<span style="margin-left:6px">下载</span></button>`
-          : a.panOnly ? `<button class="btn primary" data-d="pan">${ICON.cloud}<span style="margin-left:6px">打开网盘分享</span></button>`
+          : a.panOnly ? (a.user.shareUrl && !panJobBusy(a) ? `<button class="btn primary" data-d="${S.panSel.size && panPickable(a) ? "pandlsel" : "pandl"}">${ICON.download}<span style="margin-left:6px">${S.panSel.size && panPickable(a) ? "下载所选" : "下载"}</span></button><button class="btn" data-d="pan">打开网盘分享</button>`
+            : `<button class="btn primary" data-d="pan">${ICON.cloud}<span style="margin-left:6px">打开网盘分享</span></button>`)
           : `<button class="btn primary" data-d="open">${ICON.folder}<span style="margin-left:6px">打开文件夹</span></button>`}
         ${hasShare(a) && !a.panOnly ? `<button class="btn" data-d="pan">打开网盘</button>` : ""}
         ${a.purchase && !a.virtual ? `<button class="btn" data-d="buypage">购买页</button>` : ""}
@@ -1134,6 +1524,7 @@ function renderDrawer(key, keepScroll) {
   </div>
   <div class="dbody">
     ${newsSec(a)}
+    ${importSec(a)}${dlImportSec(a)}${panDLSec(a)}${panDoneSec(a)}
     ${variantSec(a)}
     ${a.panOnly ? "" : a.virtual ? `<div class="sec"><h4>保存位置</h4><div class="muted small">还没下载。会下载到 ${esc(S.data.dlDir || "素材文件夹")}。</div></div>`
     : `<div class="sec"><h4>保存位置</h4>
@@ -1177,6 +1568,7 @@ function renderDrawer(key, keepScroll) {
   for (const id in kept) { const el = document.getElementById(id); if (el) el.value = kept[id]; }
   if (S.coverPick) dr.querySelectorAll(".covers img").forEach(i => i.classList.toggle("on", i.dataset.cover === S.coverPick));
   if (focusId) { const el = document.getElementById(focusId); if (el) { el.focus(); try { if (selS !== null) el.setSelectionRange(selS, selE); } catch (e) {} } }
+  dr.querySelectorAll("input.psel.part").forEach(x => { x.indeterminate = true; });
   if (keepScroll) $(".dbody", dr).scrollTop = scroll;
   S.openKey = key;
   if (!a.boothId && a.boothQuery && (!S.bs || S.bs.key !== a.key) && !(a.boothHits || []).length && !a.user.noBooth) runBoothSearch(a, a.boothQuery);
@@ -1351,14 +1743,17 @@ function openSettings(focusId) {
     <div class="row"><label>显示</label>
       ${chk("s_zh", !s.hideZh, "显示中文名")}
       <select id="s_win" class="optsel"><option value="">在窗口中打开</option><option value="tab"${s.windowMode === "tab" ? " selected" : ""}>在浏览器标签页中打开</option></select></div>
-    <div class="row"><label>Booth 下载位置</label>
-      <div class="inline"><input id="s_dldir" value="${esc(s.downloadDir || "")}" placeholder="${esc((s.roots || [])[0] || "第一个素材文件夹")}"><button class="btn small" data-pickone="s_dldir">${ICON.folder}<span>选择…</span></button></div>
+    <div class="row"><label>下载位置（Booth 已购、网盘分享）</label>
+      <div class="inline"><input id="s_dldir" value="${esc(s.downloadDir || "")}" placeholder="${esc("自动：" + (S.data.dlDir || "剩余空间最大的非系统盘"))}"><button class="btn small" data-pickone="s_dldir">${ICON.folder}<span>选择…</span></button></div>
       ${chk("s_extract", !s.noExtract, "下载后自动解压")}
       ${chk("s_keepzip", s.keepZip, "解压后保留压缩包")}</div>
     <div class="row"><label>代理</label><input id="s_proxy" value="${esc(s.proxy || "")}" placeholder="留空使用系统代理，例如 127.0.0.1:7890"></div>
     <div class="row"><label>素体识别表（显示名=别名1|别名2）</label><textarea id="s_bases" style="min-height:120px">${esc((s.bases || []).join("\n"))}</textarea></div>
     <div class="row"><label>风格标签（标签名=关键词1|关键词2）</label><textarea id="s_styles" style="min-height:140px">${esc((s.styles || []).join("\n"))}</textarea></div>
     ${Object.keys(ov).length ? `<div class="row"><label>手动调整</label>${Object.entries(ov).map(([p, v]) => `<div class="ov"><span>${esc(p)}</span><span class="muted" style="flex:none">${{ split: "拆成多个", ignore: "不收录", asset: "合并为一个" }[v] || v}</span><button class="btn" data-ov="${esc(p)}">撤销</button></div>`).join("")}</div>` : ""}
+    <div class="row" id="s_baidu"><label>百度网盘${(S.data.baidu || {}).loggedIn ? `<span class="muted small">　已登录：${esc(S.data.baidu.name || "")}${VIP[S.data.baidu.vip] ? "（" + VIP[S.data.baidu.vip] + "）" : ""}</span>` : `<span class="muted small">　未登录</span>`}</label>
+      <div class="btnrow" style="margin-top:0">${(S.data.baidu || {}).loggedIn ? `<button class="btn small" data-m="bdswitch">更换账号</button><button class="btn small" data-m="bdlogout">退出登录</button>` : `<button class="btn small" data-m="bdlogin">登录</button>`}</div>
+      <div class="muted small" style="margin-top:6px">登录后可以在软件里直接下载网盘分享。登录信息加密保存在这台电脑上。下载速度取决于账号的会员等级，普通账号会被百度限速。</div></div>
     <div class="row"><label>Booth 已购${S.data.purchaseSync ? `<span class="muted small">　已同步 ${S.data.purchaseCount} 件（${esc(fmtTime(S.data.purchaseSync))}）</span>` : ""}</label>
       <div class="btnrow" style="margin-top:0"><button class="btn small" data-m="sync">同步</button><button class="btn small" data-m="forget">退出登录</button>${S.data.purchaseSync ? `<button class="btn small" data-m="clearp">清空记录</button>` : ""}</div></div>
     <div class="row"><label>其他</label>
@@ -1439,6 +1834,7 @@ function openPanAdd(prefill) {
     <div class="row"><label>分享链接或分享文字</label><textarea id="pa_text" placeholder="链接: https://pan.baidu.com/s/1xxxx 提取码: abcd"></textarea></div>
     <div class="row"><label>提取码</label><input id="pa_pwd" placeholder="可不填"></div>
     <div class="row"><label>名称</label><input id="pa_name" placeholder="可不填"></div>
+    <div class="row"><label class="check"><input type="checkbox" id="pa_dl"${S.data.paneMode ? " checked" : " disabled"}> 添加后直接下载到素材库${(S.data.baidu || {}).loggedIn ? "" : "（第一次需要登录百度网盘）"}</label></div>
   </div><div class="mfoot"><button class="btn ghost" data-m="close">取消</button><button class="btn primary" data-m="panadd">添加</button></div>`;
   m.classList.add("on"); $("#scrim").classList.add("on");
   $("#pa_text").focus();
@@ -1488,6 +1884,8 @@ document.addEventListener("click", async e => {
   const t = e.target;
   if (t.closest("#btnSync") || t.closest("#btnDLLogin")) { startSync(); return; }
   if (t.closest("#btnDLCancel")) { await api("/api/booth/download/cancel", {}); toast("已取消下载"); poll(true); return; }
+  if (t.closest("#btnPanCancel")) { await api("/api/pan/download/cancel", {}); toast("已取消网盘下载"); poll(true); return; }
+  if (t.closest("#btnBdLogin")) { baiduLogin(false); return; }
   if (t.closest("#btnDLMissing")) {
     const list = (S.data.assets || []).filter(a => a.virtual && matches(a));
     if (!confirm(`下载这 ${list.length} 件已购商品？会下载到 ${S.data.dlDir}。`)) return;
@@ -1495,9 +1893,10 @@ document.addEventListener("click", async e => {
     const r = await api("/api/booth/download/missing", { items: list.map(a => a.boothId) });
     toast(r.n ? `开始下载 ${r.n} 个文件` : "没有要下载的"); poll(true); return;
   }
-  if (t.closest("#vLib")) { setView("lib"); return; }
+  if (t.closest("#vLib")) { if (S.view === "lib" && S.web.open.lib) closeWeb(); else setView("lib"); return; }
   if (t.closest("#vShop")) { if (S.view === "shop" && S.web.open.shop) closeWeb(); else setView("shop"); return; }
   if (t.closest("#vXy")) { setView("xianyu"); return; }
+  if (t.closest("#vProj")) { setView("proj"); return; }
   const wb = t.closest("[data-w]");
   if (wb) { webAction(wb.dataset.w); return; }
   const xl = t.closest("[data-xy]");
@@ -1541,16 +1940,21 @@ document.addEventListener("click", async e => {
   }
   if (t.closest("#btnSyncCancel")) { await api("/api/purchases/cancel", {}); toast("正在取消"); poll(true); return; }
   if (t.closest("#btnStyles")) { openSettings("s_styles"); return; }
+  const fb = t.closest(".side [data-fold]");
+  if (fb) { S.fold[fb.dataset.fold] = !S.fold[fb.dataset.fold]; saveUI(); renderSide(); return; }
   const side = t.closest(".side [data-cat], .side [data-usage], .side [data-share], .side [data-root], .side [data-base], .side [data-purchase], .side [data-style], .side [data-recent]");
   if (side) {
     const ds = side.dataset;
+    if (S.web.open.lib) closeWeb();
     if (ds.recent !== undefined) S.recent = S.recent === ds.recent ? "" : ds.recent;
-    if (ds.cat !== undefined) { if (S.cat !== ds.cat) S.style = ""; S.cat = ds.cat; }
+    // a second click on the one in use goes back up: a category to 全部, a style to its category
+    const again = (cur, v) => cur === v ? "all" : v;
+    if (ds.cat !== undefined) { S.style = ""; S.cat = S.cat === ds.cat ? "全部" : ds.cat; }
     if (ds.style !== undefined) S.style = S.style === ds.style ? "" : ds.style;
-    if (ds.usage !== undefined) S.usage = ds.usage;
-    if (ds.share !== undefined) S.share = ds.share;
-    if (ds.root !== undefined) S.root = ds.root;
-    if (ds.purchase !== undefined) S.purchase = ds.purchase;
+    if (ds.usage !== undefined) S.usage = again(S.usage, ds.usage);
+    if (ds.share !== undefined) S.share = again(S.share, ds.share);
+    if (ds.root !== undefined) S.root = again(S.root, ds.root);
+    if (ds.purchase !== undefined) S.purchase = again(S.purchase, ds.purchase);
     if (ds.base !== undefined) { S.bases.has(ds.base) ? S.bases.delete(ds.base) : S.bases.add(ds.base); }
     renderSide(); renderGrid(); $(".main").scrollTop = 0; return;
   }
@@ -1560,6 +1964,10 @@ document.addEventListener("click", async e => {
   if (t.closest("#btnUpdate")) { openUpdate(false); return; }
   if (t.closest("#btnVersion")) { openUpdate(true); return; }
   if (t.closest("#btnFeedback")) { openFeedback(); return; }
+  const pa = t.closest("[data-pa]");
+  if (pa) return projAction(pa.dataset.pa, pa.closest("[data-proj]").dataset.proj, pa);
+  if (t.closest("#btnProjAdd")) return addProject();
+  if (t.closest("#btnProjUsage")) { await api("/api/scan", { scan: false, usage: true, booth: false }); toast("正在统计"); poll(true); return; }
   if (t.closest("#btnScan")) { const r = await api("/api/scan", { scan: true, usage: true, booth: S.data.settings.autoBooth }); toast(r.ok ? "开始扫描" : "正在扫描"); poll(true); return; }
 
   const card = t.closest(".card");
@@ -1567,8 +1975,13 @@ document.addEventListener("click", async e => {
     const a = findAsset(card.dataset.key); if (!a) return;
     const act = t.closest("[data-act]");
     const what = act ? act.dataset.act : card.dataset.group ? "edit" : "open";
-    if (what === "open") { if (a.virtual) renderDrawer(a.key); else if (a.panOnly) openPan(a); else { const l = (a.locations || [])[0]; if (l) openPath(l.path); } }
+    if (what === "open") { if (a.virtual || a.panOnly) renderDrawer(a.key); else { const l = (a.locations || [])[0]; if (l) openPath(l.path); } }
     else if (what === "dl") startDownload(a.boothId);
+    else if (what === "import") { renderDrawer(a.key); const sec = $("#impsec"); if (sec) { sec.scrollIntoView({ block: "start" }); $("#imp_proj").focus(); } }
+    else if (what === "pandl") {
+      if (!(S.data.baidu || {}).loggedIn) { renderDrawer(a.key); const sec = $("#pansec"); if (sec) sec.scrollIntoView({ block: "start" }); toast("先登录百度网盘"); }
+      else startPanDL(a, false);
+    }
     else if (what === "buypage") openBuyPage(a);
     else if (what === "pan") openPan(a);
     else if (what === "booth") goBooth(a);
@@ -1617,6 +2030,34 @@ document.addEventListener("click", async e => {
     if (btn.dataset.cover !== undefined) { const on = btn.classList.contains("on"); dr.querySelectorAll(".covers img").forEach(i => i.classList.remove("on")); if (!on) btn.classList.add("on"); S.coverPick = on ? null : btn.dataset.cover; return; }
     switch (btn.dataset.d) {
       case "close": return closeDrawer();
+      case "import": return startImport(a);
+      case "impgo": {
+        const cs = (S.data.importJob || {}).choices || [];
+        const paths = [...dr.querySelectorAll("[data-ipick]")].filter(x => x.checked).map(x => (cs[+x.dataset.ipick] || {}).path).filter(Boolean);
+        if (!paths.length) { toast("至少选一个"); return; }
+        await api("/api/import/choose", { paths }); return poll(true);
+      }
+      case "impcancel": await api("/api/import/dismiss", {}); return poll(true);
+      case "impdismiss": await api("/api/import/dismiss", {}); return load();
+      case "dlimport": {
+        const importTo = chosenProject(); if (!importTo) return;
+        setProject(importTo); S.dlAsked = Date.now();
+        const r = await api("/api/booth/download", { item: a.purchase.id, ids: [], importTo });
+        if (!r.ok) { toast(r.err || "没能开始下载", 3500); return; }
+        toast("开始下载，下载完会自动导入"); await load(); return poll(true);
+      }
+      case "pandl": return startPanDL(a, "", null);
+      case "pandlimp": return startPanDL(a, true, null);
+      case "pandlsel": return startPanDL(a, "", [...S.panSel]);
+      case "pandlselimp": return startPanDL(a, true, [...S.panSel]);
+      case "panselclear": S.panSel = new Set(); return renderDrawer(a.key, true);
+      case "panretry": { const j = panJobFor(a) || {}; return startPanDL(a, j.project || "", j.paths || null); }
+      case "pancancel": await api("/api/pan/download/cancel", {}); toast("已取消"); return poll(true);
+      case "pandismiss": await api("/api/pan/download/dismiss", { key: (panJobFor(a) || {}).key || a.key }); return load();
+      case "bdlogin": return baiduLogin(false);
+      case "bdswitch": return baiduLogin(true);
+      case "bdlogout": if (!confirm("退出百度网盘登录？")) return;
+        await api("/api/baidu/logout", {}); toast("已退出百度网盘"); return load();
       case "open": { const l = (a.locations || [])[0]; if (l) openPath(l.path); return; }
       case "pan": return openPan(a);
       case "booth": return openLink(boothURL(a));
@@ -1704,9 +2145,17 @@ document.addEventListener("click", async e => {
       if (!r0.url) { toast("没有识别到 pan.baidu.com/s/ 链接"); return; }
       const r = await api("/api/pan/add", { url: r0.url, pwd: $("#pa_pwd").value.trim() || r0.pwd || "", name: $("#pa_name").value.trim() });
       if (!r.ok) { toast(r.err || "没添加成功"); return; }
-      closeModal(); toast("已添加"); await load(); renderDrawer(r.key); poll(true); return;
+      const dl = $("#pa_dl") && $("#pa_dl").checked;
+      closeModal(); toast("已添加"); await load(); renderDrawer(r.key); poll(true);
+      if (dl) { const a = findAsset(r.key); if (a) startPanDL(a, false); }
+      return;
     }
     if (b.dataset.m === "sync") { closeModal(); return startSync(); }
+    if (b.dataset.m === "bdlogin" || b.dataset.m === "bdswitch") { closeModal(); closeDrawer(); return baiduLogin(b.dataset.m === "bdswitch"); }
+    if (b.dataset.m === "bdlogout") {
+      if (!confirm("退出百度网盘登录？")) return;
+      await api("/api/baidu/logout", {}); toast("已退出百度网盘"); await load(); return openSettings("s_baidu");
+    }
     if (b.dataset.m === "shortcut") { const r = await api("/api/shortcut", {}); toast(r.ok ? "已创建" : "创建失败：" + (r.err || ""), 3500); return; }
     if (b.dataset.m === "forget" || b.dataset.m === "clearp") {
       const clear = b.dataset.m === "clearp";
@@ -1731,6 +2180,13 @@ document.addEventListener("click", async e => {
   if (t.closest("#scrim")) { closeModal(); closeDrawer(); }
 });
 document.addEventListener("change", e => {
+  if (e.target.dataset && e.target.dataset.psel !== undefined && S.openKey) {
+    const a = findAsset(S.openKey), p = e.target.dataset.psel;
+    if (a && a.pan) { togglePanSel(a, p); renderDrawer(a.key, true); const el = document.querySelector(`[data-psel="${CSS.escape(p)}"]`); if (el) el.focus(); }
+    return;
+  }
+  if (e.target.id === "imp_proj" || e.target.id === "pan_proj") { S.dirty.delete(e.target.id); if (e.target.value === "__pick") pickProject(e.target); else if (e.target.value) setProject(e.target.value); return; }
+  if (e.target.id === "imp_recycle") { S.impRecycle = e.target.checked; return; }
   if (e.target.dataset && e.target.dataset.sk && S.setup) { S.setup[e.target.dataset.sk][+e.target.dataset.si].checked = e.target.checked; return; }
   if (e.target.id === "showHidden") { S.showHidden = e.target.checked; renderSide(); renderGrid(); }
   if (e.target.id === "sort") { S.sort = e.target.value; saveUI(); renderGrid(); }
@@ -1769,7 +2225,7 @@ document.addEventListener("keydown", e => {
   if (e.key === "Enter" && document.activeElement.classList.contains("card")) {
     const a = findAsset(document.activeElement.dataset.key); if (!a) return;
     if (document.activeElement.dataset.group) { renderDrawer(a.key); return; }
-    if (a.virtual) renderDrawer(a.key); else if (a.panOnly) openPan(a); else if ((a.locations || [])[0]) openPath(a.locations[0].path);
+    if (a.virtual || a.panOnly) renderDrawer(a.key); else if ((a.locations || [])[0]) openPath(a.locations[0].path);
   }
 });
 let qTimer;
@@ -1778,6 +2234,7 @@ let qTimer;
 $("#q").addEventListener("input", e => {
   clearTimeout(qTimer);
   if (S.view === "xianyu") { S.web.xq = e.target.value; return; }
+  if (S.view === "proj") { qTimer = setTimeout(() => { S.pq = e.target.value.trim(); renderProjGrid(); }, 120); return; }
   if (S.view === "shop") { qTimer = setTimeout(() => { S.shop.q = e.target.value.trim(); shopSearch(true); }, 700); return; }
   qTimer = setTimeout(() => { S.q = e.target.value.trim(); renderSide(); renderGrid(); }, 120);
 });
@@ -1799,10 +2256,12 @@ async function poll(fast) {
       const flip = !!S.data.purchaseBusy !== !!p.purchaseBusy;
       S.data.tasks = p.tasks; S.data.busy = p.busy; S.data.purchaseBusy = p.purchaseBusy; S.data.dlNeedLogin = p.dlNeedLogin; renderStatus();
       if (p.downloads && JSON.stringify(p.downloads) !== JSON.stringify(S.data.downloads || [])) refreshDL(p.downloads);
+      if (JSON.stringify([p.importJob || null, p.panJobs || []]) !== JSON.stringify([S.data.importJob || null, S.data.panJobs || []])) refreshJobs(p.importJob, p.panJobs);
       if (flip && S.view === "lib") renderSide();
     }
     if (p.rev !== S.rev) await load();
-    const dling = (p.tasks || []).some(t => t.name === "download" && t.running);
+    if (S.view === "proj" && !document.hidden) loadProjects();
+    const dling = (p.tasks || []).some(t => ["download", "pandl", "import"].includes(t.name) && t.running);
     pollTimer = setTimeout(poll, p.busy || p.purchaseBusy || fast || S.updWatch || dling ? 1000 : 5000);
   } catch (e) {
     if (S.updWatch) { S.updRestart = true; if ($("#modal").dataset.kind === "update") renderUpdateModal(); }
