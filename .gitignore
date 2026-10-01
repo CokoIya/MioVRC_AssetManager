@@ -1,0 +1,15 @@
+# build output
+/dist/
+*.exe
+
+# data the app writes next to itself when run from this folder
+library.json
+library.json.bak
+library.log
+guidcache.json
+portable.txt
+pan-debug.txt
+covers/
+booth-profile/
+webview/
+*.part
