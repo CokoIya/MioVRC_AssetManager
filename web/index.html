@@ -3,22 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>VRC 素材库</title>
+<title>MioVRC素材托管工具</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='7' width='26' height='20' rx='4' fill='%23ff5a6a'/%3E%3Cpath d='M9 7V5a7 7 0 0 1 14 0v2' stroke='%23ff5a6a' stroke-width='3' fill='none'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="app.css">
 <script>window.API_TOKEN = "__TOKEN__";</script>
 </head>
 <body>
 <header class="top">
-  <div class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="9" width="26" height="19" rx="4"/><path d="M10 9V7a6 6 0 0 1 12 0v2"/></svg><span>VRC 素材库</span></div>
-  <label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="q" type="search" placeholder="搜索素材名、店铺、标签、路径（按 / 聚焦）" autocomplete="off"></label>
+  <div class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="9" width="26" height="19" rx="4"/><path d="M10 9V7a6 6 0 0 1 12 0v2"/></svg><span>MioVRC素材托管工具</span></div>
+  <label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="q" type="search" placeholder="搜索名称、店铺、标签、路径" autocomplete="off"></label>
   <select id="sort" title="排序">
     <option value="recent">最近添加</option>
     <option value="name">名称</option>
     <option value="size">占用空间</option>
     <option value="used">在用优先</option>
   </select>
-  <button id="btnPanAdd" class="btn addpan" title="添加只在百度网盘里、电脑上没有的素材"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>网盘素材</span></button>
+  <button id="btnPanAdd" class="btn addpan" title="添加百度网盘分享"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>网盘素材</span></button>
+  <button id="btnUpdate" class="btn update" hidden></button>
   <button id="btnScan" class="btn">重新扫描</button>
   <button id="btnSettings" class="btn icon" title="设置"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
 </header>

@@ -1,6 +1,6 @@
 """Mock of Baidu share pages, Booth search/item JSON and Bing translator for end-to-end tests.
 Request/response shapes copied from the live services (checked 2026-10-01)."""
-import http.server, socketserver, urllib.parse, json, io, sys, html
+import http.server, socketserver, urllib.parse, json, io, sys, html, os, hashlib
 from PIL import Image
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 47991
@@ -13,6 +13,25 @@ SHARES = {  # surl -> (pwd, title, tree)
             {"name": "Texture", "dir": True, "kids": [{"name": f"tex_{i}.png", "size": 1000 + i} for i in range(3)]},
             {"name": "README.txt", "size": 1200}]},
     ]),
+    "1AonamiShare": ("t9ya", None, [
+        {"name": "8099091", "dir": True, "kids": [{"name": n, "size": sz} for n, sz in [
+            ("AONAMI_chocolat_plum.zip", 6200000), ("AONAMI_manuka.zip", 25300000), ("AONAMI_materials.zip", 246000000),
+            ("AONAMI_milfy_eku.zip", 6500000), ("AONAMI_PSD.zip", 383000000), ("AONAMI_rurune.zip", 25100000),
+            ("AONAMI_shinano.zip", 25100000), ("AONAMI_sio.zip", 25100000)]]},
+    ]),
+    "1KaguyaHeji": ("kg88", None, [  # a collection: one folder per category, several products in each
+        {"name": "辉夜合集-咸鱼@邀月浮白", "dir": True, "kids": [
+            {"name": "8562330 辉夜 Kaguya模型", "dir": True, "kids": [{"name": "Kaguya_v1.06.unitypackage", "size": 300623143}, {"name": "Kaguya_PSD.zip", "size": 210000000}]},
+            {"name": "头发", "dir": True, "kids": [
+                {"name": "Twintail_hair", "dir": True, "kids": [{"name": "twintail.unitypackage", "size": 8200000}, {"name": "readme.txt", "size": 900}]},
+                {"name": "Bob_hair_v2.zip", "size": 6100000}]},
+            {"name": "妆容", "dir": True, "kids": [{"name": "Glitter makeup.zip", "size": 3100000}, {"name": "Natural makeup.zip", "size": 2800000}]},
+            {"name": "衣服", "dir": True, "kids": [
+                {"name": "AONAMI", "dir": True, "kids": [{"name": "AONAMI_kaguya.zip", "size": 25300000}, {"name": "AONAMI_PSD.zip", "size": 383000000}]},
+                {"name": "Moon Dress", "dir": True, "kids": [{"name": "MoonDress_Kaguya.zip", "size": 52000000}, {"name": "Texture.zip", "size": 120000000}]}]},
+            {"name": "饰品", "dir": True, "kids": [{"name": "Ribbon.unitypackage", "size": 1200000}]},
+            {"name": "闲鱼@邀月浮白.jpg", "size": 230000}]},
+    ]),
     "1NoPwdShare": ("", None, [
         {"name": "【8アバター対応】Moon Dress.zip", "size": 52000000},
         {"name": "MoonDress_Texture.zip", "size": 120000000},
@@ -21,6 +40,8 @@ SHARES = {  # surl -> (pwd, title, tree)
 HITS = {
     "moon dress": [("9100001", "【8アバター対応】Moon Dress", "lunaworks", "Luna Works", "3D衣装", 1500),
                    ("9100002", "Moonlight Ribbon", "ribbonshop", "Ribbon", "3D装飾品", 300)],
+    "aonami": [("8099091", "【7アバター対応】AONAMI -アオナミ- セーラー服", "aonami", "AONAMI shop", "3D衣装", 2500)],
+    "kaguya": [("8562330", "オリジナル3Dモデル『カグヤ』", "kaguya", "Kaguya Lab", "3Dキャラクター", 5800)],
     "neru": [("9100010", "ネル ヘア cloth set【Plum対応】", "neru", "neru shop", "3D衣装", 800)],
 }
 
@@ -85,6 +106,18 @@ class H(http.server.BaseHTTPRequestHandler):
                 return self.send(200, json.dumps({"errno": -9, "err_msg": ""}), "application/json")
             return self.send(200, "\n\n" + json.dumps({"errno": 0, "randsk": "RSK%2F" + surl}), "application/json",
                              {"Set-Cookie": "BDCLND=RSK%2F" + surl + "; path=/"})
+        if u.path == "/mock/add":  # a share changes on the author's side: one more file in a folder
+            surl, d, n, sz = q["surl"][0], q["dir"][0], q["name"][0], int(q.get("size", ["1000"])[0])
+            r = find(SHARES[surl][2], "", d)
+            r[0].append({"name": n, "size": sz})
+            return self.send(200, '{"ok":true}', "application/json")
+        if u.path.startswith("/feedback"):  # FormSubmit's ajax endpoint: first message asks for activation
+            with open(os.environ.get("MOCK_FB_LOG", "/dev/null"), "a") as f:
+                f.write(json.dumps({"headers": dict(self.headers), "body": json.loads(body or "{}")}, ensure_ascii=False) + "\n")
+            H.fb = getattr(H, "fb", 0) + 1
+            if H.fb == 1:
+                return self.send(200, json.dumps({"success": "false", "message": "This form needs Activation. We've sent you an email containing an 'Activate Form' link. Just click it and your form will be actived!"}), "application/json")
+            return self.send(200, json.dumps({"success": "true", "message": "The form was submitted successfully."}), "application/json")
         if u.path == "/ttranslatev3":
             text = form.get("text", [""])[0]
             if form.get("token", [""])[0] != "TOK":
@@ -96,6 +129,24 @@ class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
         q = urllib.parse.parse_qs(u.query)
+        if u.path == "/repos/CokoIya/vrclib/releases/latest":  # renamed repository: GitHub answers 301 to the repo id
+            return self.send(301, '{"message":"Moved Permanently"}', "application/json", {"Location": f"{B}/repositories/987654/releases/latest"})
+        if u.path in ("/repos/CokoIya/MioVRC_AssetManager/releases/latest", "/repositories/987654/releases/latest"):  # GitHub API (shape of the live endpoint)
+            rel = os.environ.get("MOCK_REL", "")
+            assets = []
+            for n in sorted(os.listdir(rel)) if rel and os.path.isdir(rel) else []:
+                data = open(os.path.join(rel, n), "rb").read()
+                assets.append({"name": n, "size": len(data), "browser_download_url": f"{B}/dl/{urllib.parse.quote(n)}",
+                               "digest": "sha256:" + hashlib.sha256(data).hexdigest(), "content_type": "application/zip"})
+            if not assets:
+                return self.send(404, '{"message":"Not Found"}', "application/json")
+            tag = os.environ.get("MOCK_TAG", "v9.9.9")
+            return self.send(200, json.dumps({"tag_name": tag, "name": "MioVRC素材托管工具 " + tag[1:], "draft": False, "prerelease": False,
+                "published_at": "2026-10-05T03:00:00Z", "html_url": "https://github.com/CokoIya/MioVRC_AssetManager/releases/tag/" + tag,
+                "body": "## 更新内容\n- 新功能：**测试**\n- 修复：`library.json` 测试\n\n**下载**：[发布页](https://example.com)", "assets": assets}), "application/json")
+        if u.path.startswith("/dl/"):
+            n = urllib.parse.unquote(u.path[4:])
+            return self.send(200, open(os.path.join(os.environ.get("MOCK_REL", ""), n), "rb").read(), "application/octet-stream")
         if u.path.startswith("/thumb/"):
             im = Image.new("RGB", (300, 300), (60, 120, 200)); bio = io.BytesIO(); im.save(bio, "JPEG")
             return self.send(200, bio.getvalue(), "image/jpeg")

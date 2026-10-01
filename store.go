@@ -10,16 +10,21 @@ import (
 )
 
 type Settings struct {
-	Roots        []string `json:"roots"`
-	ProjectRoots []string `json:"projectRoots"`
-	Bases        []string `json:"bases"`
-	Proxy        string   `json:"proxy"`
-	AutoBooth    bool     `json:"autoBooth"`
-	ManualRescan bool     `json:"manualRescan"` // false: rescan in the background every time the app opens
-	SetupDone    bool     `json:"setupDone"`
-	WindowMode   string   `json:"windowMode"` // "" = the app's own window (WebView2), "tab" = a tab in the default browser
-	HideZh       bool     `json:"hideZh"`     // hide the Chinese translation line
-	NoAutoMatch  bool     `json:"noAutoMatch"`
+	Roots         []string `json:"roots"`
+	ProjectRoots  []string `json:"projectRoots"`
+	Bases         []string `json:"bases"`
+	Proxy         string   `json:"proxy"`
+	AutoBooth     bool     `json:"autoBooth"`
+	ManualRescan  bool     `json:"manualRescan"` // false: rescan in the background every time the app opens
+	SetupDone     bool     `json:"setupDone"`
+	WindowMode    string   `json:"windowMode"` // "" = the app's own window (WebView2), "tab" = a tab in the default browser
+	HideZh        bool     `json:"hideZh"`     // hide the Chinese translation line
+	NoAutoMatch   bool     `json:"noAutoMatch"`
+	Styles        []string `json:"styles"`        // outfit style tags: "名称=Booth 标签或关键词|…"
+	NoUpdateCheck bool     `json:"noUpdateCheck"` // do not look for new releases on start
+	SkipVersion   string   `json:"skipVersion"`   // "remind me no more" for this release
+	NoWatch       bool     `json:"noWatch"`       // do not rescan by itself when the asset folders change
+	NoSync        bool     `json:"noSync"`        // do not re-read shares / Booth pages to spot updates
 }
 
 type Location struct {
@@ -60,6 +65,20 @@ type Asset struct {
 	Usage        []Usage    `json:"usage"`
 	GuidCount    int        `json:"guidCount"`
 	HasDir       bool       `json:"hasDir"`
+	// what is inside: texture sources (PSD / CLIP …) and Unity content, to tell source packs apart
+	PSDs        []PSDFile `json:"psds,omitempty"`
+	PSDCount    int       `json:"psdCount,omitempty"`
+	PSDInZip    int       `json:"psdInZip,omitempty"`
+	ModelFiles  int       `json:"modelFiles,omitempty"`
+	ZipPackages int       `json:"zipPackages,omitempty"`
+}
+
+// PSDFile is one texture source file (PSD, PSB, CLIP, SAI …) found in an asset folder.
+type PSDFile struct {
+	Path string `json:"path"`
+	Size int64  `json:"size"`
+	W    int    `json:"w,omitempty"`
+	H    int    `json:"h,omitempty"`
 }
 
 type UserData struct {
@@ -78,6 +97,13 @@ type UserData struct {
 	Hidden   bool     `json:"hidden,omitempty"`
 	Fav      bool     `json:"fav,omitempty"`
 	Updated  int64    `json:"updated,omitempty"`
+	// style tags picked by hand (StylesSet); otherwise they come from the Booth tags
+	Styles    []string `json:"styles,omitempty"`
+	StylesSet bool     `json:"stylesSet,omitempty"`
+	NoGroup   bool     `json:"noGroup,omitempty"`   // keep it out of "same product" cards
+	NoSplit   bool     `json:"noSplit,omitempty"`   // a netdisk collection shown as one card
+	PanSeen   int64    `json:"panSeen,omitempty"`   // share changes up to then have been looked at
+	BoothSeen int64    `json:"boothSeen,omitempty"` // Booth page changes up to then have been looked at
 }
 
 type BoothInfo struct {
@@ -96,7 +122,11 @@ type BoothInfo struct {
 	Desc     string   `json:"desc,omitempty"`
 	Tags     []string `json:"tags,omitempty"`
 	Images   []string `json:"images,omitempty"`
-	Ver      int      `json:"ver,omitempty"` // 2 = has description / tags / images
+	Ver      int      `json:"ver,omitempty"` // see boothInfoVer
+	Adult    bool     `json:"adult,omitempty"`
+	// what the shop changed, noticed at a later fetch
+	Changed    int64  `json:"changed,omitempty"`
+	ChangeNote string `json:"changeNote,omitempty"`
 }
 
 type ProjectInfo struct {
@@ -127,6 +157,11 @@ type Store struct {
 	Pan        map[string]*PanListing `json:"pan"`        // share id → what is inside
 	BoothMatch map[string]*BoothMatch `json:"boothMatch"` // asset key → Booth search result
 	Trans      map[string]string      `json:"trans"`      // text → simplified Chinese
+
+	ScanStart     int64       `json:"scanStart,omitempty"` // first scan ever: what came later is "new"
+	Update        *UpdateInfo `json:"update,omitempty"`    // latest release seen on GitHub
+	UpdateChecked int64       `json:"updateChecked,omitempty"`
+	NotesSeen     string      `json:"notesSeen,omitempty"` // the version whose "what changed" was last shown
 }
 
 func defaultSettings() Settings {
@@ -142,6 +177,7 @@ func defaultSettings() Settings {
 			"Lzebul=lzebul|ルゼブル", "Wolferia=wolferia|ウルフェリア", "Ririka=ririka|リリカ", "Imeris=imeris|イメリス",
 		},
 		AutoBooth: true,
+		Styles:    append([]string{}, defaultStyles...),
 	}
 }
 
@@ -168,6 +204,17 @@ func LoadStore(path string) *Store {
 	}
 	if s.FirstSeen == nil {
 		s.FirstSeen = map[string]int64{}
+	}
+	if s.ScanStart == 0 && s.LastScan > 0 {
+		s.ScanStart = s.LastScan // libraries from before 1.5: nothing counts as new yet
+	}
+	for k, u := range s.User { // shares added before 1.5: when they were added is not known any more
+		if isPanShareKey(k) && s.FirstSeen[k] == 0 && u != nil {
+			s.FirstSeen[k] = min(u.Updated, s.ScanStart)
+		}
+	}
+	if s.Settings.Styles == nil {
+		s.Settings.Styles = append([]string{}, defaultStyles...)
 	}
 	if len(s.Settings.Bases) == 0 {
 		s.Settings.Bases = defaultSettings().Bases

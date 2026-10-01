@@ -38,6 +38,10 @@ type PanListing struct {
 	Fetched   int64      `json:"fetched"`
 	Err       string     `json:"err,omitempty"`
 	Truncated bool       `json:"truncated,omitempty"`
+	// what changed at the last re-read that found a difference
+	Added   []string `json:"added,omitempty"`
+	Removed []string `json:"removed,omitempty"`
+	Changed int64    `json:"changed,omitempty"`
 }
 
 var (
@@ -526,7 +530,22 @@ func QueuePanFetch(st *Store, keys ...string) {
 					}
 					old.Err, old.Fetched = err.Error(), time.Now().Unix()
 				} else {
+					prev := st.Pan[surl]
+					diffPan(prev, l)
 					st.Pan[surl] = l
+					// products of a collection seen for the first time; ones that were already in
+					// the share (read by an older version) are as old as the share
+					now, had := time.Now().Unix(), panFileMap(prev)
+					for _, it := range splitPan(l) {
+						ik := panItemKey(surl, it.Path)
+						if st.FirstSeen[ik] != 0 {
+							continue
+						}
+						st.FirstSeen[ik] = now
+						if panHasPath(had, it.Path) {
+							st.FirstSeen[ik] = max(st.FirstSeen["pan:"+surl], 1)
+						}
+					}
 				}
 				st.mu.Unlock()
 				done++

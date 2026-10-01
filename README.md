@@ -1,47 +1,50 @@
-# VRC素材库
+# MioVRC素材托管工具（MioVRC_AssetManager）
 
-Windows 上的 VRChat 素材管理工具。它会扫描你下载的素材文件夹、Booth 已购和百度网盘分享，把它们整理成一个像商店一样能浏览、筛选的本地素材库，还能标出哪些素材正在被你的 Unity 工程使用。
+Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth 已购和百度网盘分享，整理成可以浏览、筛选的素材库，并标出哪些素材被 Unity 工程用到。
 
-单个 exe，双击就能用，有自己的窗口。所有数据只存在你自己的电脑上。
+单个 exe，有自己的窗口，数据只保存在本机。网站：<https://miovrc.com/vrca/>
 
 ## 功能
 
-- **扫描素材文件夹**：识别解压后的素材目录、`.unitypackage` 和压缩包，自动判断分类（素体 / 衣服 / 头发 / 配饰…）和适配的素体，多个版本会合并成一个素材。
-- **工程使用情况**：分析 Unity 工程，标出每个素材在哪个工程里被用到了。
-- **Booth 商品**：
-  - 关联方式：文件夹名里的商品编号、素材里的 Booth 快捷方式、Booth 已购记录，或者按名称在 Booth 上搜索后手动挑选。
-  - 显示商品图片、标签和完整的商品说明，说明可以一键翻译成中文。
-  - 没有封面的素材会用 Booth 的主图补上。
-- **同步 Booth 已购**：在单独的浏览器窗口里登录 Booth，读取已购列表、收到的礼物和订单。登录信息只保存在这个工具自己的浏览器配置里。
-- **百度网盘**：填分享链接（提取码可以不填），读取分享里的文件列表；只存在网盘里的素材也能收录进来。
-- **简体中文名**：每个素材名下面显示一行中文翻译（必应翻译，可以手动改）。
-- **跳转**：商品页、订单页、网盘链接都用系统的默认浏览器打开。
+- 扫描素材文件夹：识别解压后的文件夹、`.unitypackage` 和压缩包，判断分类（素体、衣服、头发、配饰……）和适配素体
+- 同款合并：同一商品的多个下载（不同素体的包、PSD 包）合成一张卡片，按素体筛选时只显示对应版本
+- 衣服风格标签：按 Booth 标签自动分类（JK、Sexy、H、可爱、女仆、成熟……），可自定义
+- PSD 源文件：列出 PSD / CLIP / SAI 等文件和尺寸
+- 工程使用：分析 Unity 工程，标出素材在哪些工程里用到
+- Booth 商品：按文件夹名里的编号、Booth 链接、已购记录或名称搜索关联，显示图片、标签和说明（可翻译）
+- 同步 Booth 已购：在单独的浏览器窗口登录 Booth，读取已购、礼物和订单
+- 百度网盘：读取分享里的文件列表，只在网盘里的素材也能收录；合集分享按分类文件夹拆成多张卡片
+- 新素材自动整理：软件开着时，素材文件夹里新放入的素材会自动扫描归类
+- 更新提示：网盘分享每天、Booth 商品页每周检查一次变化
+- 中文名：素材名下面显示中文翻译，可以手动改
+- 检查更新：从本仓库的 Releases 下载并替换，更新后显示这一版的更新内容
+- 反馈和建议：经 [FormSubmit](https://formsubmit.co) 发到作者邮箱
 
 ## 安装
 
-在 [Releases](../../releases) 里下载：
+在 [Releases](https://github.com/CokoIya/MioVRC_AssetManager/releases) 下载：
 
-- `VRCLib-Setup-x.y.z.exe`：安装版，装在当前用户目录，不需要管理员权限。
-- `VRCLib-Portable-x.y.z.zip`：便携版，解压到任意文件夹就能用。
+- `MioVRC_AssetManager-setup-x.y.z.exe`：安装版，不需要管理员权限；默认装在 C 盘以外的磁盘（例如 `D:\MioVRCA`），没有其他磁盘时装在 C 盘
+- `MioVRC_AssetManager-portable-x.y.z.zip`：便携版，解压即用
 
-运行要求：Windows 10 / 11（64 位）。界面用的是系统自带的 WebView2；极少数没有 WebView2 的电脑会改用 Edge 的独立窗口。
+需要 Windows 10 / 11（64 位）。界面使用系统自带的 WebView2，没有 WebView2 时改用 Edge 窗口。
 
-第一次打开时会让你选择素材文件夹和 Unity 工程文件夹，之后在「设置」里可以修改。
+1.6 之前叫「VRC素材库」，仓库是 `CokoIya/vrclib`。旧版本可以直接覆盖安装或在软件里更新，数据会保留。
 
 ## 数据存放位置
 
 | 情况 | 位置 |
 | --- | --- |
 | 便携版（exe 旁边有 `library.json` 或 `portable.txt`） | exe 所在文件夹 |
-| 安装版，或 exe 所在文件夹不能写入 | `%LOCALAPPDATA%\VRC素材库` |
-| 窗口的 WebView2 缓存 | `%LOCALAPPDATA%\VRC素材库\WebView2` |
+| 安装版，或 exe 所在文件夹不能写入 | `%LOCALAPPDATA%\MioVRC_AssetManager`（旧版留下的 `%LOCALAPPDATA%\VRC素材库` 会继续使用） |
+| 窗口的 WebView2 缓存 | 上面那个文件夹里的 `WebView2` |
 
 主要文件：
 
-- `library.json`：素材库数据，包括你填的备注、链接和翻译缓存。
-- `covers\`：封面缓存。
-- `booth-profile\`：同步 Booth 已购时用的浏览器配置，删掉就等于退出 Booth 登录。
-- `library.log`：运行日志。
+- `library.json`：素材库数据，包括备注、链接和翻译缓存
+- `covers\`：封面缓存
+- `booth-profile\`：同步 Booth 已购用的浏览器配置，删掉等于退出登录
+- `library.log`：运行日志
 
 ## 从源码构建
 
@@ -51,7 +54,7 @@ Windows 上的 VRChat 素材管理工具。它会扫描你下载的素材文件�
 
 ```bat
 go test .
-go build -trimpath -ldflags "-H windowsgui -s -w" -o dist\VRC素材库.exe .
+go build -trimpath -ldflags "-H windowsgui -s -w" -o dist\MioVRC_AssetManager.exe .
 ```
 
 **在 Linux / WSL 上交叉编译**，同时生成安装包和便携版（需要 NSIS 3 和 zip）：
@@ -66,6 +69,17 @@ sh packaging/build.sh
 x86_64-w64-mingw32-windres --preprocessor=cat -c 65001 -O coff -i app.rc -o rsrc_windows_amd64.syso
 ```
 
+## 发布新版本
+
+软件从本仓库的 Releases 检查更新（只看最新的正式版）：
+
+1. 改版本号：`main.go` 的 `appVersion`、`app.rc`、`app.manifest`、`packaging/installer.nsi`，重新生成 `rsrc_windows_amd64.syso`（命令见上）。
+2. 在 `CHANGELOG.md` 最上面写这一版的更新内容。它会编译进程序，更新后第一次打开时显示，也显示在「更新公告」里。
+3. `sh packaging/build.sh`，在 `dist/` 里得到 `MioVRC_AssetManager-setup-x.y.z.exe` 和 `MioVRC_AssetManager-portable-x.y.z.zip`。
+4. 新建 Release，标签写成 `v1.6.0` 这样的格式，上传这两个文件。Release 的说明会显示在软件的更新窗口里。
+   - 软件下载便携版 zip，取出 exe 替换自己后重启；只有安装版时会下载并打开安装程序。
+   - 附件名用英文，中文名在 GitHub 上可能被改掉。
+
 ## 代码结构
 
 | 文件 | 内容 |
@@ -76,8 +90,12 @@ x86_64-w64-mingw32-windres --preprocessor=cat -c 65001 -O coff -i app.rc -o rsrc
 | `store.go` | `library.json` 的读写 |
 | `scan.go` / `usage.go` / `thumbs.go` | 扫描素材、分析工程使用情况、封面 |
 | `booth.go` / `boothmatch.go` | Booth 商品信息、搜索与匹配 |
+| `groups.go` / `psd.go` / `panparts.go` | 同款合并、「For_X」素体识别、衣服风格标签、PSD 统计、网盘分享内容分析 |
+| `update.go` / `changelog.go` | 检查更新、下载替换、重启；更新公告 |
 | `purchases.go` / `syncdriver.go` / `cdp.go` / `booth_scraper.js` | 同步 Booth 已购（Chromium 用 CDP，Firefox 用 WebDriver BiDi） |
-| `pan.go` | 百度网盘分享读取 |
+| `pan.go` / `panitems.go` / `sync.go` | 百度网盘分享读取、合集拆分、定期检查变化 |
+| `watch.go` | 监视素材文件夹 |
+| `feedback.go` | 反馈和建议 |
 | `translate.go` | 中文翻译 |
 | `browser.go` / `sys_windows*.go` | 默认浏览器、系统相关功能 |
 | `web/` | 界面（HTML / CSS / JS，编译时嵌进 exe） |
@@ -104,7 +122,7 @@ go run . --no-window --data ./testdata
 ## 说明
 
 - 本工具和 BOOTH、pixiv、百度网盘、VRChat 都没有关系。它读取的是这些网站的网页和公开接口，网站改版后部分功能可能失效。
-- 本工具不会上传你的数据。它只会连接这几个地方：Booth、百度网盘、必应翻译（谷歌翻译作为备用），以及你在设置里填写的代理。
+- 本工具不会上传你的素材数据。它会连接：Booth、百度网盘、必应翻译（谷歌翻译备用）、GitHub（检查更新），发送反馈时连接 FormSubmit，以及设置里填写的代理。
 
 ## 第三方代码
 

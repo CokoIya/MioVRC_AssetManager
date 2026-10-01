@@ -17,7 +17,7 @@ import (
 	"github.com/jchv/go-webview2/webviewloader"
 )
 
-const windowTitle = "VRC素材库"
+const windowTitle = appName
 
 // The window's message loop has to stay on the thread that created it: keep main() on one thread.
 func init() { runtime.LockOSThread() }
@@ -43,8 +43,13 @@ func webView2Version() string {
 // focusExistingWindow brings an already open library window to the front.
 func focusExistingWindow() bool {
 	cls, _ := syscall.UTF16PtrFromString("webview")
-	title, _ := syscall.UTF16PtrFromString(windowTitle)
-	h, _, _ := procFindWindowW.Call(uintptr(unsafe.Pointer(cls)), uintptr(unsafe.Pointer(title)))
+	var h uintptr
+	for _, t := range []string{windowTitle, legacyName} { // a window of a version from before the rename too
+		title, _ := syscall.UTF16PtrFromString(t)
+		if h, _, _ = procFindWindowW.Call(uintptr(unsafe.Pointer(cls)), uintptr(unsafe.Pointer(title))); h != 0 {
+			break
+		}
+	}
 	if h == 0 {
 		return false
 	}
@@ -94,7 +99,7 @@ func runNativeWindow(url string) bool {
 	w, h := windowSize()
 	wv := webview2.NewWithOptions(webview2.WebViewOptions{
 		AutoFocus: true,
-		DataPath:  filepath.Join(base, "VRC素材库", "WebView2"),
+		DataPath:  filepath.Join(appDataFolder(base), "WebView2"),
 		WindowOptions: webview2.WindowOptions{
 			Title: windowTitle, Width: w, Height: h, IconId: 1, Center: true,
 			Background: 0x14151f, // matches --bg in app.css

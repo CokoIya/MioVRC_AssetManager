@@ -32,6 +32,9 @@ func driveRoots() []string {
 func userDataBase() string { return os.Getenv("LOCALAPPDATA") }
 
 func isInstalledDir(d string) bool {
+	if fileExists(filepath.Join(d, "卸载.exe")) { // put there by the installer, wherever the player chose
+		return true
+	}
 	for _, base := range []string{
 		filepath.Join(os.Getenv("LOCALAPPDATA"), "Programs"),
 		os.Getenv("ProgramFiles"), os.Getenv("ProgramFiles(x86)"), os.Getenv("ProgramW6432"),

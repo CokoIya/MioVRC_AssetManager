@@ -69,6 +69,33 @@ type AssetView struct {
 	BoothSrc     string        `json:"boothSrc,omitempty"` // user / name / url / library / auto
 	BoothQuery   string        `json:"boothQuery,omitempty"`
 	BoothHits    []BoothHit    `json:"boothHits,omitempty"`
+	Styles       []string      `json:"styles"`
+	AutoStyles   []string      `json:"autoStyles"`
+	PSD          bool          `json:"psd,omitempty"` // only texture sources (PSD …), no Unity content
+	PSDs         []PSDFile     `json:"psds,omitempty"`
+	PSDCount     int           `json:"psdCount,omitempty"`
+	PSDInZip     int           `json:"psdInZip,omitempty"`
+	Group        string        `json:"group,omitempty"` // downloads of one product share it
+	GroupName    string        `json:"groupName,omitempty"`
+	Variant      string        `json:"variant,omitempty"` // what this download is for: base bodies, PSD …
+	PanParts     []PanPart     `json:"panParts,omitempty"`
+	New          bool          `json:"new,omitempty"`       // turned up in the last days, after the first scan
+	PanNews      *PanNews      `json:"panNews,omitempty"`   // the share changed since it was last looked at
+	ShareErr     string        `json:"shareErr,omitempty"`  // the share could not be read again (expired?)
+	BoothNews    string        `json:"boothNews,omitempty"` // the shop changed its Booth page
+	BoothNewsAt  int64         `json:"boothNewsAt,omitempty"`
+	NewerOnBooth string        `json:"newerOnBooth,omitempty"` // a later version among the Booth downloads
+	LocalVer     string        `json:"localVer,omitempty"`
+	PanParent    string        `json:"panParent,omitempty"` // a product inside a split share: the share's key
+	PanPath      string        `json:"panPath,omitempty"`   // and where it is in the share
+	SplitInto    int           `json:"splitInto,omitempty"` // a share shown as this many product cards
+	CanSplit     int           `json:"canSplit,omitempty"`  // kept whole by the player, but holds this many products
+}
+
+type PanNews struct {
+	At      int64    `json:"at"`
+	Added   []string `json:"added,omitempty"`
+	Removed []string `json:"removed,omitempty"`
 }
 
 type OrderView struct {
@@ -140,7 +167,8 @@ func buildView(st *Store, a *Asset) AssetView {
 	u := st.User[a.Key]
 	v := AssetView{Key: a.Key, AutoName: a.Name, RawName: a.RawName, AutoCategory: a.Category, AutoBases: a.Bases,
 		Locations: a.Locations, Size: a.Size, Files: a.Files, MTime: a.MTime, FirstSeen: a.FirstSeen, Usage: a.Usage,
-		GuidCount: a.GuidCount, Packages: len(a.Packages), LocalCovers: a.Covers, Hints: a.Hints, HasDir: a.HasDir}
+		GuidCount: a.GuidCount, Packages: len(a.Packages), LocalCovers: a.Covers, Hints: a.Hints, HasDir: a.HasDir,
+		PSD: isPSDOnly(a), PSDs: a.PSDs, PSDCount: a.PSDCount, PSDInZip: a.PSDInZip}
 	id, src := assetBooth(st, a.Key, a)
 	if u == nil && id != "" {
 		u = st.User["purchase:"+id] // notes typed while it was only a purchase follow it onto disk
@@ -161,6 +189,7 @@ func buildView(st *Store, a *Asset) AssetView {
 		}
 		if p := st.Purchases[v.BoothID]; p != nil {
 			v.Purchase = purchaseView(p, a.BoothFromLib)
+			v.NewerOnBooth, v.LocalVer = purchaseNewer(a, p)
 		}
 	}
 	// name
@@ -184,10 +213,14 @@ func buildView(st *Store, a *Asset) AssetView {
 	} else if v.Purchase != nil {
 		extraText = v.Purchase.Name
 	}
+	defs := parseBases(st.Settings.Bases)
 	if extraText != "" {
-		extra := detectBases(extraText, parseBases(st.Settings.Bases))
+		extra := detectBases(extraText, defs)
 		v.Bases = uniqStrings(append(append([]string{}, a.Bases...), extra...))
 	}
+	// base bodies only named as "For_X" in the file name
+	v.Bases = uniqStrings(append(append([]string{}, v.Bases...), forBases(a.Name+" "+a.RawName, defs)...))
+	v.AutoBases = v.Bases
 	// cover: user > booth > purchase thumbnail > local image
 	cover := ""
 	switch {
@@ -208,9 +241,10 @@ func buildView(st *Store, a *Asset) AssetView {
 // finishView fills what every kind of card shares: netdisk listing, Booth search words and
 // suggestions, Chinese name.
 func finishView(st *Store, v *AssetView, autoName string) {
-	if surl := shareSurl(v.User.ShareURL); surl != "" {
+	if surl := shareSurl(v.User.ShareURL); surl != "" && v.PanPath == "" {
 		if l := st.Pan[surl]; l != nil {
 			v.Pan = l
+			v.PanParts = analyzePan(l, parseBases(st.Settings.Bases)).parts
 		}
 	}
 	bases := parseBases(st.Settings.Bases)
@@ -224,6 +258,29 @@ func finishView(st *Store, v *AssetView, autoName string) {
 		if m := st.BoothMatch[v.Key]; m != nil {
 			v.BoothHits = m.Hits
 		}
+	}
+	v.AutoStyles = autoStyles(v, styleDefs(st.Settings.Styles))
+	if v.User.StylesSet {
+		v.Styles = v.User.Styles
+	} else {
+		v.Styles = v.AutoStyles
+	}
+	// news: new arrival, changes in its share or on its Booth page
+	if st.ScanStart > 0 && v.FirstSeen > st.ScanStart+5 && time.Now().Unix()-v.FirstSeen < 3*86400 && !v.Virtual {
+		v.New = true
+	}
+	if l := v.Pan; l != nil {
+		if l.Err != "" && len(l.Files) > 0 {
+			v.ShareErr = l.Err
+		}
+		if l.Changed > v.User.PanSeen {
+			if added, removed := shareNews(l, ""); len(added)+len(removed) > 0 {
+				v.PanNews = &PanNews{At: l.Changed, Added: added, Removed: removed}
+			}
+		}
+	}
+	if b := v.Booth; b != nil && b.Changed > 0 && b.Changed > v.User.BoothSeen {
+		v.BoothNews, v.BoothNewsAt = b.ChangeNote, b.Changed
 	}
 	if v.User.NameZh != "" {
 		v.NameZh = v.User.NameZh
@@ -258,19 +315,41 @@ func allViews(st *Store) []AssetView {
 		out = append(out, v)
 	}
 	for _, key := range sortedKeys(st.User) {
-		if strings.HasPrefix(key, "pan:") {
-			v := panOnlyView(st, key)
-			if v.Purchase != nil {
-				onDisk[v.BoothID] = true
-			}
-			out = append(out, v)
+		if !isPanShareKey(key) {
+			continue
 		}
+		v := panOnlyView(st, key)
+		// a collection: one card per product inside, the share itself only for its details panel
+		if items := panItemsFor(st, key); items != nil {
+			v.SplitInto = len(items)
+			out = append(out, v)
+			surl, _ := splitPanKey(key)
+			for _, it := range items {
+				iv := panOnlyView(st, panItemKey(surl, it.Path))
+				if iv.Purchase != nil {
+					onDisk[iv.BoothID] = true
+				}
+				out = append(out, iv)
+			}
+			continue
+		}
+		if u := st.User[key]; u != nil && u.NoSplit {
+			surl, _ := splitPanKey(key)
+			if n := len(splitPanCached(st.Pan[surl])); n >= 2 {
+				v.CanSplit = n
+			}
+		}
+		if v.Purchase != nil {
+			onDisk[v.BoothID] = true
+		}
+		out = append(out, v)
 	}
 	for _, id := range sortedKeys(st.Purchases) {
 		if !onDisk[id] {
 			out = append(out, purchaseOnlyView(st, st.Purchases[id]))
 		}
 	}
+	groupViews(st, out)
 	return out
 }
 
@@ -289,8 +368,14 @@ func zhSources(st *Store) []string {
 }
 
 func panAssetName(st *Store, key string) string {
-	surl := strings.TrimPrefix(key, "pan:")
+	surl, _ := splitPanKey(key)
 	if l := st.Pan[surl]; l != nil && l.Title != "" {
+		// "8099091" (an item number) or "新建文件夹" says nothing: use the name the files share
+		if t := cleanName(l.Title); isMostlyDigits(t) || isGenericName(t) || len([]rune(t)) <= 2 {
+			if n := analyzePan(l, parseBases(st.Settings.Bases)).name; n != "" && !isMostlyDigits(n) {
+				return n
+			}
+		}
 		return l.Title
 	}
 	return "网盘分享 " + surl
@@ -298,29 +383,65 @@ func panAssetName(st *Store, key string) string {
 
 // panOnlyView: an asset that only lives in a Baidu Netdisk share.
 func panOnlyView(st *Store, key string) AssetView {
-	u := st.User[key]
-	name := panAssetName(st, key)
-	v := AssetView{Key: key, Name: name, AutoName: name, RawName: name, PanOnly: true}
+	surl, path := splitPanKey(key)
+	parentKey := "pan:" + surl
+	u, pu := st.User[key], st.User[parentKey]
+	l, it := panSub(st, key)
+	name, raw := "", ""
+	if it != nil {
+		raw = it.Node.Name
+		name = cleanName(stripArchiveExt(raw))
+	} else {
+		name = panAssetName(st, key)
+		raw = name
+	}
+	defs := parseBases(st.Settings.Bases)
+	var info panInfo
+	if l != nil {
+		info = analyzePan(l, defs)
+	}
+	if it != nil && (isMostlyDigits(name) || isGenericName(name)) && info.name != "" && !isMostlyDigits(info.name) {
+		name = info.name
+	}
+	v := AssetView{Key: key, Name: name, AutoName: name, RawName: raw, PanOnly: true}
 	if u != nil {
 		v.User = *u
-		v.FirstSeen = u.Updated
 	}
-	text := name
-	if l := st.Pan[strings.TrimPrefix(key, "pan:")]; l != nil {
-		v.Size, v.Files = l.Size, l.Count
-		for i, f := range l.Files {
-			if i >= 30 {
-				break
-			}
-			text += " " + f.Name
+	if it != nil {
+		v.PanParent, v.PanPath, v.Hints = parentKey, path, it.Hints
+		if pu != nil { // the link lives with the share
+			v.User.ShareURL, v.User.SharePwd = pu.ShareURL, pu.SharePwd
 		}
 	}
+	// when it was added (not when it was last edited)
+	v.FirstSeen = st.FirstSeen[key]
+	if v.FirstSeen == 0 && it != nil {
+		v.FirstSeen = st.FirstSeen[parentKey]
+	}
+	text := name
+	if l != nil {
+		v.Size, v.Files = l.Size, l.Count
+		text += " " + strings.Join(panNames(l, 300), " ")
+		v.PSD = info.allPSD
+	}
 	cat := bracketCategory(name)
+	if cat == "" && it != nil {
+		cat = panItemCategory(it.Hints) // the 衣服 / 头发 / 妆容 folder it was found in
+	}
 	if cat == "" {
 		cat = classify(name)
 	}
 	if cat == "其他" {
-		cat = classify(text)
+		// the downloads themselves, not the PSD / material packs next to them
+		ct := strings.Join(info.wrappers, " ")
+		for _, p := range info.parts {
+			if p.Kind == "variant" {
+				ct += " " + p.Name
+			}
+		}
+		if cat = classify(ct); cat == "其他" {
+			cat = classify(text)
+		}
 	}
 	id, src := assetBooth(st, key, nil)
 	v.BoothID, v.BoothSrc = id, src
@@ -334,8 +455,16 @@ func panOnlyView(st *Store, key string) AssetView {
 	if p := st.Purchases[id]; id != "" && p != nil {
 		v.Purchase = purchaseView(p, false)
 	}
+	// like a folder on disk: an item number or a generic name gives way to the Booth title
+	if t := cleanName(name); isMostlyDigits(t) || isGenericName(t) || len([]rune(t)) <= 2 {
+		if v.Booth != nil && v.Booth.Name != "" {
+			v.Name = v.Booth.Name
+		} else if v.Purchase != nil && v.Purchase.Name != "" {
+			v.Name = v.Purchase.Name
+		}
+	}
 	v.Category, v.AutoCategory = cat, cat
-	v.Bases = detectBases(text, parseBases(st.Settings.Bases))
+	v.Bases = uniqStrings(append(append(detectBases(text, defs), forBases(v.AutoName, defs)...), info.bases...))
 	v.AutoBases = v.Bases
 	cover := ""
 	switch {
@@ -346,6 +475,15 @@ func panOnlyView(st *Store, key string) AssetView {
 	}
 	applyUserView(&v, cover)
 	finishView(st, &v, name)
+	if it != nil { // its own part of the share, not the whole share
+		v.Pan, v.PanParts = l, info.parts
+		v.PanNews = nil
+		if whole := st.Pan[surl]; whole != nil && whole.Changed > v.User.PanSeen {
+			if added, removed := shareNews(whole, path); len(added)+len(removed) > 0 {
+				v.PanNews = &PanNews{At: whole.Changed, Added: added, Removed: removed}
+			}
+		}
+	}
 	return v
 }
 
@@ -375,7 +513,8 @@ func purchaseOnlyView(st *Store, p *Purchase) AssetView {
 		}
 	}
 	v.Category, v.AutoCategory = cat, cat
-	v.Bases = detectBases(text, parseBases(st.Settings.Bases))
+	defs := parseBases(st.Settings.Bases)
+	v.Bases = uniqStrings(append(detectBases(text, defs), forBases(v.AutoName, defs)...))
 	v.AutoBases = v.Bases
 	cover := ""
 	switch {
@@ -424,17 +563,27 @@ type stateResp struct {
 	Overrides  map[string]string `json:"overrides"`
 	DataDir    string            `json:"dataDir"`
 
-	SetupNeeded    bool   `json:"setupNeeded"`
-	PurchaseSync   int64  `json:"purchaseSync"`
-	PurchaseCount  int    `json:"purchaseCount"`
-	PurchaseBusy   bool   `json:"purchaseBusy"`
-	CanShortcut    bool   `json:"canShortcut"`
-	DefaultBrowser string `json:"defaultBrowser"`
+	SetupNeeded    bool     `json:"setupNeeded"`
+	PurchaseSync   int64    `json:"purchaseSync"`
+	PurchaseCount  int      `json:"purchaseCount"`
+	PurchaseBusy   bool     `json:"purchaseBusy"`
+	CanShortcut    bool     `json:"canShortcut"`
+	DefaultBrowser string   `json:"defaultBrowser"`
+	StyleNames     []string `json:"styleNames"`
+
+	Update      *UpdateInfo `json:"update,omitempty"`
+	UpdateNewer bool        `json:"updateNewer"`
+	UpdatedFrom string      `json:"updatedFrom,omitempty"`
+	Releases    string      `json:"releases"`
+	AppName     string      `json:"appName"`
+
+	Changelog []ChangeEntry `json:"changelog"`
+	WhatsNew  []ChangeEntry `json:"whatsNew,omitempty"` // shown once after an update
 }
 
 func tasksSnapshot() []Task {
 	return []Task{taskScan.snapshot(), taskUsage.snapshot(), taskMatch.snapshot(), taskBooth.snapshot(), taskTrans.snapshot(),
-		taskPurchase.snapshot(), taskPan.snapshot()}
+		taskPurchase.snapshot(), taskPan.snapshot(), taskUpdate.snapshot()}
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -482,6 +631,14 @@ func newMux(st *Store) *http.ServeMux {
 			PurchaseSync: st.PurchaseSync, PurchaseCount: len(st.Purchases), PurchaseBusy: purchaseBusy.Load(),
 			CanShortcut: runtime.GOOS == "windows"}
 		resp.Assets = allViews(st)
+		resp.StyleNames = styleNames(st.Settings.Styles)
+		resp.Update = st.Update
+		resp.UpdateNewer = st.Update != nil && versionNewer(st.Update.Version, appVersion)
+		resp.UpdatedFrom, resp.Releases, resp.AppName = updatedFrom, releasesPage(), appName
+		resp.Changelog = changelog()
+		if st.Settings.SetupDone {
+			resp.WhatsNew = whatsNew(st)
+		}
 		st.mu.RUnlock()
 		resp.DefaultBrowser = browserLabel(defaultBrowserExe())
 		resp.Tasks = tasksSnapshot()
@@ -544,7 +701,8 @@ func newMux(st *Store) *http.ServeMux {
 	})
 	post("/api/openurl", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		u := str(b, "url")
-		if !(strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://")) {
+		mail := strings.HasPrefix(strings.ToLower(u), "mailto:"+strings.ToLower(feedbackMail))
+		if !(strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://") || mail) {
 			writeJSON(w, map[string]any{"ok": false, "err": "不是网址"})
 			return
 		}
@@ -572,9 +730,19 @@ func newMux(st *Store) *http.ServeMux {
 		if u.Bases != nil {
 			u.Bases = cleanList(u.Bases)
 		}
+		u.Styles = cleanList(u.Styles)
+		if !u.StylesSet {
+			u.Styles = nil
+		}
 		u.ShareURL, u.SharePwd = strings.TrimSpace(u.ShareURL), strings.TrimSpace(u.SharePwd)
+		if strings.HasPrefix(key, "pan:") && strings.Contains(key, "#") {
+			u.ShareURL, u.SharePwd, u.PanPath = "", "", "" // a product inside a share: the link stays with the share
+		}
 		st.mu.Lock()
 		old := st.User[key]
+		if old != nil { // marks kept by the server, whatever an older copy in the window says
+			u.PanSeen, u.BoothSeen = max(u.PanSeen, old.PanSeen), max(u.BoothSeen, old.BoothSeen)
+		}
 		st.User[key] = &u
 		panChanged := shareSurl(u.ShareURL) != "" && (old == nil || old.ShareURL != u.ShareURL || old.SharePwd != u.SharePwd ||
 			st.Pan[shareSurl(u.ShareURL)] == nil)
@@ -588,7 +756,7 @@ func newMux(st *Store) *http.ServeMux {
 			KickTranslate(st)
 		}
 		// a newly entered booth link → fetch its info
-		if u.BoothURL != "" && reBoothURL.MatchString(u.BoothURL) {
+		if u.BoothURL != "" && reBoothURL.MatchString(u.BoothURL) && (old == nil || old.BoothURL != u.BoothURL) {
 			StartPipeline(st, false, false, true, false, []string{key})
 		}
 	})
@@ -612,14 +780,110 @@ func newMux(st *Store) *http.ServeMux {
 		if len(s.Bases) == 0 {
 			s.Bases = defaultSettings().Bases
 		}
+		s.Styles = cleanList(s.Styles)
+		if s.Styles == nil {
+			s.Styles = []string{}
+		}
 		s.SetupDone = true
 		st.mu.Lock()
 		st.Settings = s
 		st.mu.Unlock()
 		_ = st.Save()
 		bumpRev()
+		if boolean(b, "noRescan") { // only display settings or style tags changed
+			KickTranslate(st)
+			writeJSON(w, map[string]any{"ok": true, "started": false})
+			return
+		}
 		ok := StartPipeline(st, true, true, s.AutoBooth, false, nil)
 		writeJSON(w, map[string]any{"ok": true, "started": ok})
+	})
+	// ---------- feedback ----------
+	post("/api/feedback/info", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		writeJSON(w, map[string]any{"ok": true, "info": feedbackInfo(st), "mail": feedbackMail})
+	})
+	post("/api/feedback", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		note, err := SendFeedback(st, str(b, "kind"), str(b, "text"), str(b, "contact"), boolean(b, "withInfo"))
+		if err != nil {
+			var in fbInputError
+			writeJSON(w, map[string]any{"ok": false, "err": err.Error(), "mail": feedbackMail, "input": errors.As(err, &in)})
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "note": note})
+	})
+	// the "what changed" window has been shown for this version
+	post("/api/whatsnew/seen", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		st.mu.Lock()
+		if st.NotesSeen == "" || versionNewer(appVersion, st.NotesSeen) {
+			st.NotesSeen = appVersion
+		}
+		st.mu.Unlock()
+		_ = st.Save()
+		bumpRev()
+		writeJSON(w, map[string]any{"ok": true})
+	})
+	// "知道了" on a change notice
+	post("/api/seen", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		key, what := str(b, "key"), str(b, "what")
+		st.mu.Lock()
+		u := st.User[key]
+		if u == nil {
+			u = &UserData{}
+			st.User[key] = u
+		}
+		now := time.Now().Unix()
+		switch what {
+		case "pan":
+			u.PanSeen = now
+		case "booth":
+			u.BoothSeen = now
+		}
+		st.mu.Unlock()
+		_ = st.Save()
+		bumpRev()
+		writeJSON(w, map[string]any{"ok": true})
+	})
+	// ---------- updates ----------
+	post("/api/update/check", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		info, err := CheckUpdate(st, boolean(b, "force"))
+		if err != nil {
+			writeJSON(w, map[string]any{"ok": false, "err": err.Error(), "current": appVersion})
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "current": appVersion, "update": info, "newer": versionNewer(info.Version, appVersion)})
+	})
+	post("/api/update/apply", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		if err := ApplyUpdate(st); err != nil {
+			writeJSON(w, map[string]any{"ok": false, "err": err.Error()})
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true})
+	})
+	post("/api/update/skip", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		st.mu.Lock()
+		st.Settings.SkipVersion = str(b, "version")
+		st.mu.Unlock()
+		_ = st.Save()
+		bumpRev()
+		writeJSON(w, map[string]any{"ok": true})
+	})
+	// the outfit style table on its own (adding a tag from the details panel): no rescan needed
+	post("/api/styles", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		var list []string
+		if err := json.Unmarshal(b["styles"], &list); err != nil {
+			writeJSON(w, map[string]any{"ok": false, "err": err.Error()})
+			return
+		}
+		list = cleanList(list)
+		if list == nil {
+			list = []string{}
+		}
+		st.mu.Lock()
+		st.Settings.Styles = list
+		st.mu.Unlock()
+		_ = st.Save()
+		bumpRev()
+		writeJSON(w, map[string]any{"ok": true})
 	})
 	post("/api/override", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		p, mode := str(b, "path"), str(b, "mode")
@@ -684,6 +948,9 @@ func newMux(st *Store) *http.ServeMux {
 		if st.User[key] == nil {
 			st.User[key] = &UserData{ShareURL: "https://pan.baidu.com/s/" + surl, SharePwd: pwd, Updated: time.Now().Unix(),
 				Name: strings.TrimSpace(str(b, "name"))}
+			if st.FirstSeen[key] == 0 {
+				st.FirstSeen[key] = time.Now().Unix()
+			}
 		}
 		st.mu.Unlock()
 		_ = st.Save()

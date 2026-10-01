@@ -27,12 +27,25 @@ func resolveDataDir(exeDir string) string {
 		return exeDir
 	}
 	if ud := userDataBase(); ud != "" && (isInstalledDir(exeDir) || !dirWritable(exeDir)) {
-		return filepath.Join(ud, appName)
+		return appDataFolder(ud)
 	}
 	return exeDir
 }
 
-const appName = "VRC素材库"
+const (
+	appName    = "MioVRC素材托管工具"        // shown to people: window title, shortcuts
+	appID      = "MioVRC_AssetManager" // file names, folders, update downloads
+	legacyName = "VRC素材库"              // before 1.6: data folder, window title, exe name
+)
+
+// appDataFolder: the per-user folder under base (%LOCALAPPDATA%); a library kept there by a version
+// from before the rename stays where it is.
+func appDataFolder(base string) string {
+	if old := filepath.Join(base, legacyName); fileExists(filepath.Join(old, "library.json")) && !fileExists(filepath.Join(base, appID, "library.json")) {
+		return old
+	}
+	return filepath.Join(base, appID)
+}
 
 func dirWritable(d string) bool {
 	f, err := os.CreateTemp(d, ".write-test-*")
@@ -76,7 +89,7 @@ func detectCandidates() (roots, projects []Candidate) {
 	if home != "" {
 		add(&roots, filepath.Join(home, "Downloads", "BaiduNetdiskDownload"), "百度网盘下载", true)
 		add(&roots, filepath.Join(home, "Documents", "BaiduNetdiskDownload"), "百度网盘下载", true)
-		add(&roots, filepath.Join(home, "Downloads"), "下载文件夹（东西多的话扫描会慢一些）", false)
+		add(&roots, filepath.Join(home, "Downloads"), "下载文件夹", false)
 	}
 	for _, p := range filepath.SplitList(os.Getenv("VRCLIB_DETECT_ROOTS")) { // tests
 		add(&roots, p, "", true)
@@ -116,7 +129,7 @@ func detectCandidates() (roots, projects []Candidate) {
 	for _, par := range parents {
 		list := uniqStrings(byParent[par])
 		if len(list) >= 2 {
-			add(&projects, par, "里面有 "+itoa(len(list))+" 个 Unity 工程", true)
+			add(&projects, par, itoa(len(list))+" 个工程", true)
 			continue
 		}
 		for _, p := range list {

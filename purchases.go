@@ -132,7 +132,7 @@ type scrapeProgress struct {
 func RunPurchaseSync(st *Store, prog *Task) bool {
 	browser, note := syncBrowser()
 	if browser == "" {
-		prog.Set(0, 0, "没找到可用的浏览器（需要 Firefox、Chrome、Edge 这类），打不开 Booth 登录窗口")
+		prog.Set(0, 0, "没找到可用的浏览器（Chrome、Edge 或 Firefox）")
 		return false
 	}
 	if note != "" {
@@ -177,7 +177,7 @@ func RunPurchaseSync(st *Store, prog *Task) bool {
 			return false
 		}
 		if time.Now().After(deadline) {
-			prog.Set(0, 0, "等太久了，已取消。需要时再点「同步 Booth 已购」")
+			prog.Set(0, 0, "等待超时，已取消")
 			return false
 		}
 		href, err := evalString(d, "location.href", 6*time.Second)
@@ -242,7 +242,7 @@ func RunPurchaseSync(st *Store, prog *Task) bool {
 		if res.Debug != "" {
 			_ = os.WriteFile(filepath.Join(dataDir, "booth-debug.html"), []byte(res.Debug), 0644)
 		}
-		prog.Set(1, 1, "没有读到已购商品（如果你确实买过东西，可能是 Booth 改版了，把 booth-debug.html 发给作者）")
+		prog.Set(1, 1, "没有读到已购商品（如果买过，请把数据文件夹里的 booth-debug.html 发给作者）")
 		return false
 	}
 	_ = os.Remove(filepath.Join(dataDir, "booth-debug.html"))

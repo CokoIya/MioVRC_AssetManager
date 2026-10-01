@@ -44,6 +44,7 @@ type boothItem struct {
 	Tags, Images                     []string
 	Image                            string
 	Shop, ShopURL                    string
+	Adult                            bool
 }
 
 func jStr(m map[string]any, k string) string {
@@ -74,6 +75,7 @@ func parseBoothItem(body []byte) (*boothItem, error) {
 	if it.Name == "" {
 		return nil, fmt.Errorf("no name")
 	}
+	it.Adult, _ = m["is_adult"].(bool)
 	cat := jObj(m, "category")
 	it.Category = jStr(cat, "name")
 	shop := jObj(m, "shop")
@@ -179,7 +181,7 @@ func clipRunes(s string, n int) string {
 	return s
 }
 
-const boothInfoVer = 3
+const boothInfoVer = 4 // 2: description, tags, pictures; 3: full description; 4: adult flag
 
 func fetchBooth(c *http.Client, id string) (*BoothInfo, error) {
 	bi := &BoothInfo{ID: id, URL: "https://booth.pm/ja/items/" + id, Fetched: time.Now().Unix(), Ver: boothInfoVer}
@@ -227,7 +229,7 @@ func fetchBooth(c *http.Client, id string) (*BoothInfo, error) {
 		if it.URL != "" {
 			bi.URL = it.URL
 		}
-		bi.Desc, bi.Tags, bi.Images, bi.ImageURL = it.Desc, it.Tags, it.Images, it.Image
+		bi.Desc, bi.Tags, bi.Images, bi.ImageURL, bi.Adult = it.Desc, it.Tags, it.Images, it.Image, it.Adult
 	}
 	if more := boothSections(page); more != "" {
 		if bi.Desc != "" {
@@ -284,6 +286,7 @@ func downloadTo(c *http.Client, u, name string) (string, error) {
 // RunBoothFetch fetches Booth info for assets with an item id. force=true refetches everything.
 func RunBoothFetch(st *Store, prog *Task, force bool, only []string) {
 	st.mu.RLock()
+	weekly := !st.Settings.NoSync
 	var ids []string
 	seen := map[string]bool{}
 	want := map[string]bool{}
@@ -298,7 +301,7 @@ func RunBoothFetch(st *Store, prog *Task, force bool, only []string) {
 			return
 		}
 		seen[id] = true
-		if needsBooth(st.Booth[id], force || len(want) > 0) {
+		if needsBooth(st.Booth[id], force || len(want) > 0, weekly) {
 			ids = append(ids, id)
 		}
 	}
@@ -306,8 +309,12 @@ func RunBoothFetch(st *Store, prog *Task, force bool, only []string) {
 		id, _ := assetBooth(st, a.Key, a)
 		consider(a.Key, id)
 	}
+	for _, key := range panCardKeys(st) {
+		id, _ := assetBooth(st, key, nil)
+		consider(key, id)
+	}
 	for _, key := range sortedKeys(st.User) {
-		if strings.HasPrefix(key, "pan:") || strings.HasPrefix(key, "purchase:") {
+		if strings.HasPrefix(key, "purchase:") {
 			id, _ := assetBooth(st, key, nil)
 			consider(key, id)
 		}
@@ -323,7 +330,7 @@ func RunBoothFetch(st *Store, prog *Task, force bool, only []string) {
 		sort.Slice(ps, func(i, j int) bool { return ps[i].when() > ps[j].when() })
 		for _, p := range ps {
 			seen[p.ID] = true
-			if needsBooth(st.Booth[p.ID], force) {
+			if needsBooth(st.Booth[p.ID], force, weekly) {
 				ids = append(ids, p.ID)
 			}
 		}
@@ -350,6 +357,9 @@ func RunBoothFetch(st *Store, prog *Task, force bool, only []string) {
 			old.Fetched = bi.Fetched
 			old.Gone = bi.Gone
 		} else {
+			if err == nil {
+				boothChanges(st.Booth[id], bi)
+			}
 			st.Booth[id] = bi
 		}
 		st.mu.Unlock()
@@ -366,12 +376,14 @@ func RunBoothFetch(st *Store, prog *Task, force bool, only []string) {
 	prog.Set(len(ids), len(ids), "完成")
 }
 
-func needsBooth(b *BoothInfo, force bool) bool {
+func needsBooth(b *BoothInfo, force, weekly bool) bool {
 	switch {
 	case force || b == nil:
 		return true
 	case b.Gone:
 		return false
+	case weekly && b.Err == "" && time.Now().Unix()-b.Fetched > 7*86400:
+		return true // look again for changes made by the shop
 	case b.Ver < boothInfoVer && b.Err == "":
 		return true // fetched by an older version: description / pictures missing
 	case b.Err != "" && time.Now().Unix()-b.Fetched > 3600:

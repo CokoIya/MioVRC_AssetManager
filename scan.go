@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -23,6 +24,11 @@ var (
 	// loose files that count as an asset on their own
 	looseAssetExt = map[string]bool{".unitypackage": true, ".zip": true, ".rar": true, ".7z": true, ".ttf": true,
 		".otf": true, ".fbx": true, ".blend": true, ".vrca": true}
+	// texture sources that buyers edit to recolour an outfit
+	psdExt = map[string]bool{".psd": true, ".psb": true, ".clip": true, ".sai": true, ".sai2": true, ".kra": true, ".xcf": true, ".mdp": true}
+	// Unity / 3D content: an asset with any of these is more than a texture-source pack
+	modelExt = map[string]bool{".prefab": true, ".fbx": true, ".blend": true, ".vrm": true, ".unity": true, ".controller": true,
+		".anim": true, ".mat": true, ".asset": true, ".shader": true, ".vrca": true}
 	skipDirNames = map[string]bool{"library": true, ".git": true, "node_modules": true, "temp": true, "$recycle.bin": true,
 		"system volume information": true}
 
@@ -247,6 +253,9 @@ func RunFolderScan(st *Store, prog *Task) {
 		st.userFor(a) // migrates alt keys
 	}
 	st.Assets = list
+	if st.ScanStart == 0 {
+		st.ScanStart = ctx.now
+	}
 	applyPurchases(st)
 	st.Warnings = ctx.warnings
 	st.LastScan = ctx.now
@@ -455,6 +464,9 @@ func (c *scanCtx) addAsset(g *group, root string, hints []string) {
 		a.Archives = append(a.Archives, info.archives...)
 		a.Covers = append(a.Covers, info.covers...)
 		a.MetaDirs = append(a.MetaDirs, info.metaDirs...)
+		a.PSDs = append(a.PSDs, info.psds...)
+		a.PSDCount += info.psdCount
+		a.ModelFiles += info.models
 		if info.mtime > a.MTime {
 			a.MTime = info.mtime
 		}
@@ -486,6 +498,13 @@ func (c *scanCtx) addAsset(g *group, root string, hints []string) {
 			a.Packages = append(a.Packages, f)
 		case "zip":
 			a.Archives = append(a.Archives, f)
+			if !a.HasDir {
+				zl := zipListing(f)
+				a.PSDCount += zl.psds
+				a.PSDInZip += zl.psds
+				a.ModelFiles += zl.models
+				a.ZipPackages += zl.packages
+			}
 		}
 	}
 	// booth id: folder/file names first (outer → inner), then .url shortcuts (display/fetch only, never identity)
@@ -604,6 +623,14 @@ func mergeAsset(dst, src *Asset) {
 	if dst.Size < src.Size {
 		dst.Size = src.Size
 	}
+	// the same product seen twice (folder + its zip): keep the fuller picture, do not add up
+	if len(dst.PSDs) == 0 {
+		dst.PSDs = src.PSDs
+	}
+	dst.PSDCount = max(dst.PSDCount, src.PSDCount)
+	dst.PSDInZip = max(dst.PSDInZip, src.PSDInZip)
+	dst.ModelFiles = max(dst.ModelFiles, src.ModelFiles)
+	dst.ZipPackages = max(dst.ZipPackages, src.ZipPackages)
 	if dst.Files < src.Files {
 		dst.Files = src.Files
 	}
@@ -629,6 +656,9 @@ type walkInfo struct {
 	urlIDs       map[string]int
 	wrapperNames []string
 	topNames     []string
+	psds         []PSDFile
+	psdCount     int
+	models       int
 }
 
 func walkAsset(root string) walkInfo {
@@ -725,6 +755,17 @@ func walkAsset(root string) walkInfo {
 					}
 				}
 			}
+		case psdExt[ext]:
+			info.psdCount++
+			if len(info.psds) < 40 {
+				pf := PSDFile{Path: p, Size: fi.Size()}
+				if ext == ".psd" || ext == ".psb" {
+					pf.W, pf.H = psdDims(p)
+				}
+				info.psds = append(info.psds, pf)
+			}
+		case modelExt[ext]:
+			info.models++
 		case imageExt[ext] && depth <= 3 && fi.Size() > 8*1024 && fi.Size() < 15*1024*1024:
 			cands = append(cands, coverCand{p, coverScore(name, depth, fi.Size())})
 		}
@@ -825,10 +866,24 @@ func classify(text string) string {
 type baseDef struct {
 	name   string
 	ascii  []*regexp.Regexp
+	words  []string // ascii[i] matches words[i] as a whole word; checked with Contains first
 	others []string
 }
 
+// parsed tables are cached: they are read for every card on every refresh
+var defsCache sync.Map
+
 func parseBases(list []string) []baseDef {
+	key := "b\x00" + strings.Join(list, "\n")
+	if v, ok := defsCache.Load(key); ok {
+		return v.([]baseDef)
+	}
+	out := parseBasesNow(list)
+	defsCache.Store(key, out)
+	return out
+}
+
+func parseBasesNow(list []string) []baseDef {
 	var out []baseDef
 	for _, item := range list {
 		item = strings.TrimSpace(item)
@@ -846,6 +901,7 @@ func parseBases(list []string) []baseDef {
 				continue
 			}
 			if isASCII(al) {
+				bd.words = append(bd.words, al)
 				bd.ascii = append(bd.ascii, regexp.MustCompile(`(^|[^a-z])`+regexp.QuoteMeta(al)+`([^a-z]|$)`))
 			} else {
 				bd.others = append(bd.others, al)
@@ -870,8 +926,8 @@ func detectBases(text string, defs []baseDef) []string {
 	var out []string
 	for _, d := range defs {
 		hit := false
-		for _, re := range d.ascii {
-			if re.MatchString(t) {
+		for i, re := range d.ascii {
+			if strings.Contains(t, d.words[i]) && re.MatchString(t) {
 				hit = true
 				break
 			}
