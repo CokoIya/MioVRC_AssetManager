@@ -38,6 +38,7 @@ type cdpMsg struct {
 	Result  json.RawMessage `json:"result"`
 	Error   json.RawMessage `json:"error"`
 	Message string          `json:"message"`
+	Params  json.RawMessage `json:"params"`
 }
 
 func (m cdpMsg) err() error {
@@ -66,6 +67,7 @@ type cdpConn struct {
 	done    chan struct{}
 	once    sync.Once
 	err     error
+	onEvent func(method string, params json.RawMessage) // optional; most events are not needed
 }
 
 var errCDPClosed = errors.New("浏览器窗口已关闭")
@@ -229,8 +231,14 @@ func (c *cdpConn) readLoop() {
 
 func (c *cdpConn) dispatch(b []byte) {
 	var m cdpMsg
-	if json.Unmarshal(b, &m) != nil || m.ID == 0 {
-		return // events are ignored
+	if json.Unmarshal(b, &m) != nil {
+		return
+	}
+	if m.ID == 0 {
+		if m.Method != "" && c.onEvent != nil {
+			go c.onEvent(m.Method, m.Params)
+		}
+		return
 	}
 	c.mu.Lock()
 	ch := c.pending[m.ID]

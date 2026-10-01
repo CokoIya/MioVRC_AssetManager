@@ -183,12 +183,16 @@ func clipRunes(s string, n int) string {
 
 const boothInfoVer = 4 // 2: description, tags, pictures; 3: full description; 4: adult flag
 
-func fetchBooth(c *http.Client, id string) (*BoothInfo, error) {
+func fetchBooth(c *http.Client, id string) (*BoothInfo, error) { return fetchBoothInfo(c, id, true) }
+
+// fetchBoothInfo reads an item; withCover also saves its picture as a cover.
+func fetchBoothInfo(c *http.Client, id string, withCover bool) (*BoothInfo, error) {
 	bi := &BoothInfo{ID: id, URL: "https://booth.pm/ja/items/" + id, Fetched: time.Now().Unix(), Ver: boothInfoVer}
 	req, _ := http.NewRequest("GET", boothWebBase()+"/ja/items/"+id+".json", nil)
 	req.Header.Set("User-Agent", ua)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Accept-Language", "ja,zh-CN;q=0.8")
+	req.Header.Set("Cookie", "adult=t")
 	resp, err := c.Do(req)
 	if err != nil {
 		return bi, err
@@ -208,6 +212,7 @@ func fetchBooth(c *http.Client, id string) (*BoothInfo, error) {
 	req2, _ := http.NewRequest("GET", boothWebBase()+"/ja/items/"+id, nil)
 	req2.Header.Set("User-Agent", ua)
 	req2.Header.Set("Accept-Language", "ja,zh-CN;q=0.8")
+	req2.Header.Set("Cookie", "adult=t")
 	if r2, err2 := c.Do(req2); err2 == nil {
 		if r2.StatusCode == 200 {
 			page, _ = io.ReadAll(io.LimitReader(r2.Body, 4<<20))
@@ -238,7 +243,7 @@ func fetchBooth(c *http.Client, id string) (*BoothInfo, error) {
 		bi.Desc += more
 	}
 	bi.Desc = clipRunes(bi.Desc, 8000)
-	if bi.ImageURL != "" {
+	if bi.ImageURL != "" && withCover {
 		if p, err := downloadCover(c, id, bi.ImageURL); err == nil {
 			bi.Cover = p
 		}

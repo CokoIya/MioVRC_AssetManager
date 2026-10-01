@@ -46,6 +46,10 @@ HITS = {
 }
 
 
+SYN = {}  # items made up while browsing
+BROWSE_LOG = []
+
+
 def tree_items(nodes, base):
     out = []
     for n in nodes:
@@ -144,6 +148,8 @@ class H(http.server.BaseHTTPRequestHandler):
             return self.send(200, json.dumps({"tag_name": tag, "name": "MioVRC素材托管工具 " + tag[1:], "draft": False, "prerelease": False,
                 "published_at": "2026-10-05T03:00:00Z", "html_url": "https://github.com/CokoIya/MioVRC_AssetManager/releases/tag/" + tag,
                 "body": "## 更新内容\n- 新功能：**测试**\n- 修复：`library.json` 测试\n\n**下载**：[发布页](https://example.com)", "assets": assets}), "application/json")
+        if u.path == "/mock/browselog":
+            return self.send(200, json.dumps(BROWSE_LOG, ensure_ascii=False), "application/json")
         if u.path.startswith("/dl/"):
             n = urllib.parse.unquote(u.path[4:])
             return self.send(200, open(os.path.join(os.environ.get("MOCK_REL", ""), n), "rb").read(), "application/octet-stream")
@@ -174,6 +180,37 @@ class H(http.server.BaseHTTPRequestHandler):
                     kids, p = r
                     return self.send(200, json.dumps({"errno": 0, "list": tree_items(kids, p)}), "application/json")
             return self.send(200, json.dumps({"errno": 2}), "application/json")
+        if u.path.startswith("/xy"):  # a stand-in for www.goofish.com: home, search, a chat with a share
+            sub = u.path[3:] or "/"
+            kw = q.get("q", [""])[0]
+            if sub.startswith("/search"):
+                body = f"<h1>搜索：{html.escape(kw)}</h1>" + "".join(f'<div class="item"><a href="/xy/item?id={i}" target="_blank">{html.escape(kw)} 宝贝 {i}</a> ¥{9 + i}</div>' for i in range(1, 6))
+            elif sub.startswith("/im"):
+                body = '<h1>消息</h1><div class="msg" id="share">链接: https://pan.baidu.com/s/1XyShareTest 提取码: xy12 复制这段内容打开百度网盘</div>'
+            elif sub.startswith("/item"):
+                body = f'<h1>宝贝 {html.escape(q.get("id", [""])[0])}</h1><button onclick="window.open(\'/xy/im\')">聊一聊</button>'
+            else:
+                body = '<h1>闲鱼首页</h1><a href="/xy/search?q=test">搜索 test</a>'
+            return self.send(200, f"<html><head><title>闲鱼 {html.escape(sub)}</title></head><body>{body}</body></html>")
+        if u.path.startswith("/ja/browse/") and "sort" in q:  # browsing from the Booth view: 60 cards a page
+            cat = urllib.parse.unquote(u.path.split("/ja/browse/")[1])
+            words = q.get("q", [""])[0]
+            page = int(q.get("page", ["1"])[0])
+            hits = []
+            if page == 1:  # things the player has: bought (9000003), bought and in the library (7770415), in the library (8099091)
+                hits += [("9000003", "【8アバター対応】Moon Dress", "lunaworks", "Luna Works", "3D衣装", 1500),
+                         ("7770415", "プラム -Plum- / オリジナル3Dモデル", "komado", "あまとうさぎ", "3Dキャラクター", 5500),
+                         ("8099091", "【7アバター対応】AONAMI -アオナミ- セーラー服", "aonami", "AONAMI shop", "3D衣装", 2500)]
+                for h in hits:
+                    SYN[h[0]] = h
+            n = 60 if page == 1 else 20
+            for i in range(len(hits), n):
+                iid = str(9500000 + (abs(hash((cat, words))) % 4000) * 25 + (page - 1) * 60 + i)
+                name = f"{cat} {words} No.{(page - 1) * 60 + i + 1}".strip()
+                SYN[iid] = (iid, name, "shop" + str(i % 7), "Shop " + str(i % 7), cat, 300 + i * 50)
+                hits.append(SYN[iid])
+            BROWSE_LOG.append(u.path + "?" + u.query)
+            return self.send(200, "<html><ul>" + "".join(card(*h) for h in hits) + "</ul></html>")
         if u.path.startswith("/ja/browse/") or u.path.startswith("/ja/search/"):
             term = (q.get("q", [""])[0] if "q" in q else urllib.parse.unquote(u.path.split("/ja/search/")[-1])).lower()
             hits = []
@@ -185,7 +222,7 @@ class H(http.server.BaseHTTPRequestHandler):
             id_ = u.path.split("/")[-1]
             is_json = id_.endswith(".json")
             id_ = id_[:-5] if is_json else id_
-            for v in HITS.values():
+            for v in list(HITS.values()) + [[x] for x in SYN.values()]:
                 for h in v:
                     if h[0] != id_:
                         continue

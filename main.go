@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-var appVersion = "1.6.1" // a var so test builds can set it with -ldflags -X
+var appVersion = "1.7.0" // a var so test builds can set it with -ldflags -X
 
 var updatedFrom string // the version this run was updated from (shown once in the window)
 

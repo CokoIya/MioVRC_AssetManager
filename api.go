@@ -85,6 +85,7 @@ type AssetView struct {
 	BoothNews    string        `json:"boothNews,omitempty"` // the shop changed its Booth page
 	BoothNewsAt  int64         `json:"boothNewsAt,omitempty"`
 	NewerOnBooth string        `json:"newerOnBooth,omitempty"` // a later version among the Booth downloads
+	NewerDL      string        `json:"newerDl,omitempty"`      // its downloadable id
 	LocalVer     string        `json:"localVer,omitempty"`
 	PanParent    string        `json:"panParent,omitempty"` // a product inside a split share: the share's key
 	PanPath      string        `json:"panPath,omitempty"`   // and where it is in the share
@@ -114,11 +115,22 @@ type PurchaseView struct {
 	PageURL    string      `json:"pageUrl"` // where the downloads are: latest order, or the library
 	LibraryURL string      `json:"libraryUrl"`
 	Matched    bool        `json:"matched"` // linked by file name (not by an id in the folder name)
+	ID         string      `json:"id"`
+	DLs        []string    `json:"dls"` // downloadable id of each file
+	Got        []string    `json:"got"` // where each file was downloaded to ("" = not by this program)
 }
 
-func purchaseView(p *Purchase, matched bool) *PurchaseView {
+// purchaseView: caller holds st.mu.
+func purchaseView(st *Store, p *Purchase, matched bool) *PurchaseView {
 	v := &PurchaseView{Name: p.Name, Shop: p.Shop, ShopURL: p.ShopURL, Files: p.Files, Gift: p.Gift,
-		LibraryURL: libraryURL(p.Gift), Matched: matched}
+		LibraryURL: libraryURL(p.Gift), Matched: matched, ID: p.ID, DLs: p.Downloads}
+	for _, d := range p.Downloads {
+		got := ""
+		if r := st.Downloaded[d]; r != nil {
+			got = r.Path
+		}
+		v.Got = append(v.Got, got)
+	}
 	for _, o := range p.Orders {
 		v.Orders = append(v.Orders, OrderView{ID: o.ID, Date: o.Date, URL: orderURL(o.ID)})
 	}
@@ -188,8 +200,8 @@ func buildView(st *Store, a *Asset) AssetView {
 			}
 		}
 		if p := st.Purchases[v.BoothID]; p != nil {
-			v.Purchase = purchaseView(p, a.BoothFromLib)
-			v.NewerOnBooth, v.LocalVer = purchaseNewer(a, p)
+			v.Purchase = purchaseView(st, p, a.BoothFromLib)
+			v.NewerOnBooth, v.LocalVer, v.NewerDL = purchaseNewerDL(a, p)
 		}
 	}
 	// name
@@ -453,7 +465,7 @@ func panOnlyView(st *Store, key string) AssetView {
 		}
 	}
 	if p := st.Purchases[id]; id != "" && p != nil {
-		v.Purchase = purchaseView(p, false)
+		v.Purchase = purchaseView(st, p, false)
 	}
 	// like a folder on disk: an item number or a generic name gives way to the Booth title
 	if t := cleanName(name); isMostlyDigits(t) || isGenericName(t) || len([]rune(t)) <= 2 {
@@ -491,7 +503,7 @@ func panOnlyView(st *Store, key string) AssetView {
 func purchaseOnlyView(st *Store, p *Purchase) AssetView {
 	key := "purchase:" + p.ID
 	v := AssetView{Key: key, Name: p.Name, AutoName: p.Name, RawName: p.Name, BoothID: p.ID, BoothSrc: "library", Virtual: true,
-		FirstSeen: p.when(), Purchase: purchaseView(p, false)}
+		FirstSeen: p.when(), Purchase: purchaseView(st, p, false)}
 	if u := st.User[key]; u != nil {
 		v.User = *u
 	}
@@ -578,12 +590,22 @@ type stateResp struct {
 	AppName     string      `json:"appName"`
 
 	Changelog []ChangeEntry `json:"changelog"`
-	WhatsNew  []ChangeEntry `json:"whatsNew,omitempty"` // shown once after an update
+
+	ShopCats    []string      `json:"shopCats"`
+	Downloads   []DLJob       `json:"downloads"`
+	DLNeedLogin bool          `json:"dlNeedLogin"`
+	DLDir       string        `json:"dlDir"`
+	BoothLogin  bool          `json:"boothLogin"`         // a saved Booth login exists
+	WhatsNew    []ChangeEntry `json:"whatsNew,omitempty"` // shown once after an update
+	PaneMode    string        `json:"paneMode"`           // how Booth / 闲鱼 pages open: "native", "window" or "" (system browser)
+	BoothWeb    string        `json:"boothWeb"`           // https://booth.pm (tests: a local server)
+	BoothAcc    string        `json:"boothAccounts"`
+	XYBase      string        `json:"xyBase"` // https://www.goofish.com
 }
 
 func tasksSnapshot() []Task {
 	return []Task{taskScan.snapshot(), taskUsage.snapshot(), taskMatch.snapshot(), taskBooth.snapshot(), taskTrans.snapshot(),
-		taskPurchase.snapshot(), taskPan.snapshot(), taskUpdate.snapshot()}
+		taskPurchase.snapshot(), taskPan.snapshot(), taskUpdate.snapshot(), taskDownload.snapshot()}
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -636,18 +658,25 @@ func newMux(st *Store) *http.ServeMux {
 		resp.UpdateNewer = st.Update != nil && versionNewer(st.Update.Version, appVersion)
 		resp.UpdatedFrom, resp.Releases, resp.AppName = updatedFrom, releasesPage(), appName
 		resp.Changelog = changelog()
+		resp.DLDir = downloadDir(st)
+		for _, c := range shopCats {
+			resp.ShopCats = append(resp.ShopCats, c.Label)
+		}
 		if st.Settings.SetupDone {
 			resp.WhatsNew = whatsNew(st)
 		}
 		st.mu.RUnlock()
 		resp.DefaultBrowser = browserLabel(defaultBrowserExe())
+		resp.Downloads, resp.DLNeedLogin, resp.BoothLogin = dlSnapshot(), dlNeedLogin(), len(loadBoothSession()) > 0
+		resp.PaneMode, resp.BoothWeb, resp.BoothAcc, resp.XYBase = paneMode(), boothWebBase(), boothAccountsBase(), xianyuBase()
 		resp.Tasks = tasksSnapshot()
 		resp.Busy = pipelineBusy()
 		writeJSON(w, resp)
 	})
 	mux.HandleFunc("/api/progress", func(w http.ResponseWriter, r *http.Request) {
 		lastPing.Store(time.Now().Unix())
-		writeJSON(w, map[string]any{"rev": curRev(), "tasks": tasksSnapshot(), "busy": pipelineBusy(), "purchaseBusy": purchaseBusy.Load()})
+		writeJSON(w, map[string]any{"rev": curRev(), "tasks": tasksSnapshot(), "busy": pipelineBusy(), "purchaseBusy": purchaseBusy.Load(),
+			"downloads": dlSnapshot(), "dlNeedLogin": dlNeedLogin()})
 	})
 	mux.HandleFunc("/thumb", func(w http.ResponseWriter, r *http.Request) {
 		p := r.URL.Query().Get("p")
@@ -988,6 +1017,113 @@ func newMux(st *Store) *http.ServeMux {
 	post("/api/purchases/sync", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		ok := StartPurchaseSync(st)
 		writeJSON(w, map[string]any{"ok": ok, "busy": !ok})
+	})
+	// ---------- Booth: downloads and browsing ----------
+	post("/api/booth/download", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		var ids []string
+		_ = json.Unmarshal(b["ids"], &ids)
+		n, err := QueueDownloads(st, str(b, "item"), ids)
+		if err != nil {
+			writeJSON(w, map[string]any{"ok": false, "err": err.Error()})
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "n": n})
+	})
+	// every purchase that is not in the library yet
+	post("/api/booth/download/missing", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		var only []string // the cards on screen; empty = every purchase not downloaded yet
+		_ = json.Unmarshal(b["items"], &only)
+		owned := ownedBoothIDs(st)
+		st.mu.RLock()
+		var items []string
+		for _, id := range sortedKeys(st.Purchases) {
+			if len(only) > 0 && !containsStr(only, id) {
+				continue
+			}
+			if _, ok := owned[id]; !ok && len(st.Purchases[id].Downloads) > 0 {
+				items = append(items, id)
+			}
+		}
+		st.mu.RUnlock()
+		total := 0
+		for _, id := range items {
+			n, _ := QueueDownloads(st, id, nil)
+			total += n
+		}
+		writeJSON(w, map[string]any{"ok": true, "n": total, "items": len(items)})
+	})
+	post("/api/booth/download/cancel", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		CancelDownloads()
+		writeJSON(w, map[string]any{"ok": true})
+	})
+	post("/api/shop/search", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		var q ShopQuery
+		raw, _ := json.Marshal(b)
+		_ = json.Unmarshal(raw, &q)
+		items, more, err := SearchShop(st, q)
+		if err != nil {
+			writeJSON(w, map[string]any{"ok": false, "err": err.Error()})
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "items": items, "more": more})
+	})
+	post("/api/shop/item", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		d, err := ShopItemDetail(st, str(b, "id"))
+		if err != nil {
+			writeJSON(w, map[string]any{"ok": false, "err": err.Error()})
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "item": d})
+	})
+	// ---------- Booth / 闲鱼 pages inside the program ----------
+	pane.st = st
+	post("/api/pane/open", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		u := str(b, "url")
+		if !(strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://")) {
+			writeJSON(w, map[string]any{"ok": false, "err": "不是网址"})
+			return
+		}
+		if paneMode() == "" {
+			writeJSON(w, map[string]any{"ok": openURL(u) == nil, "external": true})
+			return
+		}
+		if err := pane.Open(u, str(b, "kind"), true); err != nil {
+			logf("页面打不开 %s: %v", u, err)
+			writeJSON(w, map[string]any{"ok": false, "err": "页面打不开：" + err.Error()})
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "mode": paneMode()})
+	})
+	post("/api/pane/place", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		var r struct {
+			X, Y, W, H, DPR float64
+			Show            bool
+		}
+		raw, _ := json.Marshal(b)
+		_ = json.Unmarshal(raw, &r)
+		pane.Place(r.X, r.Y, r.W, r.H, r.DPR, r.Show)
+		writeJSON(w, map[string]any{"ok": true})
+	})
+	post("/api/pane/state", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		writeJSON(w, pane.State())
+	})
+	post("/api/pane/act", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		act := str(b, "act")
+		if act == "external" {
+			u, err := pane.Act("url")
+			if err != nil || u == "" {
+				writeJSON(w, map[string]any{"ok": false, "err": "没有打开的页面"})
+				return
+			}
+			writeJSON(w, map[string]any{"ok": openURL(u) == nil})
+			return
+		}
+		text, err := pane.Act(act)
+		if err != nil {
+			writeJSON(w, map[string]any{"ok": false, "err": err.Error()})
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "text": text})
 	})
 	post("/api/purchases/cancel", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		purchaseCancel.Store(true)

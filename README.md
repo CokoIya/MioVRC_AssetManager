@@ -12,7 +12,11 @@ Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth �
 - PSD 源文件：列出 PSD / CLIP / SAI 等文件和尺寸
 - 工程使用：分析 Unity 工程，标出素材在哪些工程里用到
 - Booth 商品：按文件夹名里的编号、Booth 链接、已购记录或名称搜索关联，显示图片、标签和说明（可翻译）
-- 同步 Booth 已购：在单独的浏览器窗口登录 Booth，读取已购、礼物和订单
+- Booth 页：点选分类、素体、风格标签逛 Booth（可多选），标出已购和素材库已有的，可以隐藏它们
+- 内置页面：Booth 的商品页、登录、购物车、已购列表和闲鱼都在软件里打开（第二个 WebView2，登录保存在本机），可以直接购买、和卖家聊天
+- 同步 Booth 已购：在内置页面登录 Booth，读取已购、礼物和订单
+- 下载 Booth 已购：在软件里直接下载（也包括在内置 Booth 页面里点的下载），zip 自动解压到素材文件夹并入库
+- 闲鱼：在内置页面搜索、聊天、下单；聊天里选中的网盘分享可以一键收进素材库
 - 百度网盘：读取分享里的文件列表，只在网盘里的素材也能收录；合集分享按分类文件夹拆成多张卡片
 - 新素材自动整理：软件开着时，素材文件夹里新放入的素材会自动扫描归类
 - 更新提示：网盘分享每天、Booth 商品页每周检查一次变化
@@ -43,7 +47,9 @@ Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth �
 
 - `library.json`：素材库数据，包括备注、链接和翻译缓存
 - `covers\`：封面缓存
-- `booth-profile\`：同步 Booth 已购用的浏览器配置，删掉等于退出登录
+- `web-login\`：内置页面（Booth、闲鱼）的登录和缓存，删掉等于退出登录
+- `booth-profile\`：没有 WebView2 时，Booth / 闲鱼页面所用的 Edge / Chrome 窗口的配置
+- `booth-session.dat`：下载 Booth 已购用的登录信息（用 Windows DPAPI 加密，只有本机本用户能解开）
 - `library.log`：运行日志
 
 ## 从源码构建
@@ -90,6 +96,9 @@ x86_64-w64-mingw32-windres --preprocessor=cat -c 65001 -O coff -i app.rc -o rsrc
 | `store.go` | `library.json` 的读写 |
 | `scan.go` / `usage.go` / `thumbs.go` | 扫描素材、分析工程使用情况、封面 |
 | `booth.go` / `boothmatch.go` | Booth 商品信息、搜索与匹配 |
+| `boothdl.go` | 下载 Booth 已购、解压（含 Shift-JIS 文件名） |
+| `boothshop.go` | Booth 页：标签转成 Booth 分类和搜索词，标出已购、已有 |
+| `webpane.go` / `webpane_windows.go` | 内置页面：窗口里的第二个 WebView2（没有时用单独的 Edge / Chrome 窗口），经 127.0.0.1 上的 DevTools 端口控制 |
 | `groups.go` / `psd.go` / `panparts.go` | 同款合并、「For_X」素体识别、衣服风格标签、PSD 统计、网盘分享内容分析 |
 | `update.go` / `changelog.go` | 检查更新、下载替换、重启；更新公告 |
 | `purchases.go` / `syncdriver.go` / `cdp.go` / `booth_scraper.js` | 同步 Booth 已购（Chromium 用 CDP，Firefox 用 WebDriver BiDi） |
@@ -113,16 +122,18 @@ go test .
 ```sh
 python3 test/mockbooth.py 47990
 python3 test/mockweb.py 47991
-VRCLIB_BOOTH_BASE=http://127.0.0.1:47990 \
+VRCLIB_BOOTH_BASE=http://127.0.0.1:47990 VRCLIB_BOOTH_DL=http://127.0.0.1:47990 \
 VRCLIB_PAN_BASE=http://127.0.0.1:47991 VRCLIB_BOOTH_WEB=http://127.0.0.1:47991 VRCLIB_BING_BASE=http://127.0.0.1:47991 \
+VRCLIB_XY_BASE=http://127.0.0.1:47991/xy \
 VRCLIB_BROWSER=<chrome 路径> VRCLIB_HEADLESS=1 \
 go run . --no-window --data ./testdata
 ```
 
 ## 说明
 
-- 本工具和 BOOTH、pixiv、百度网盘、VRChat 都没有关系。它读取的是这些网站的网页和公开接口，网站改版后部分功能可能失效。
-- 本工具不会上传你的素材数据。它会连接：Booth、百度网盘、必应翻译（谷歌翻译备用）、GitHub（检查更新），发送反馈时连接 FormSubmit，以及设置里填写的代理。
+- 本工具和 BOOTH、pixiv、闲鱼、百度网盘、VRChat 都没有关系。它读取的是这些网站的网页和公开接口，网站改版后部分功能可能失效。
+- 本工具不会上传你的素材数据。它会连接：Booth、百度网盘、必应翻译（谷歌翻译备用）、GitHub（检查更新），发送反馈时连接 FormSubmit，以及设置里填写的代理；内置页面打开的网站（Booth、闲鱼等）由页面自己连接。
+- 内置页面开着时，会在 127.0.0.1 上开一个 DevTools 端口，软件靠它控制页面（后退、读取已购、下载按钮）。只有本机程序能连到它。
 
 ## 第三方代码
 

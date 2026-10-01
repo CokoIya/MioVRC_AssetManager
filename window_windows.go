@@ -110,6 +110,8 @@ func runNativeWindow(url string) bool {
 		return false
 	}
 	logf("窗口：WebView2 %s", ver)
+	nativePane = &winPane{wv: wv} // Booth / 闲鱼 pages open inside this window
+	webview2.MoveHook = paneParentMoved
 	wv.SetSize(int(w)*55/100, int(h)*60/100, webview2.HintMin)
 	wv.Navigate(url)
 	wv.Run()

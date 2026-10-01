@@ -77,6 +77,9 @@ func StartPurchaseSync(st *Store) bool {
 		defer purchaseBusy.Store(false)
 		var ok bool
 		run(taskPurchase, func() { ok = RunPurchaseSync(st, taskPurchase) })
+		if ok || len(loadBoothSession()) > 0 {
+			ResumeDownloads(st) // downloads that waited for the login
+		}
 		if ok {
 			st.mu.RLock()
 			auto := st.Settings.AutoBooth
@@ -129,7 +132,35 @@ type scrapeProgress struct {
 
 // RunPurchaseSync: open a browser window on a dedicated profile, wait for the user to be logged in
 // to Booth, then read their library from inside that page. Returns true when purchases were saved.
-func RunPurchaseSync(st *Store, prog *Task) bool {
+func RunPurchaseSync(st *Store, prog *Task) bool { return runBoothWindow(st, prog, false) }
+
+// EnsureBoothLogin refreshes the saved Booth login without showing a window: the browser profile
+// is still logged in most of the time. False when the player has to log in again.
+func EnsureBoothLogin(st *Store) bool {
+	if !purchaseBusy.CompareAndSwap(false, true) {
+		return false
+	}
+	defer purchaseBusy.Store(false)
+	return runBoothWindow(st, &Task{Name: "login"}, true)
+}
+
+// saveSessionFrom keeps the Booth login of the window, for downloads.
+func saveSessionFrom(d pageDriver) {
+	cs, err := d.Cookies(boothCookieURLs())
+	if err != nil || len(cs) == 0 {
+		logf("没读到 Booth 登录信息：%v", err)
+		return
+	}
+	if err := saveBoothSession(cs); err != nil {
+		logf("Booth 登录信息保存失败：%v", err)
+	}
+}
+
+// runBoothWindow: quiet = only take the login, in a hidden window, and give up when it is not logged in.
+func runBoothWindow(st *Store, prog *Task, quiet bool) bool {
+	if paneMode() != "" {
+		return runBoothPane(st, prog, quiet) // inside the program
+	}
 	browser, note := syncBrowser()
 	if browser == "" {
 		prog.Set(0, 0, "没找到可用的浏览器（Chrome、Edge 或 Firefox）")
@@ -141,15 +172,24 @@ func RunPurchaseSync(st *Store, prog *Task) bool {
 	base := boothAccountsBase()
 	bu, _ := url.Parse(base)
 	start := base + "/library"
-	prog.Set(0, 0, "正在打开 "+browserLabel(browser)+" 窗口…")
+	if !quiet {
+		prog.Set(0, 0, "正在打开 "+browserLabel(browser)+" 窗口…")
+	}
 	var d pageDriver
 	var err error
 	if isFirefoxExe(browser) {
-		d, err = startFirefoxDriver(browser, filepath.Join(dataDir, "booth-profile-firefox"), start)
+		var extra []string
+		if quiet {
+			extra = append(extra, "--headless")
+		}
+		d, err = startFirefoxDriver(browser, filepath.Join(dataDir, "booth-profile-firefox"), start, extra)
 	} else {
 		var extra []string
-		if os.Getenv("VRCLIB_HEADLESS") == "1" { // tests only
-			extra = append(extra, "--headless=new", "--no-sandbox")
+		if quiet || os.Getenv("VRCLIB_HEADLESS") == "1" { // (the variable: tests only)
+			extra = append(extra, "--headless=new")
+		}
+		if os.Getenv("VRCLIB_HEADLESS") == "1" {
+			extra = append(extra, "--no-sandbox")
 		}
 		d, err = startChromiumDriver(browser, boothProfileDir(), start, bu.Host, extra)
 	}
@@ -165,10 +205,21 @@ func RunPurchaseSync(st *Store, prog *Task) bool {
 			d.CloseBrowser()
 		}
 	}()
+	return boothLoop(st, prog, d, quiet, "请在弹出的 "+browserLabel(browser)+" 窗口里登录 Booth，登录后会自动开始读取", &closeWin)
+}
 
+// boothLoop waits until the page is a logged-in Booth library page, then reads the purchases (quiet:
+// only keeps the login). closeWin is cleared when the player closed the window.
+func boothLoop(st *Store, prog *Task, d pageDriver, quiet bool, waitingMsg string, closeWin *bool) bool {
+	base := boothAccountsBase()
+	bu, _ := url.Parse(base)
+	start := base + "/library"
 	deadline := time.Now().Add(20 * time.Minute)
-	var lastNav time.Time
-	waitingMsg := "请在弹出的 " + browserLabel(browser) + " 窗口里登录 Booth，登录后会自动开始读取"
+	if quiet {
+		deadline = time.Now().Add(25 * time.Second)
+	}
+	var lastNav, signInSince time.Time
+	left, _ := d.(interface{ userLeft() bool })
 	prog.Set(0, 0, waitingMsg)
 	var res *scrapeResult
 	for res == nil {
@@ -183,13 +234,13 @@ func RunPurchaseSync(st *Store, prog *Task) bool {
 		href, err := evalString(d, "location.href", 6*time.Second)
 		if err != nil {
 			if d.Dead() || errors.Is(err, errCDPClosed) {
-				closeWin = false
+				*closeWin = false
 				prog.Set(0, 0, "Booth 窗口被关掉了，同步已取消")
 				return false
 			}
 			// the tab may have been replaced (login redirects can open a new one)
 			if rerr := d.Reconnect(); rerr != nil && d.Dead() {
-				closeWin = false
+				*closeWin = false
 				prog.Set(0, 0, "Booth 窗口被关掉了，同步已取消")
 				return false
 			}
@@ -202,7 +253,18 @@ func RunPurchaseSync(st *Store, prog *Task) bool {
 			continue
 		}
 		onAccounts := u.Host == bu.Host
+		if quiet && strings.Contains(u.Path, "sign_in") {
+			if signInSince.IsZero() {
+				signInSince = time.Now()
+			} else if time.Since(signInSince) > 6*time.Second {
+				return false // not logged in: the player has to do it in a visible window
+			}
+		}
 		if !onAccounts || strings.Contains(u.Path, "sign_in") {
+			if !quiet && left != nil && left.userLeft() {
+				prog.Set(0, 0, "没有登录，同步已取消")
+				return false
+			}
 			// back on booth.pm after logging in → go to the library page ourselves
 			if strings.HasSuffix(u.Host, "booth.pm") && !onAccounts && time.Since(lastNav) > 10*time.Second {
 				lastNav = time.Now()
@@ -213,6 +275,11 @@ func RunPurchaseSync(st *Store, prog *Task) bool {
 			continue
 		}
 		// logged-in accounts page: run the reader
+		if quiet {
+			saveSessionFrom(d)
+			logf("已确认 Booth 登录")
+			return true
+		}
 		r, err := runScraper(d, prog)
 		if err != nil {
 			if err.Error() == "LOGIN" {
@@ -236,6 +303,7 @@ func RunPurchaseSync(st *Store, prog *Task) bool {
 		}
 		res = r
 	}
+	saveSessionFrom(d)
 
 	n := mergePurchases(st, res)
 	if n == 0 {
@@ -502,12 +570,31 @@ func fileExists(p string) bool {
 
 func boothProfileDir() string { return filepath.Join(dataDir, "booth-profile") }
 
-// ForgetBoothLogin removes the dedicated browser profile (the Booth login lives only there).
+// ForgetBoothLogin logs out of Booth: the saved login, and the Booth cookies of the pane's profile
+// (or the whole old browser profile when there is no pane running).
 func ForgetBoothLogin() error {
+	if paneMode() != "" {
+		// the pane also holds the 闲鱼 login: only Booth's (and pixiv's, which logs Booth back in) go
+		forgetBoothSession()
+		pane.mu.Lock()
+		running := pane.port > 0
+		pane.mu.Unlock()
+		if !running && paneMode() == "native" {
+			if err := pane.Open("about:blank", "", false); err != nil {
+				return err
+			}
+			running = true
+		}
+		if running {
+			_ = os.RemoveAll(filepath.Join(dataDir, "booth-profile-firefox"))
+			return pane.forgetSites([]string{"booth.pm", "pixiv.net"})
+		}
+	}
 	if port, _ := readDevToolsPort(boothProfileDir()); port > 0 {
 		closeDebugBrowser(port)
 		time.Sleep(800 * time.Millisecond)
 	}
+	forgetBoothSession()
 	err := os.RemoveAll(boothProfileDir())
 	if err2 := os.RemoveAll(filepath.Join(dataDir, "booth-profile-firefox")); err == nil {
 		err = err2

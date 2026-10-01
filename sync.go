@@ -199,8 +199,14 @@ func splitVer(name string) (stem, ver string) {
 // purchaseNewer: "v1.07" when a Booth download of this purchase is a later version of a file
 // on disk ("Kaguya_v1.07.zip" on Booth, "Kaguya_v1.06" here); also returns the local version.
 func purchaseNewer(a *Asset, p *Purchase) (string, string) {
+	best, have, _ := purchaseNewerDL(a, p)
+	return best, have
+}
+
+// purchaseNewerDL also says which download has the newer version (its downloadable id).
+func purchaseNewerDL(a *Asset, p *Purchase) (string, string, string) {
 	if a == nil || p == nil || len(p.Files) == 0 {
-		return "", ""
+		return "", "", ""
 	}
 	local := map[string]string{}
 	add := func(n string) {
@@ -218,14 +224,17 @@ func purchaseNewer(a *Asset, p *Purchase) (string, string) {
 	for _, pk := range a.Packages {
 		add(filepathBase(pk))
 	}
-	best, have := "", ""
-	for _, f := range p.Files {
+	best, have, dl := "", "", ""
+	for i, f := range p.Files {
 		s, v := splitVer(f)
 		if lv, ok := local[s]; ok && s != "" && versionNewer(v, lv) && (best == "" || versionNewer(v, best)) {
 			best, have = v, lv
+			if i < len(p.Downloads) {
+				dl = p.Downloads[i]
+			}
 		}
 	}
-	return best, have
+	return best, have, dl
 }
 
 func filepathBase(p string) string {

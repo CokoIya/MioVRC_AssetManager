@@ -14,14 +14,37 @@ const ICON = {
   receipt: '<svg viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>',
   download: '<svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4"/><path d="M5 19h14"/></svg>',
   upd: '<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>',
+  back: '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>',
+  fwd: '<svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>',
+  x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  ext: '<svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
 };
 
 const S = {
   data: null, rev: 0,
   q: "", cat: "全部", style: "", recent: "", bases: new Set(), usage: "all", share: "all", root: "all", purchase: "all", showHidden: false, sort: "recent",
   openKey: null, setup: null, bs: null, desc: {}, dirty: new Set(), coverPick: null, stylePick: null, groups: new Map(), panOpen: new Set(), panClosed: new Set(),
+  view: "lib", shopOpen: null,
+  // Booth / 闲鱼 pages inside the program: open.shop = a page covers the Booth list; loaded = whose page
+  // the pane holds; back = where 「返回」 goes
+  web: { open: { shop: false }, loaded: "", st: {}, last: { booth: "", xianyu: "" }, back: null, xq: "" },
+  shop: { cats: new Set(), bases: new Set(), styles: new Set(), q: "", sort: "popular", hideBought: false, hideOwned: false, adult: false,
+    page: 1, items: [], more: false, loading: false, err: "", seq: 0, allBases: false, started: false, detail: null },
 };
-try { const saved = JSON.parse(localStorage.getItem("vrclib.ui") || "{}"); if (saved.sort) S.sort = saved.sort; } catch (e) {}
+try {
+  const saved = JSON.parse(localStorage.getItem("vrclib.ui") || "{}");
+  if (saved.sort) S.sort = saved.sort;
+  if (saved.view === "shop" || saved.view === "xianyu") S.view = saved.view;
+  if (saved.web) { S.web.last.xianyu = saved.web.xianyu || ""; S.web.xq = saved.web.xq || ""; }
+  const sh = saved.shop || {};
+  for (const k of ["cats", "bases", "styles"]) if (Array.isArray(sh[k])) S.shop[k] = new Set(sh[k]);
+  for (const k of ["sort", "hideBought", "hideOwned", "adult"]) if (sh[k] !== undefined) S.shop[k] = sh[k];
+} catch (e) {}
+function saveUI() {
+  const sh = S.shop;
+  try { localStorage.setItem("vrclib.ui", JSON.stringify({ sort: S.sort, view: S.view, web: { xianyu: S.web.last.xianyu, xq: S.web.xq },
+    shop: { cats: [...sh.cats], bases: [...sh.bases], styles: [...sh.styles], sort: sh.sort, hideBought: sh.hideBought, hideOwned: sh.hideOwned, adult: sh.adult } })); } catch (e) {}
+}
 
 async function api(path, body) {
   const r = await fetch(path, body === undefined ? {} : {
@@ -65,6 +88,7 @@ async function load() {
   else if (!S.data && d.updatedFrom && d.updatedFrom !== d.version) setTimeout(() => toast(`已更新到 ${d.version}`, 4000), 600);
   const prev = S.data ? new Map((S.data.assets || []).map(a => [a.key, a])) : null;
   S.data = d; S.rev = d.rev;
+  if (d.xyBase) { XY_BASE = d.xyBase; XY_HOME = XY_BASE + "/"; }
   S.groups = new Map();
   for (const a of d.assets || []) if (a.group) { if (!S.groups.has(a.group)) S.groups.set(a.group, []); S.groups.get(a.group).push(a); }
   renderAll();
@@ -171,7 +195,16 @@ function sorted(units) {
 function styleList() { return (S.data.styleNames || []); }
 
 // ---------- render ----------
-function renderAll() { renderSide(); renderGrid(); renderStatus(); if (S.openKey) renderDrawer(S.openKey, true); }
+function renderAll() {
+  applyView();
+  if (S.view === "shop") { renderShopSide(); renderShopGrid(); }
+  else if (S.view === "xianyu") renderXySide();
+  else { renderSide(); renderGrid(); }
+  if (webVisible()) renderWeb();
+  renderStatus();
+  if (S.openKey) renderDrawer(S.openKey, true);
+  else if (S.shopOpen && S.shop.detail) renderShopDrawer();
+}
 
 function navItem(label, count, on, attrs, color) {
   return `<button class="navitem${on ? " on" : ""}" ${attrs}>${color ? `<span class="dot" style="background:${color}"></span>` : ""}<span>${esc(label)}</span><span class="n">${count}</span></button>`;
@@ -310,13 +343,13 @@ function cardHTML(a) {
   const shop = (a.booth && a.booth.shop) || (p && p.shop);
   const subline = shop ? shop : (a.booth && a.booth.name && a.booth.name !== a.name ? a.booth.name : rootLabel(loc ? loc.root : ""));
   const where = a.virtual ? `${orderLine(p)}，本地还没有` : a.panOnly ? panLine(a) : shortPath(loc);
-  const tip = a.virtual ? "打开下载页" : a.panOnly ? "打开网盘分享（自动复制提取码）" : "打开文件夹";
+  const tip = a.virtual ? "查看并下载" : a.panOnly ? "打开网盘分享（自动复制提取码）" : "打开文件夹";
   const zh = !S.data.settings.hideZh && a.nameZh ? `<div class="zh" title="${esc(a.nameZh)}">${esc(a.nameZh)}</div>` : "";
   return `<article class="card${a.hidden ? " hiddenasset" : ""}${a.virtual ? " virtual" : ""}${a.panOnly ? " panonly" : ""}" data-key="${esc(a.key)}" tabindex="0" title="${tip}">
-    <div class="cover">${coverHTML(a)}${boughtBadge(a)}${a.panOnly ? `<span class="badge-pan">网盘</span>` : ""}${usedBadge(a)}
+    <div class="cover">${coverHTML(a)}${boughtBadge(a)}${a.panOnly ? `<span class="badge-pan">网盘</span>` : ""}${usedBadge(a)}${a.virtual ? dlBar(a.boothId) : ""}
       <div class="where"><div class="path" title="${esc(loc ? loc.path : where)}">${esc(where)}</div>
         <div class="acts">
-          ${a.virtual ? `<button class="act buy" data-act="buypage" title="下载页">${ICON.download}<span>下载页</span></button>`
+          ${a.virtual ? `<button class="act buy" data-act="dl" title="下载到素材文件夹">${ICON.download}<span>下载</span></button>`
             : a.panOnly ? "" : `<button class="act" data-act="open" title="打开文件夹">${ICON.folder}</button>`}
           ${pan ? `<button class="act pan" data-act="pan" title="打开网盘">${ICON.cloud}${a.panOnly ? "<span>网盘</span>" : ""}</button>` : ""}
           ${p && !a.virtual ? `<button class="act buy" data-act="buypage" title="购买页">${ICON.receipt}</button>` : ""}
@@ -340,6 +373,7 @@ function renderGrid() {
   const filtered = S.q || S.cat !== "全部" || S.style || S.recent || S.bases.size || S.usage !== "all" || S.share !== "all" || S.root !== "all" || S.purchase !== "all";
   let rb = `<b>${list.length}</b><span>个${S.purchase === "missing" || S.purchase === "bought" ? "商品" : "素材"}${filtered ? `（共 ${total} 个）` : ""}</span>`;
   if (filtered) rb += `<button class="clear" id="clearFilters">清除筛选</button>`;
+  if (S.purchase === "missing" && list.length) rb += `<button class="btn small" id="btnDLMissing">${ICON.download}<span>全部下载</span></button>`;
   for (const w of (d.warnings || [])) rb += `<span class="warnline">${esc(w)}</span>`;
   $("#resultbar").innerHTML = rb;
   const g = $("#grid");
@@ -348,6 +382,7 @@ function renderGrid() {
     g.innerHTML = `<div class="empty">${!(d.assets || []).some(a => !a.virtual) && S.purchase === "all"
       ? (scanning ? `<h2>正在扫描</h2><p>第一次会久一点。</p>`
         : `<h2>还没有素材</h2><p>先在设置里添加素材文件夹。</p><button class="btn primary" id="emptySettings">打开设置</button>`)
+      : S.purchase === "missing" && !(d.assets || []).some(a => a.virtual) ? `<h2>已购的都下载好了</h2>`
       : `<h2>没有符合条件的素材</h2>`}</div>`;
     return;
   }
@@ -367,15 +402,327 @@ function renderStatus() {
     h += `<span>上次扫描 ${fmtTime(d.lastScan)}</span>`;
     const bt = (d.tasks || []).find(t => t.name === "booth");
     if (bt && bt.msg && bt.msg.includes("代理")) h += `<span class="err">${esc(bt.msg)}</span>`;
+    const dt = (d.tasks || []).find(t => t.name === "download");
+    if (dt && dt.msg && dt.ended && Date.now() / 1000 - dt.ended < 600 && !d.dlNeedLogin) h += `<span class="okline">${esc(dt.msg)}</span>`;
     const pt = (d.tasks || []).find(t => t.name === "purchase");
     if (pt && pt.msg && pt.ended && Date.now() / 1000 - pt.ended < 600) h += `<span class="${pt.msg.startsWith("完成") ? "okline" : "err"}">Booth 已购：${esc(pt.msg)}</span>`;
   }
+  if (d.dlNeedLogin) h += `<span class="err">下载需要登录 Booth <button class="verbtn linkish" id="btnDLLogin">登录</button></span>`;
+  if (running.some(t => t.name === "download")) h += `<button class="verbtn linkish" id="btnDLCancel">取消下载</button>`;
   h += `<span class="right"><button class="verbtn" id="btnFeedback">反馈和建议</button><button class="verbtn" id="btnVersion" title="更新公告">v${esc(d.version)}</button></span>`;
   $("#status").innerHTML = h;
   renderUpdateBtn();
   $("#btnScan").disabled = !!d.busy;
   $("#btnScan").textContent = d.busy ? "正在扫描…" : "重新扫描";
 }
+
+
+// ---------- Booth: looking for new things ----------
+// Tags instead of Japanese search words: a kind of item (several add up), base bodies and styles
+// (all of them have to match). Cards say what was bought and what is in the library already.
+function applyView() {
+  const v = S.view, shop = v === "shop", xy = v === "xianyu";
+  document.body.classList.toggle("shopview", shop);
+  document.body.classList.toggle("xyview", xy);
+  for (const [id, name] of [["#vLib", "lib"], ["#vShop", "shop"], ["#vXy", "xianyu"]]) {
+    $(id).classList.toggle("on", v === name); $(id).setAttribute("aria-selected", String(v === name));
+  }
+  $("#q").placeholder = shop ? "在 Booth 里搜索（可不填）" : xy ? "在闲鱼搜索，按回车" : "搜索名称、店铺、标签、路径";
+  $("#sort").hidden = v !== "lib"; $("#shopSort").hidden = !shop;
+  $("#btnPanAdd").hidden = shop; $("#btnScan").hidden = v !== "lib";
+  const web = webVisible();
+  $("#webview").hidden = !web; $("#resultbar").hidden = web; $("#grid").hidden = web;
+  $(".main").classList.toggle("webon", web);
+}
+function setView(v) {
+  if (S.view === v) return;
+  S.view = v; saveUI(); closeDrawer();
+  $("#q").value = v === "shop" ? S.shop.q : v === "xianyu" ? S.web.xq : S.q;
+  $(".main").scrollTop = 0;
+  renderAll();
+  if (v === "shop" && !S.shop.started) shopSearch(true);
+  if (S.data.paneMode && webVisible()) ensurePaneFor(v);
+}
+// coming back to a tab whose page the other tab (or a background login check) replaced: reopen it
+async function ensurePaneFor(v) {
+  const want = v === "xianyu" ? "xianyu" : "booth";
+  let st = {};
+  try { st = await api("/api/pane/state", {}); } catch (e) {}
+  if (S.view !== v) return;
+  if (!st.open || st.kind !== want) return openWeb(S.web.last[want] || (want === "xianyu" ? XY_HOME : boothHome()), want);
+  S.web.loaded = want; S.web.st = st; placedKey = ""; renderWeb(); webPoll(true);
+}
+// base bodies to offer: the ones in the library first
+function shopBases() {
+  const names = (S.data.settings.bases || []).map(l => l.split("=")[0].trim()).filter(Boolean);
+  const n = {};
+  for (const a of S.data.assets || []) for (const b of a.bases || []) n[b] = (n[b] || 0) + 1;
+  return names.map((b, i) => ({ b, n: n[b] || 0, i })).sort((x, y) => y.n - x.n || x.i - y.i).map(x => x.b);
+}
+function renderShopSide() {
+  const sh = S.shop;
+  const chips = (list, set, attr) => list.map(x => `<button class="chip${set.has(x) ? " on" : ""}" data-${attr}="${esc(x)}" aria-pressed="${set.has(x)}">${esc(x)}</button>`).join("");
+  let bases = shopBases();
+  const extra = bases.length > 14 && !sh.allBases;
+  if (extra) bases = bases.slice(0, 14).concat([...sh.bases].filter(b => !bases.slice(0, 14).includes(b)));
+  const mine = S.data.paneMode ? `<h3>我的 Booth</h3><div class="sidelinks two"><button class="navitem" data-bl="login"><span>登录</span></button><button class="navitem" data-bl="library"><span>已购列表</span></button>
+    <button class="navitem" data-bl="cart"><span>购物车</span></button><button class="navitem" data-bl="sync"><span>同步已购</span></button></div>` : "";
+  $("#side").innerHTML = `${mine}<h3>分类</h3><div class="chips">${chips(S.data.shopCats || [], sh.cats, "sc")}</div>
+    <h3>适配素体</h3><div class="chips">${chips(bases, sh.bases, "sb")}${extra ? `<button class="chip more" id="shAllBases">更多…</button>` : ""}</div>
+    <h3>风格</h3><div class="chips">${chips(S.data.styleNames || [], sh.styles, "ss")}</div>
+    <h3>显示</h3>
+    <label class="check"><input type="checkbox" data-shf="hideBought"${sh.hideBought ? " checked" : ""}> 不显示已购</label>
+    <label class="check"><input type="checkbox" data-shf="hideOwned"${sh.hideOwned ? " checked" : ""}> 不显示素材库里有的</label>
+    <label class="check"><input type="checkbox" data-shf="adult"${sh.adult ? " checked" : ""}> 包含成人向</label>`;
+}
+function shopVisible() {
+  const sh = S.shop;
+  return sh.items.filter(it => !(sh.hideBought && it.bought) && !(sh.hideOwned && it.owned));
+}
+function shopCardHTML(it) {
+  return `<article class="card shopcard" data-shop="${esc(it.id)}" tabindex="0">
+    <div class="cover">${it.thumb ? `<img loading="lazy" src="/rthumb?u=${encodeURIComponent(it.thumb)}" alt="">` : `<div class="ph">${esc(it.name.slice(0, 18))}</div>`}
+      <div class="sbadges">${it.owned ? `<span class="badge-owned">素材库已有</span>` : ""}${it.bought ? `<span class="badge-bought">已购</span>` : ""}</div></div>
+    <div class="body">
+      <div class="title">${esc(it.name)}</div>
+      <div class="sub">${esc(it.shop || it.shopSub || "")}</div>
+      <div class="meta"><span class="cat">${esc(it.category || "")}</span><span class="price">${esc(it.price || "")}</span></div>
+    </div></article>`;
+}
+function renderShopGrid() {
+  const sh = S.shop, list = shopVisible();
+  const picked = [...sh.cats, ...sh.bases, ...sh.styles];
+  const hidden = sh.items.length - list.length;
+  let rb = `<b>${list.length}</b><span>个商品${hidden ? `（隐藏了 ${hidden} 个）` : ""}</span>`;
+  if (picked.length || sh.q) rb += `<span class="picked">${picked.map(esc).join(" + ")}${sh.q ? `${picked.length ? " + " : ""}“${esc(sh.q)}”` : ""}</span><button class="clear" id="shopClear">清除</button>`;
+  $("#resultbar").innerHTML = rb;
+  const g = $("#grid");
+  if (!list.length) {
+    g.innerHTML = `<div class="empty">${sh.loading ? `<h2>正在读取 Booth…</h2>` : sh.err ? `<h2>没能读取 Booth</h2><p>${esc(sh.err)}</p>`
+      : sh.items.length ? `<h2>这一页都被筛掉了</h2>${sh.more ? `<button class="btn" id="shopMore">再看一页</button>` : ""}` : `<h2>没有找到商品</h2><p>少选几个标签试试。</p>`}</div>`;
+    return;
+  }
+  g.innerHTML = list.map(shopCardHTML).join("") +
+    (sh.more || sh.loading ? `<div class="shopmore">${sh.loading ? `<span class="muted">正在读取…</span>` : `<button class="btn" id="shopMore">加载更多</button>`}</div>` : "");
+}
+let shopTimer;
+function shopSoon() { clearTimeout(shopTimer); shopTimer = setTimeout(() => shopSearch(true), 380); }
+async function shopSearch(reset) {
+  const sh = S.shop;
+  sh.started = true;
+  const seq = ++sh.seq;
+  if (reset) { sh.page = 1; sh.items = []; sh.more = false; }
+  sh.loading = true; sh.err = "";
+  if (S.view === "shop") renderShopGrid();
+  let r;
+  try {
+    r = await api("/api/shop/search", { cats: [...sh.cats], bases: [...sh.bases], styles: [...sh.styles], q: sh.q, sort: sh.sort, page: sh.page, adult: sh.adult });
+  } catch (e) { r = { ok: false, err: "软件内部出错" }; }
+  if (seq !== sh.seq) return; // a newer search has started
+  sh.loading = false;
+  if (r.ok) {
+    const have = new Set(sh.items.map(x => x.id));
+    sh.items = sh.items.concat((r.items || []).filter(x => !have.has(x.id)));
+    sh.more = !!r.more;
+  } else sh.err = r.err || "读取失败";
+  if (S.view === "shop") renderShopGrid();
+}
+async function openShopItem(id) {
+  S.openKey = null; S.shopOpen = id;
+  const hit = S.shop.items.find(x => x.id === id) || { id, name: "" };
+  S.shop.detail = { loading: true, hit };
+  renderShopDrawer();
+  let r;
+  try { r = await api("/api/shop/item", { id }); } catch (e) { r = { ok: false, err: "软件内部出错" }; }
+  if (S.shopOpen !== id) return;
+  S.shop.detail = r.ok ? { item: r.item, hit } : { err: r.err || "读取失败", hit };
+  renderShopDrawer();
+}
+function renderShopDrawer() {
+  const dr = $("#drawer"), d = S.shop.detail || {}, it = d.item, hit = d.hit || {};
+  const id = S.shopOpen, url = boothItemURL(id);
+  const name = (it && it.name) || hit.name || "Booth #" + id;
+  const imgs = it ? (it.images || []).slice(0, 8) : [];
+  const cover = imgs[0] || hit.thumb || "";
+  const bought = it ? it.bought : hit.bought, owned = it ? it.owned : hit.owned;
+  let body = "";
+  if (d.loading) body = `<div class="muted small">正在读取商品信息…</div>`;
+  else if (d.err) body = `<div class="small err">${esc(d.err)}</div>`;
+  else {
+    if (imgs.length > 1) body += `<div class="sec"><div class="bimgs">${imgs.map(u => `<img loading="lazy" src="/rthumb?u=${encodeURIComponent(boothImg(u, false))}" data-big="${esc(boothImg(u, true))}" alt="">`).join("")}</div></div>`;
+    if (bought) body += `<div class="sec" id="shopfiles"><h4 class="withact">已购文件${(it.files || []).length > 1 ? `<button class="h4act" data-sd="dlall">全部下载</button>` : ""}</h4>
+      ${dlRows({ files: (it.files || []).map(f => f.name), dls: (it.files || []).map(f => f.id), got: (it.files || []).map(f => f.got || "") })}</div>`;
+    if ((it.tags || []).length) body += `<div class="sec"><h4>标签</h4><div class="btags">${it.tags.slice(0, 24).map(t => `<span>${esc(t)}</span>`).join("")}</div></div>`;
+    if (it.desc) {
+      const dd = S.desc["shop:" + id] || {};
+      body += `<div class="sec"><details class="bdesc" data-desc="shop:${esc(id)}" open><summary>商品说明${dd.showZh ? "（译文）" : ""}</summary>
+        <div class="desc">${esc(dd.showZh && dd.zh ? dd.zh : it.desc)}</div>
+        <div class="btnrow"><button class="btn small" data-sd="trans"${dd.loading ? " disabled" : ""}>${dd.loading ? "翻译中…" : dd.showZh ? "原文" : "翻译"}</button></div></details></div>`;
+    }
+  }
+  const main = owned ? `<button class="btn primary" data-sd="lib">在素材库查看</button>`
+    : bought ? `<button class="btn primary" data-sd="dlall">${ICON.download}<span style="margin-left:6px">下载</span></button>`
+    : `<button class="btn primary" data-sd="booth">在 Booth 打开</button>`;
+  dr.innerHTML = `<div class="dhead">
+      <div class="dcover">${cover ? `<img src="/rthumb?u=${encodeURIComponent(cover)}" alt="">` : ""}</div>
+      <div style="min-width:0;flex:1">
+        <h2>${esc(name)}</h2>
+        <div class="sub">${[it ? it.shop : hit.shop, it ? it.price : hit.price, it ? it.category : hit.category].filter(Boolean).map(esc).join("　")}</div>
+        <div class="sbadges static">${owned ? `<span class="badge-owned">素材库已有</span>` : ""}${bought ? `<span class="badge-bought">已购</span>` : ""}</div>
+        <div class="rowbtn">${main}${owned || bought ? `<button class="btn" data-sd="booth">Booth 商品页</button>` : ""}</div>
+      </div></div>
+    <div class="dbody">${body}</div>
+    <div class="dfoot"><button class="btn ghost" data-sd="close">关闭</button></div>`;
+  dr.dataset.kind = "shop";
+  dr.classList.add("on"); dr.setAttribute("aria-hidden", "false"); $("#scrim").classList.add("on");
+}
+
+// ---------- Booth / 闲鱼 pages inside the program ----------
+// One page area (S.data.paneMode "native": a second web view laid over #webhost; "window": a separate
+// app window driven from the toolbar; "": no built-in browser, links go to the default browser).
+let XY_BASE = "https://www.goofish.com", XY_HOME = XY_BASE + "/";
+function boothHome() { return (S.data.boothWeb || "https://booth.pm") + "/ja"; }
+function webKind(u) {
+  if (S.data && S.data.xyBase && u.startsWith(S.data.xyBase)) return "xianyu";
+  return /^https?:\/\/([^/]*\.)?(goofish\.com|taobao\.com|tmall\.com|alipay\.com|xianyu\.com)(\/|$)/i.test(u) ? "xianyu" : "booth";
+}
+function isBoothURL(u) {
+  if (S.data && [S.data.boothWeb, S.data.boothAccounts].some(b => b && u.startsWith(b))) return true;
+  return /^https?:\/\/([^/]*\.)?(booth\.pm|pixiv\.net)(\/|$)/i.test(u);
+}
+function webVisible() { return (S.view === "shop" && S.web.open.shop) || S.view === "xianyu"; }
+// Booth and 闲鱼 links open inside; anything else in the default browser
+function openLink(u) { if (isBoothURL(u) || webKind(u) === "xianyu") return openWeb(u); return openURL(u); }
+async function openWeb(u, kind) {
+  kind = kind || webKind(u);
+  if (!S.data.paneMode) return openURL(u);
+  const v = kind === "xianyu" ? "xianyu" : "shop";
+  const prevBack = S.web.back;
+  S.web.back = S.openKey ? { view: S.view, key: S.openKey }
+    : v === "shop" && S.view !== "shop" ? { view: S.view }
+    : v === "shop" && S.web.open.shop ? prevBack : null;
+  closeDrawer();
+  if (v === "shop") S.web.open.shop = true;
+  S.web.loaded = kind; S.web.st = { url: u, title: "", loading: true, open: true };
+  if (S.view !== v) {
+    S.view = v; saveUI(); $("#q").value = v === "shop" ? S.shop.q : S.web.xq;
+    if (v === "shop" && !S.shop.started) shopSearch(true);
+  }
+  renderAll();
+  let r;
+  try { r = await api("/api/pane/open", { url: u, kind }); } catch (e) { r = { ok: false, err: "软件内部出错" }; }
+  if (!r.ok) {
+    toast(r.err || "页面打不开", 4000);
+    if (v === "shop") { S.web.open.shop = false; renderAll(); }
+    return;
+  }
+  placedKey = ""; webPoll(true);
+}
+// a library card's Booth button: the item in the Booth tab
+function goBooth(a) {
+  S.web.open.shop = false;
+  if (S.view !== "shop") setView("shop"); else { closeDrawer(); renderAll(); }
+  if (a.boothId) { openShopItem(a.boothId); return; }
+  S.shop.q = a.boothQuery || a.name; $("#q").value = S.shop.q; saveUI(); shopSearch(true);
+}
+function closeWeb() {
+  const back = S.web.back; S.web.back = null;
+  if (S.data.paneMode === "window") api("/api/pane/act", { act: "close" }).catch(() => {});
+  if (S.view === "shop") { S.web.open.shop = false; S.web.loaded = S.data.paneMode === "window" ? "" : S.web.loaded; }
+  if (back && back.view !== S.view) { setView(back.view); if (back.key && findAsset(back.key)) renderDrawer(back.key); return; }
+  renderAll();
+  if (back && back.key && findAsset(back.key)) renderDrawer(back.key);
+}
+function renderXySide() {
+  $("#side").innerHTML = `<h3>闲鱼</h3>
+    <div class="sidelinks"><button class="navitem" data-xy="home"><span>首页</span></button><button class="navitem" data-xy="im"><span>消息</span></button><button class="navitem" data-xy="login"><span>登录</span></button></div>
+    <p class="sidenote">在上面的搜索框输入想找的东西，按回车搜索。登录、聊天、下单都在这里完成，登录会保存在本机。</p>
+    <h3>收进素材库</h3>
+    <p class="sidenote">卖家发来网盘分享后，在聊天里选中整段分享文字（链接和提取码），点页面上方的「收录网盘链接」。</p>`;
+}
+function renderWeb() {
+  const mode = S.data.paneMode, host = $("#webhost");
+  const key = mode + "|" + S.view + "|" + (S.web.st.open === false);
+  if (host.dataset.k !== key) {
+    host.dataset.k = key;
+    host.innerHTML = !mode ? `<div class="webnote"><h2>没有内置浏览器</h2><p>没找到 WebView2、Edge 或 Chrome，页面会在默认浏览器里打开。</p><button class="btn" data-w="reopen">在浏览器打开闲鱼</button></div>`
+      : S.web.st.open === false ? `<div class="webnote"><h2>页面已关闭</h2><button class="btn" data-w="reopen">重新打开</button></div>`
+      : mode === "window" ? `<div class="webnote"><h2>页面在单独的窗口里</h2><p>这台电脑没有 WebView2，页面开在一个单独的窗口中；上面的按钮可以控制它。</p><button class="btn" data-w="front">显示窗口</button></div>`
+      : `<div class="webnote muted">正在打开…</div>`;
+  }
+  renderWebBar();
+}
+function renderWebBar() {
+  const st = S.web.st || {}, xy = S.view === "xianyu", back = S.web.back;
+  const backLabel = back ? (back.key ? "返回素材" : back.view === "lib" ? "返回素材库" : back.view === "xianyu" ? "返回闲鱼" : "返回") : "返回列表";
+  const html = `<button class="wb" data-w="back" title="后退"${st.back ? "" : " disabled"}>${ICON.back}</button>
+    <button class="wb" data-w="forward" title="前进"${st.fwd ? "" : " disabled"}>${ICON.fwd}</button>
+    <button class="wb" data-w="${st.loading ? "stop" : "reload"}" title="${st.loading ? "停止" : "刷新"}">${st.loading ? ICON.x : ICON.upd}</button>
+    <div class="wtitle" title="${esc(st.url || "")}"><b>${esc(st.title || (st.loading ? "正在打开…" : st.url || ""))}</b><span>${esc(st.url || "")}</span></div>
+    ${xy ? `<button class="btn small" data-w="grab" title="把聊天里选中的网盘分享收进素材库">收录网盘链接</button>`
+      : `<button class="btn small" data-w="sync"${S.data.purchaseBusy ? " disabled" : ""}>${S.data.purchaseBusy ? "正在同步…" : "同步已购"}</button>`}
+    <button class="wb" data-w="copy" title="复制链接"${st.url ? "" : " disabled"}>${ICON.copy}</button>
+    <button class="wb" data-w="external" title="在默认浏览器中打开"${st.url ? "" : " disabled"}>${ICON.ext}</button>
+    ${!xy || back ? `<button class="btn small" data-w="close">${backLabel}</button>` : ""}`;
+  const bar = $("#webbar");
+  if (bar.dataset.h !== html) { bar.dataset.h = html; bar.innerHTML = html; }
+}
+async function webAction(w) {
+  const st = S.web.st || {};
+  switch (w) {
+    case "close": return closeWeb();
+    case "sync": return startSync();
+    case "copy": try { await navigator.clipboard.writeText(st.url || ""); toast("已复制链接"); } catch (e) { toast("复制失败"); } return;
+    case "reopen":
+      if (!S.data.paneMode) return openURL(S.web.last.xianyu || XY_HOME);
+      return openWeb(S.view === "xianyu" ? S.web.last.xianyu || XY_HOME : S.web.last.booth || boothHome(), S.view === "xianyu" ? "xianyu" : "booth");
+    case "grab": {
+      const r = await api("/api/pane/act", { act: "selection" });
+      const text = (r.text || "").trim();
+      if (!/pan\.baidu\.com|pan\.quark\.cn|aliyundrive|alipan|123pan|lanzou/i.test(text)) { toast("先在聊天里选中网盘分享文字（链接和提取码），再点这里", 4000); return; }
+      openPanAdd(text); return;
+    }
+  }
+  const r = await api("/api/pane/act", { act: w });
+  if (!r.ok && r.err) toast(r.err, 3000);
+  webPoll(true);
+}
+let webTimer;
+async function webPoll(now) {
+  clearTimeout(webTimer);
+  if (!S.data || !S.data.paneMode || !webVisible()) return;
+  try {
+    const st = await api("/api/pane/state", {});
+    const was = S.web.st || {};
+    if (st.open && st.url) S.web.last[S.web.loaded || (S.view === "xianyu" ? "xianyu" : "booth")] = st.url;
+    if (st.dl !== S.web.dl) { if (st.dl > (S.web.dl || 0)) poll(true); S.web.dl = st.dl; }
+    if (S.web.loaded === "xianyu" && st.url !== was.url) saveUI();
+    if (!st.open && was.open && !was.loading && S.data.paneMode === "window") { // the window was closed
+      S.web.st = { open: false };
+      if (S.view === "shop") { S.web.open.shop = false; S.web.loaded = ""; renderAll(); return; }
+      renderWeb();
+    } else if (st.open || !was.loading) {
+      if (!was.open && st.open) placedKey = "";
+      S.web.st = st; renderWeb();
+    }
+  } catch (e) {}
+  webTimer = setTimeout(webPoll, 900);
+}
+// keep the built-in page over #webhost; hidden while a drawer, dialog or picture viewer covers it
+let placedKey = "";
+function placePane() {
+  if (!S.data || S.data.paneMode !== "native") return;
+  const lb = $("#lightbox");
+  const show = webVisible() && S.web.st.open !== false && !$("#modal").classList.contains("on") && !$("#drawer").classList.contains("on") && !(lb && lb.classList.contains("on"));
+  let r = { x: 0, y: 0, w: 0, h: 0 };
+  if (show) { const b = $("#webhost").getBoundingClientRect(); r = { x: b.left, y: b.top, w: b.width, h: b.height }; }
+  document.body.classList.toggle("paneon", show);
+  const key = [show, r.x, r.y, r.w, r.h, devicePixelRatio].join(",");
+  if (key === placedKey) return;
+  placedKey = key;
+  api("/api/pane/place", Object.assign(r, { dpr: devicePixelRatio, show })).catch(() => { placedKey = ""; });
+}
+setInterval(placePane, 120);
 
 // ---------- actions ----------
 function findAsset(key) { return (S.data.assets || []).find(a => a.key === key); }
@@ -401,7 +748,7 @@ async function openPan(a) {
     openURL(shareLink(u));
   } else if (u.panPath) openURL(panPathURL(u.panPath));
 }
-function boothItemURL(id) { return "https://booth.pm/ja/items/" + id; }
+function boothItemURL(id) { return ((S.data && S.data.boothWeb) || "https://booth.pm") + "/ja/items/" + id; }
 function boothSearchURL(q) { return "https://booth.pm/ja/search/" + encodeURIComponent((q || "").trim()); }
 function boothURL(a) {
   if (!a.boothId) return boothSearchURL(a.boothQuery || a.name);
@@ -414,11 +761,20 @@ function panLine(a) {
   if (l.err && !l.files) return "网盘：" + l.err;
   return `百度网盘，${l.count} 个文件，${fmtSize(l.size)}`;
 }
-function openBuyPage(a) { if (a.purchase) openURL(a.purchase.pageUrl); }
+function openBuyPage(a) { if (a.purchase) openLink(a.purchase.pageUrl); }
 async function startSync() {
+  const mode = S.data.paneMode;
+  if (mode) { // the Booth page shows up in the Booth tab
+    closeModal(); closeDrawer();
+    S.web.back = S.view === "shop" ? null : { view: S.view };
+    S.web.open.shop = true; S.web.loaded = "booth"; S.web.st = { loading: true, title: "Booth 已购" };
+    if (S.view !== "shop") { S.view = "shop"; saveUI(); $("#q").value = S.shop.q; if (!S.shop.started) shopSearch(true); }
+    renderAll();
+  }
   const r = await api("/api/purchases/sync", {});
-  toast(r.ok ? "已打开 Booth 窗口，登录后自动读取" : "正在同步", 4000);
-  S.data.purchaseBusy = true; renderSide(); poll(true);
+  toast(!r.ok ? "正在同步" : mode === "native" ? "在下面的 Booth 页面登录后，会自动读取已购" : mode ? "在打开的窗口里登录 Booth，登录后会自动读取" : "已打开 Booth 窗口，登录后自动读取", 4000);
+  S.data.purchaseBusy = true; renderStatus(); poll(true);
+  if (mode) { placedKey = ""; webPoll(true); }
 }
 async function pickInto(title) {
   const r = await api("/api/pickfolder", { title });
@@ -525,7 +881,7 @@ function newsSec(a) {
   if (!hasNews(a)) return "";
   let h = "";
   if (a.newerOnBooth) h += `<div class="news"><div class="t">Booth 有新版本 <b>${esc(a.newerOnBooth)}</b>（本地 ${esc(a.localVer)}）</div>
-    <div class="btnrow"><button class="btn small" data-d="buypage">打开下载页</button></div></div>`;
+    <div class="btnrow">${a.newerDl ? `<button class="btn small" data-dl="${esc(a.newerDl)}">下载新版本</button>` : `<button class="btn small" data-d="buypage">打开下载页</button>`}</div></div>`;
   if (a.boothNews) h += `<div class="news"><div class="t">商品页有改动（${esc(fmtTime(a.boothNewsAt))}）：${esc(a.boothNews)}</div>
     <div class="btnrow"><button class="btn small" data-d="booth">打开商品页</button><button class="btn small ghost" data-seen="booth">知道了</button></div></div>`;
   if (a.panNews) {
@@ -671,18 +1027,80 @@ function shopOf(a) { return (a.booth && a.booth.shop) || (a.purchase && a.purcha
 function purchaseSec(a) {
   const p = a.purchase;
   const orders = (p.orders || []).map(o => `<div class="order"><span class="d">${esc(o.date || "日期未知")}</span><span class="muted">订单 #${esc(o.id)}</span>
-    <button class="btn small" data-url="${esc(o.url)}">打开订单页</button></div>`).join("");
-  const files = (p.files || []).filter(Boolean);
-  return `<div class="sec"><h4>Booth 已购${p.gift ? "（礼物）" : ""}</h4>
-    ${orders || `<div class="muted small">没有订单号</div>`}
+    <button class="btn small" data-url="${esc(o.url)}">订单页</button></div>`).join("");
+  return `<div class="sec" id="dlsec"><h4 class="withact">Booth 已购${p.gift ? "（礼物）" : ""}${(p.dls || []).length > 1 ? `<button class="h4act" data-d="dlall">全部下载</button>` : ""}</h4>
+    ${dlRows(p)}
+    ${orders}
     <div class="order"><span></span><button class="btn small" data-url="${esc(p.libraryUrl)}">已购列表</button></div>
-    ${files.length ? `<div class="files">${files.map(f => `<span class="file">${esc(f)}</span>`).join("")}</div>` : ""}
     ${p.matched ? `<div class="hint" style="margin-top:6px">按文件名对应</div>` : ""}
   </div>`;
 }
+// ---------- Booth downloads ----------
+function jobFor(dl) { return (S.data.downloads || []).find(j => j.id === dl); }
+function jobText(j) {
+  if (!j) return "";
+  if (j.status === "queued") return "排队中";
+  if (j.status === "running") return j.total ? `${Math.floor(j.done / j.total * 100)}%` : "下载中";
+  if (j.status === "unpacking") return "解压中";
+  if (j.status === "login") return "需要登录";
+  if (j.status === "failed") return j.err || "失败";
+  return "";
+}
+function dlRows(p) {
+  const files = p.files || [], dls = p.dls || [];
+  if (!dls.length) return `<div class="muted small">没有读到可下载的文件，重新同步一次 Booth 已购试试。</div>`;
+  return `<div class="dlrows">${dls.map((id, i) => {
+    const j = jobFor(id), got = (j && j.status === "done" && j.path) || (p.got || [])[i];
+    const busy = j && ["queued", "running", "unpacking"].includes(j.status);
+    const pct = j && j.status === "running" && j.total ? Math.floor(j.done / j.total * 100) : 0;
+    return `<div class="dlrow${busy ? " busy" : ""}" data-dlrow="${esc(id)}">
+      <span class="fn" title="${esc(files[i] || id)}">${esc(files[i] || "文件 " + (i + 1))}</span>
+      <span class="st${j && j.status === "failed" ? " err" : ""}">${busy || (j && j.status !== "done") ? esc(jobText(j)) : got ? "已下载" : ""}</span>
+      ${got && !busy ? `<button class="act" data-gopen="${esc(got)}" title="打开文件夹">${ICON.folder}</button>` : ""}
+      <button class="btn small" data-dl="${esc(id)}"${busy ? " disabled" : ""}>${got ? "重新下载" : "下载"}</button>
+      ${busy ? `<i class="bar" style="width:${pct}%"></i>` : ""}
+    </div>`;
+  }).join("")}</div>`;
+}
+// a thin bar on a card while its files download
+function dlBar(item) {
+  const js = (S.data.downloads || []).filter(j => j.item === item && ["queued", "running", "unpacking"].includes(j.status));
+  if (!js.length) return "";
+  const r = js.find(j => j.status === "running");
+  const pct = r && r.total ? Math.floor(r.done / r.total * 100) : 0;
+  return `<div class="cdl" data-dlitem="${esc(item)}"><i style="width:${pct}%"></i><span>${r ? (r.status === "unpacking" ? "解压中" : pct + "%") : "排队中"}</span></div>`;
+}
+async function startDownload(item, ids) {
+  S.dlAsked = Date.now();
+  const r = await api("/api/booth/download", { item, ids: ids || [] });
+  if (!r.ok) { toast(r.err || "没能开始下载", 3500); return; }
+  toast(r.n ? `开始下载 ${r.n} 个文件` : "已经在下载了");
+  await load(); poll(true);
+}
+// progress between full refreshes
+function refreshDL(jobs) {
+  const known = new Set((S.data.downloads || []).map(j => j.id));
+  const added = jobs.filter(j => !known.has(j.id) && j.status !== "done");
+  if (added.length && Date.now() - (S.dlAsked || 0) > 4000) toast(`已加入下载：${added.map(j => j.name || j.id).join("、")}`, 3500);
+  const before = JSON.stringify((S.data.downloads || []).map(j => [j.id, j.status]));
+  S.data.downloads = jobs;
+  if (before !== JSON.stringify(jobs.map(j => [j.id, j.status]))) return load();
+  document.querySelectorAll("[data-dlitem]").forEach(el => {
+    const item = el.dataset.dlitem, html = dlBar(item);
+    if (html) el.outerHTML = html; else el.remove();
+  });
+  const sec = $("#dlsec .dlrows");
+  if (sec && S.openKey) { const a = findAsset(S.openKey); if (a && a.purchase) sec.outerHTML = dlRows(a.purchase); }
+  if (S.shopOpen && $("#shopfiles")) renderShopDrawer();
+}
 
 function renderDrawer(key, keepScroll) {
-  const a = findAsset(key); if (!a) { closeDrawer(); return; }
+  let a = findAsset(key);
+  if (!a && key.startsWith("purchase:")) { // just downloaded: follow it to its library card
+    a = (S.data.assets || []).find(x => !x.virtual && x.boothId === key.slice(9) && x.purchase);
+    if (a) { key = a.key; keepScroll = false; }
+  }
+  if (!a) { closeDrawer(); return; }
   if (S.openKey !== key) { S.panOpen = new Set(); S.panClosed = new Set(); S.dirty = new Set(); S.coverPick = null; S.stylePick = null; }
   const u = a.user; const d = S.data;
   const dr = $("#drawer"); const scroll = keepScroll ? ($(".dbody", dr) || {}).scrollTop : 0;
@@ -705,7 +1123,7 @@ function renderDrawer(key, keepScroll) {
       <div class="sub">${shopOf(a) ? esc(shopOf(a)) + "　" : ""}${b && b.price ? esc(b.price) + "　" : ""}${a.virtual ? esc(orderLine(a.purchase)) + "，未下载" : a.panOnly ? esc(panLine(a)) : `${fmtSize(a.size)}　${a.files} 个文件${a.packages ? `　${a.packages} 个 unitypackage` : ""}`}</div>
       ${b && b.err && !a.virtual ? `<div class="small err">Booth：${esc(b.err)}</div>` : ""}
       <div class="rowbtn">
-        ${a.virtual ? `<button class="btn primary" data-d="buypage">${ICON.download}<span style="margin-left:6px">打开下载页</span></button>`
+        ${a.virtual ? `<button class="btn primary" data-d="dlall">${ICON.download}<span style="margin-left:6px">下载</span></button>`
           : a.panOnly ? `<button class="btn primary" data-d="pan">${ICON.cloud}<span style="margin-left:6px">打开网盘分享</span></button>`
           : `<button class="btn primary" data-d="open">${ICON.folder}<span style="margin-left:6px">打开文件夹</span></button>`}
         ${hasShare(a) && !a.panOnly ? `<button class="btn" data-d="pan">打开网盘</button>` : ""}
@@ -717,7 +1135,7 @@ function renderDrawer(key, keepScroll) {
   <div class="dbody">
     ${newsSec(a)}
     ${variantSec(a)}
-    ${a.panOnly ? "" : a.virtual ? `<div class="sec"><h4>保存位置</h4><div class="muted small">还没下载。放进素材文件夹后会自动对上。</div></div>`
+    ${a.panOnly ? "" : a.virtual ? `<div class="sec"><h4>保存位置</h4><div class="muted small">还没下载。会下载到 ${esc(S.data.dlDir || "素材文件夹")}。</div></div>`
     : `<div class="sec"><h4>保存位置</h4>
       ${(a.locations || []).map((l, i) => `<div class="loc"><span class="k">${{ dir: "文件夹", zip: "zip", rar: "rar", "7z": "7z", unitypackage: "unitypackage", file: "文件" }[l.kind] || l.kind}</span>
         <span class="p">${esc(l.path)}</span><span class="s">${fmtSize(l.size)}</span>
@@ -771,7 +1189,7 @@ function renderDrawer(key, keepScroll) {
   });
 }
 function closeDrawer() {
-  S.openKey = null; $("#drawer").classList.remove("on"); $("#drawer").setAttribute("aria-hidden", "true");
+  S.openKey = null; S.shopOpen = null; $("#drawer").dataset.kind = ""; $("#drawer").classList.remove("on"); $("#drawer").setAttribute("aria-hidden", "true");
   if (!$("#modal").classList.contains("on")) $("#scrim").classList.remove("on");
 }
 function collectUser(a) {
@@ -933,6 +1351,10 @@ function openSettings(focusId) {
     <div class="row"><label>显示</label>
       ${chk("s_zh", !s.hideZh, "显示中文名")}
       <select id="s_win" class="optsel"><option value="">在窗口中打开</option><option value="tab"${s.windowMode === "tab" ? " selected" : ""}>在浏览器标签页中打开</option></select></div>
+    <div class="row"><label>Booth 下载位置</label>
+      <div class="inline"><input id="s_dldir" value="${esc(s.downloadDir || "")}" placeholder="${esc((s.roots || [])[0] || "第一个素材文件夹")}"><button class="btn small" data-pickone="s_dldir">${ICON.folder}<span>选择…</span></button></div>
+      ${chk("s_extract", !s.noExtract, "下载后自动解压")}
+      ${chk("s_keepzip", s.keepZip, "解压后保留压缩包")}</div>
     <div class="row"><label>代理</label><input id="s_proxy" value="${esc(s.proxy || "")}" placeholder="留空使用系统代理，例如 127.0.0.1:7890"></div>
     <div class="row"><label>素体识别表（显示名=别名1|别名2）</label><textarea id="s_bases" style="min-height:120px">${esc((s.bases || []).join("\n"))}</textarea></div>
     <div class="row"><label>风格标签（标签名=关键词1|关键词2）</label><textarea id="s_styles" style="min-height:140px">${esc((s.styles || []).join("\n"))}</textarea></div>
@@ -1011,7 +1433,7 @@ async function sendFeedback() {
 }
 
 // ---------- netdisk-only asset ----------
-function openPanAdd() {
+function openPanAdd(prefill) {
   const m = $("#modal");
   m.innerHTML = `<div class="mhead">添加网盘素材</div><div class="mbody">
     <div class="row"><label>分享链接或分享文字</label><textarea id="pa_text" placeholder="链接: https://pan.baidu.com/s/1xxxx 提取码: abcd"></textarea></div>
@@ -1021,6 +1443,7 @@ function openPanAdd() {
   m.classList.add("on"); $("#scrim").classList.add("on");
   $("#pa_text").focus();
   $("#pa_text").addEventListener("input", e => { const r = parseShareText(e.target.value); if (r.pwd && !$("#pa_pwd").value) $("#pa_pwd").value = r.pwd; });
+  if (prefill) { $("#pa_text").value = prefill; $("#pa_text").dispatchEvent(new Event("input")); }
 }
 
 // ---------- first run ----------
@@ -1063,7 +1486,59 @@ async function finishSetup() {
 // ---------- events ----------
 document.addEventListener("click", async e => {
   const t = e.target;
-  if (t.closest("#btnSync")) { startSync(); return; }
+  if (t.closest("#btnSync") || t.closest("#btnDLLogin")) { startSync(); return; }
+  if (t.closest("#btnDLCancel")) { await api("/api/booth/download/cancel", {}); toast("已取消下载"); poll(true); return; }
+  if (t.closest("#btnDLMissing")) {
+    const list = (S.data.assets || []).filter(a => a.virtual && matches(a));
+    if (!confirm(`下载这 ${list.length} 件已购商品？会下载到 ${S.data.dlDir}。`)) return;
+    S.dlAsked = Date.now();
+    const r = await api("/api/booth/download/missing", { items: list.map(a => a.boothId) });
+    toast(r.n ? `开始下载 ${r.n} 个文件` : "没有要下载的"); poll(true); return;
+  }
+  if (t.closest("#vLib")) { setView("lib"); return; }
+  if (t.closest("#vShop")) { if (S.view === "shop" && S.web.open.shop) closeWeb(); else setView("shop"); return; }
+  if (t.closest("#vXy")) { setView("xianyu"); return; }
+  const wb = t.closest("[data-w]");
+  if (wb) { webAction(wb.dataset.w); return; }
+  const xl = t.closest("[data-xy]");
+  if (xl) { openWeb(xl.dataset.xy === "home" ? XY_HOME : XY_BASE + "/" + xl.dataset.xy, "xianyu"); return; }
+  const bl = t.closest("[data-bl]");
+  if (bl) { if (bl.dataset.bl === "sync") startSync(); else openWeb(bl.dataset.bl === "cart" ? S.data.boothWeb + "/carts" : bl.dataset.bl === "login" ? S.data.boothWeb + "/users/sign_in" : bl.dataset.bl === "library" ? S.data.boothAccounts + "/library" : boothHome(), "booth"); return; }
+  const sc = t.closest(".side [data-sc], .side [data-sb], .side [data-ss]");
+  if (sc && S.view === "shop") {
+    const [set, v] = sc.dataset.sc !== undefined ? [S.shop.cats, sc.dataset.sc] : sc.dataset.sb !== undefined ? [S.shop.bases, sc.dataset.sb] : [S.shop.styles, sc.dataset.ss];
+    set.has(v) ? set.delete(v) : set.add(v);
+    if (S.web.open.shop) closeWeb();
+    saveUI(); renderShopSide(); shopSoon(); return;
+  }
+  if (t.closest("#shAllBases")) { S.shop.allBases = true; renderShopSide(); return; }
+  if (t.closest("#shopClear")) { if (S.web.open.shop) closeWeb(); const sh = S.shop; sh.cats.clear(); sh.bases.clear(); sh.styles.clear(); sh.q = ""; $("#q").value = ""; saveUI(); renderShopSide(); shopSearch(true); return; }
+  if (t.closest("#shopMore")) { S.shop.page++; shopSearch(false); return; }
+  const scard = t.closest(".shopcard");
+  if (scard && !t.closest(".drawer")) { openShopItem(scard.dataset.shop); return; }
+  const sdr = t.closest(".drawer");
+  if (sdr && S.shopOpen) {
+    const it = (S.shop.detail || {}).item;
+    if (t.matches(".bimgs img")) { const all = [...sdr.querySelectorAll(".bimgs img")].map(i => i.dataset.big); return showBig(all, all.indexOf(t.dataset.big)); }
+    const dlb = t.closest("[data-dl],[data-gopen]");
+    if (dlb) { if (dlb.dataset.gopen) return openPath(dlb.dataset.gopen); await startDownload(S.shopOpen, [dlb.dataset.dl]); return openShopItem(S.shopOpen); }
+    const b = t.closest("[data-sd]"); if (!b) return;
+    switch (b.dataset.sd) {
+      case "close": return closeDrawer();
+      case "booth": return openWeb(boothItemURL(S.shopOpen), "booth");
+      case "lib": { const key = it && it.ownedKey; closeDrawer(); setView("lib"); if (key) renderDrawer(key); return; }
+      case "dlall": await startDownload(S.shopOpen); return openShopItem(S.shopOpen);
+      case "trans": {
+        const k = "shop:" + S.shopOpen, dd = S.desc[k] = S.desc[k] || {};
+        if (dd.zh) { dd.showZh = !dd.showZh; return renderShopDrawer(); }
+        dd.loading = true; renderShopDrawer();
+        const r = await api("/api/translate", { text: it.desc });
+        dd.loading = false; if (r.ok) { dd.zh = r.text; dd.showZh = true; } else toast(r.err || "翻译失败", 3500);
+        return renderShopDrawer();
+      }
+    }
+    return;
+  }
   if (t.closest("#btnSyncCancel")) { await api("/api/purchases/cancel", {}); toast("正在取消"); poll(true); return; }
   if (t.closest("#btnStyles")) { openSettings("s_styles"); return; }
   const side = t.closest(".side [data-cat], .side [data-usage], .side [data-share], .side [data-root], .side [data-base], .side [data-purchase], .side [data-style], .side [data-recent]");
@@ -1081,21 +1556,22 @@ document.addEventListener("click", async e => {
   }
   if (t.closest("#clearFilters")) { S.q = ""; $("#q").value = ""; S.cat = "全部"; S.style = ""; S.recent = ""; S.bases.clear(); S.usage = S.share = S.root = S.purchase = "all"; renderSide(); renderGrid(); return; }
   if (t.closest("#emptySettings") || t.closest("#btnSettings")) { openSettings(); return; }
-  if (t.closest("#btnPanAdd")) { openPanAdd(); return; }
+  if (t.closest("#btnPanAdd")) { openPanAdd(""); return; }
   if (t.closest("#btnUpdate")) { openUpdate(false); return; }
   if (t.closest("#btnVersion")) { openUpdate(true); return; }
   if (t.closest("#btnFeedback")) { openFeedback(); return; }
   if (t.closest("#btnScan")) { const r = await api("/api/scan", { scan: true, usage: true, booth: S.data.settings.autoBooth }); toast(r.ok ? "开始扫描" : "正在扫描"); poll(true); return; }
 
   const card = t.closest(".card");
-  if (card && !t.closest(".drawer")) {
+  if (card && !t.closest(".drawer") && card.dataset.key) {
     const a = findAsset(card.dataset.key); if (!a) return;
     const act = t.closest("[data-act]");
     const what = act ? act.dataset.act : card.dataset.group ? "edit" : "open";
-    if (what === "open") { if (a.virtual) openBuyPage(a); else if (a.panOnly) openPan(a); else { const l = (a.locations || [])[0]; if (l) openPath(l.path); } }
+    if (what === "open") { if (a.virtual) renderDrawer(a.key); else if (a.panOnly) openPan(a); else { const l = (a.locations || [])[0]; if (l) openPath(l.path); } }
+    else if (what === "dl") startDownload(a.boothId);
     else if (what === "buypage") openBuyPage(a);
     else if (what === "pan") openPan(a);
-    else if (what === "booth") openURL(boothURL(a));
+    else if (what === "booth") goBooth(a);
     else if (what === "edit") renderDrawer(a.key);
     return;
   }
@@ -1124,9 +1600,14 @@ document.addEventListener("click", async e => {
       if (m.panOnly) return openPan(m);
       const l = (m.locations || [])[0]; if (l) openPath(l.path); return;
     }
+    const dlb = t.closest("[data-dl],[data-gopen]");
+    if (dlb) {
+      if (dlb.dataset.gopen) return openPath(dlb.dataset.gopen);
+      return startDownload(a.boothId || (a.purchase && a.purchase.id), [dlb.dataset.dl]);
+    }
     const btn = t.closest("[data-d],[data-loc],[data-copy],[data-cover],[data-url],[data-link]");
     if (!btn) return;
-    if (btn.dataset.url !== undefined) return openURL(btn.dataset.url);
+    if (btn.dataset.url !== undefined) return openLink(btn.dataset.url);
     if (btn.dataset.link !== undefined) {
       const u = collectUser(a); u.boothUrl = boothItemURL(btn.dataset.link); u.noBooth = false; S.bs = null;
       return saveUser(a, u, "已关联");
@@ -1138,13 +1619,14 @@ document.addEventListener("click", async e => {
       case "close": return closeDrawer();
       case "open": { const l = (a.locations || [])[0]; if (l) openPath(l.path); return; }
       case "pan": return openPan(a);
-      case "booth": return openURL(boothURL(a));
+      case "booth": return openLink(boothURL(a));
       case "buypage": return openBuyPage(a);
+      case "dlall": return startDownload(a.purchase.id);
       case "panrefresh": await api("/api/pan/refresh", { key: a.key }); toast("重新读取中"); poll(true); return;
       case "pandelete": if (!confirm("从素材库移除？网盘里的文件不受影响。")) return;
         await api("/api/user", { key: a.key, delete: true }); closeDrawer(); toast("已移除"); load(); return;
       case "bsearch": return runBoothSearch(a, ($("#bs_q").value || "").trim());
-      case "bopen": return openURL(boothSearchURL(($("#bs_q") || {}).value || a.boothQuery || a.name));
+      case "bopen": return openLink(boothSearchURL(($("#bs_q") || {}).value || a.boothQuery || a.name));
       case "bchange": return runBoothSearch(a, a.boothQuery || a.name);
       case "bconfirm": { const u = collectUser(a); u.boothUrl = boothItemURL(a.boothId); u.noBooth = false; return saveUser(a, u, "已确认"); }
       case "breject": { const u = collectUser(a); u.boothUrl = ""; u.noBooth = true; S.bs = { key: a.key, q: a.boothQuery || a.name, hits: (a.boothHits || []).filter(h => h.id !== a.boothId) }; return saveUser(a, u, "已取消匹配"); }
@@ -1186,6 +1668,8 @@ document.addEventListener("click", async e => {
     return;
   }
   if (m) {
+    const po = t.closest("[data-pickone]");
+    if (po) { const p = await pickInto("选择 Booth 下载位置"); if (p) $("#" + po.dataset.pickone).value = p; return; }
     const pt = t.closest("[data-pickto]");
     if (pt) {
       const p = await pickInto(pt.dataset.pickto === "s_roots" ? "选择放素材的文件夹" : "选择 Unity 工程或工程所在的文件夹");
@@ -1236,7 +1720,8 @@ document.addEventListener("click", async e => {
       const s = Object.assign({}, S.data.settings, { roots: lines("#s_roots"), projectRoots: lines("#s_proj"), proxy: $("#s_proxy").value.trim(),
         autoBooth: $("#s_auto").checked, manualRescan: !$("#s_rescan").checked, bases: lines("#s_bases"),
         hideZh: !$("#s_zh").checked, noAutoMatch: !$("#s_match").checked, windowMode: $("#s_win").value, styles: lines("#s_styles"),
-        noUpdateCheck: !$("#s_upd").checked, noWatch: !$("#s_watch").checked, noSync: !$("#s_sync").checked });
+        noUpdateCheck: !$("#s_upd").checked, noWatch: !$("#s_watch").checked, noSync: !$("#s_sync").checked,
+        downloadDir: $("#s_dldir").value.trim(), noExtract: !$("#s_extract").checked, keepZip: $("#s_keepzip").checked });
       const o = S.data.settings, same = (x, y) => JSON.stringify(x || []) === JSON.stringify(y || []);
       const noRescan = same(s.roots, o.roots) && same(s.projectRoots, o.projectRoots) && same(s.bases, o.bases) && s.autoBooth === o.autoBooth;
       await api("/api/settings", { settings: s, noRescan }); closeModal(); toast(noRescan ? "已保存" : "已保存，正在重新扫描"); noRescan ? load() : poll(true);
@@ -1248,7 +1733,9 @@ document.addEventListener("click", async e => {
 document.addEventListener("change", e => {
   if (e.target.dataset && e.target.dataset.sk && S.setup) { S.setup[e.target.dataset.sk][+e.target.dataset.si].checked = e.target.checked; return; }
   if (e.target.id === "showHidden") { S.showHidden = e.target.checked; renderSide(); renderGrid(); }
-  if (e.target.id === "sort") { S.sort = e.target.value; try { localStorage.setItem("vrclib.ui", JSON.stringify({ sort: S.sort })); } catch (x) {} renderGrid(); }
+  if (e.target.id === "sort") { S.sort = e.target.value; saveUI(); renderGrid(); }
+  if (e.target.id === "shopSort") { S.shop.sort = e.target.value; saveUI(); shopSearch(true); }
+  if (e.target.dataset && e.target.dataset.shf) { S.shop[e.target.dataset.shf] = e.target.checked; saveUI(); if (e.target.dataset.shf === "adult") shopSearch(true); else renderShopGrid(); }
 });
 document.addEventListener("toggle", e => {
   const d = e.target;
@@ -1273,17 +1760,33 @@ document.addEventListener("keydown", e => {
     else if (e.key === "ArrowLeft" || e.key === "ArrowRight") showBig(S.lb.list, S.lb.i + (e.key === "ArrowLeft" ? -1 : 1));
     return;
   }
-  if (e.key === "Escape") { if ($("#modal").classList.contains("on")) closeModal(); else closeDrawer(); }
+  if (e.key === "Escape") {
+    if ($("#modal").classList.contains("on")) closeModal();
+    else if ($("#drawer").classList.contains("on")) closeDrawer();
+    else if (S.view === "shop" && S.web.open.shop) closeWeb();
+  }
+  if (e.key === "Enter" && document.activeElement.classList.contains("shopcard")) { openShopItem(document.activeElement.dataset.shop); return; }
   if (e.key === "Enter" && document.activeElement.classList.contains("card")) {
     const a = findAsset(document.activeElement.dataset.key); if (!a) return;
     if (document.activeElement.dataset.group) { renderDrawer(a.key); return; }
-    if (a.virtual) openBuyPage(a); else if (a.panOnly) openPan(a); else if ((a.locations || [])[0]) openPath(a.locations[0].path);
+    if (a.virtual) renderDrawer(a.key); else if (a.panOnly) openPan(a); else if ((a.locations || [])[0]) openPath(a.locations[0].path);
   }
 });
 let qTimer;
 // remember which drawer fields the user has edited, so background refreshes don't overwrite them
 ["input", "change"].forEach(ev => $("#drawer").addEventListener(ev, e => { if (e.target.id && e.target.matches("input, textarea, select")) S.dirty.add(e.target.id); }));
-$("#q").addEventListener("input", e => { clearTimeout(qTimer); qTimer = setTimeout(() => { S.q = e.target.value.trim(); renderSide(); renderGrid(); }, 120); });
+$("#q").addEventListener("input", e => {
+  clearTimeout(qTimer);
+  if (S.view === "xianyu") { S.web.xq = e.target.value; return; }
+  if (S.view === "shop") { qTimer = setTimeout(() => { S.shop.q = e.target.value.trim(); shopSearch(true); }, 700); return; }
+  qTimer = setTimeout(() => { S.q = e.target.value.trim(); renderSide(); renderGrid(); }, 120);
+});
+$("#q").addEventListener("keydown", e => {
+  if (e.key !== "Enter") return;
+  if (S.view === "shop") { clearTimeout(qTimer); if (S.web.open.shop) closeWeb(); S.shop.q = e.target.value.trim(); shopSearch(true); }
+  if (S.view === "xianyu") { const q = e.target.value.trim(); S.web.xq = q; saveUI(); openWeb(q ? XY_BASE + "/search?q=" + encodeURIComponent(q) : XY_HOME, "xianyu"); }
+});
+$("#shopSort").value = S.shop.sort;
 $("#sort").value = S.sort;
 
 // ---------- polling ----------
@@ -1294,15 +1797,22 @@ async function poll(fast) {
     const p = await api("/api/progress");
     if (S.data) {
       const flip = !!S.data.purchaseBusy !== !!p.purchaseBusy;
-      S.data.tasks = p.tasks; S.data.busy = p.busy; S.data.purchaseBusy = p.purchaseBusy; renderStatus();
-      if (flip) renderSide();
+      S.data.tasks = p.tasks; S.data.busy = p.busy; S.data.purchaseBusy = p.purchaseBusy; S.data.dlNeedLogin = p.dlNeedLogin; renderStatus();
+      if (p.downloads && JSON.stringify(p.downloads) !== JSON.stringify(S.data.downloads || [])) refreshDL(p.downloads);
+      if (flip && S.view === "lib") renderSide();
     }
     if (p.rev !== S.rev) await load();
-    pollTimer = setTimeout(poll, p.busy || p.purchaseBusy || fast || S.updWatch ? 1200 : 5000);
+    const dling = (p.tasks || []).some(t => t.name === "download" && t.running);
+    pollTimer = setTimeout(poll, p.busy || p.purchaseBusy || fast || S.updWatch || dling ? 1000 : 5000);
   } catch (e) {
     if (S.updWatch) { S.updRestart = true; if ($("#modal").dataset.kind === "update") renderUpdateModal(); }
     pollTimer = setTimeout(poll, S.updWatch ? 1500 : 4000);
   }
 }
 setInterval(() => fetch("/api/ping").catch(() => {}), 15000);
-load().then(() => { if (S.data.setupNeeded) openSetup(); poll(); });
+load().then(() => {
+  if (S.data.setupNeeded) openSetup();
+  else if (S.data.paneMode && webVisible()) ensurePaneFor(S.view);
+  if (S.view === "shop" && !S.shop.started) shopSearch(true); // the app was closed on the Booth tab
+  poll();
+});

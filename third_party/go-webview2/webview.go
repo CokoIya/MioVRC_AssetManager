@@ -35,6 +35,9 @@ func setWindowContext(wnd uintptr, data interface{}) {
 	windowContext[wnd] = data
 }
 
+// MoveHook runs when the window moves (vrclib patch).
+var MoveHook func()
+
 type browser interface {
 	Embed(hwnd uintptr) bool
 	Resize()
@@ -230,6 +233,9 @@ func wndproc(hwnd, msg, wp, lp uintptr) uintptr {
 		switch msg {
 		case w32.WMMove, w32.WMMoving:
 			_ = w.browser.NotifyParentWindowPositionChanged()
+			if MoveHook != nil { // vrclib patch: other web views in the window follow too
+				MoveHook()
+			}
 		case w32.WMNCLButtonDown:
 			_, _, _ = w32.User32SetFocus.Call(w.hwnd)
 			r, _, _ := w32.User32DefWindowProcW.Call(hwnd, msg, wp, lp)
