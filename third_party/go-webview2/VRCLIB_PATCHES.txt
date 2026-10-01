@@ -1,0 +1,5 @@
+Local changes for vrclib (marked "vrclib patch"):
+- background colour for the window and the web view before the first paint
+- WM_DPICHANGED handling, small icon, arrow cursor, centring on the work area
+- no log.Fatal when WebView2 cannot start: the window is destroyed and New returns nil
+Upstream: https://github.com/jchv/go-webview2 @ 56598839c808a2340edee99204db479f410e9bf4
