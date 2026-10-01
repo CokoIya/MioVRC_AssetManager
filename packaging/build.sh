@@ -2,12 +2,19 @@
 # Cross-build on Linux / WSL: exe + installer + portable zip into dist/.
 # Needs Go 1.24+, NSIS 3 (makensis) and zip. Run from the repository root.
 set -e
-VERSION=$(sed -n 's/^const appVersion = "\(.*\)"/\1/p' main.go)
+VERSION=$(sed -n 's/^var appVersion = "\([^"]*\)".*/\1/p' main.go)
+APP=MioVRC_AssetManager
+CN=MioVRC素材托管工具
 mkdir -p dist
 go test .
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-H windowsgui -s -w" -o "dist/VRC素材库.exe" .
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-H windowsgui -s -w" -o "dist/$APP.exe" .
 cp packaging/installer.nsi packaging/使用说明.txt app.ico dist/
 (cd dist && LC_ALL=C.UTF-8 makensis -INPUTCHARSET UTF8 installer.nsi && rm installer.nsi app.ico)
-rm -rf dist/port && mkdir -p "dist/port/VRC素材库" && cp "dist/VRC素材库.exe" "dist/使用说明.txt" "dist/port/VRC素材库/"
-(cd dist/port && zip -qr "../VRC素材库-便携版-$VERSION.zip" "VRC素材库") && rm -rf dist/port
+rm -rf dist/port && mkdir -p "dist/port/$APP" && cp "dist/$APP.exe" "dist/使用说明.txt" "dist/port/$APP/"
+(cd dist/port && zip -qr "../$APP-portable-$VERSION.zip" "$APP") && rm -rf dist/port
+# the release assets are dist/$APP-setup-x.exe and dist/$APP-portable-x.zip;
+# copies with Chinese names for passing around
+mkdir -p dist/share
+cp "dist/$APP-setup-$VERSION.exe" "dist/share/$CN-安装-$VERSION.exe"
+cp "dist/$APP-portable-$VERSION.zip" "dist/share/$CN-便携版-$VERSION.zip"
 echo "dist/: $(ls dist | tr '\n' ' ')"

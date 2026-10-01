@@ -12,7 +12,9 @@ import (
 	"time"
 )
 
-const appVersion = "1.2.0"
+var appVersion = "1.6.1" // a var so test builds can set it with -ldflags -X
+
+var updatedFrom string // the version this run was updated from (shown once in the window)
 
 var logger *log.Logger
 
@@ -28,7 +30,12 @@ func main() {
 	noWindow := flag.Bool("no-window", false, "不打开窗口（只启动服务）")
 	port := flag.Int("port", 47821, "本地端口")
 	data := flag.String("data", "", "数据文件夹（默认 exe 所在文件夹）")
+	waitPid := flag.Int("wait-pid", 0, "更新后：等这个进程退出再启动")
+	flag.StringVar(&updatedFrom, "updated-from", "", "更新后：之前的版本")
 	flag.Parse()
+	if *waitPid > 0 || updatedFrom != "" {
+		afterUpdate(*waitPid)
+	}
 
 	exe, _ := os.Executable()
 	if *data != "" {
@@ -44,6 +51,9 @@ func main() {
 	}
 	logf("启动 v%s data=%s", appVersion, dataDir)
 	st := LoadStore(filepath.Join(dataDir, "library.json"))
+	if !st.Settings.SetupDone {
+		st.NotesSeen = appVersion // a first install: nothing to tell about changes
+	}
 
 	if *scanOnly {
 		RunPipeline(st, true, true, !*noBooth, false, nil)
@@ -73,6 +83,16 @@ func main() {
 	logf("服务地址 %s", url)
 	srv := &http.Server{Handler: newMux(st)}
 	go func() { _ = srv.Serve(ln) }()
+	go autoCheckUpdate(st)
+	go watchRoots(st)
+	go syncLoop(st)
+	// an update has started the new exe: hand over to it
+	go func() {
+		<-updateDoneCh
+		_ = st.Save()
+		logf("退出（更新）")
+		os.Exit(0)
+	}()
 
 	// first run waits for the setup screen; afterwards refresh in the background on every start
 	if st.Settings.SetupDone && (st.LastScan == 0 || !st.Settings.ManualRescan) {

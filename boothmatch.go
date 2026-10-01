@@ -344,14 +344,12 @@ func RunAutoMatch(st *Store, prog *Task) {
 		}
 		consider(a.Key, a, a.Name, a.Category, hasCover)
 	}
-	for _, key := range sortedKeys(st.User) {
-		if strings.HasPrefix(key, "pan:") {
-			if l := st.Pan[strings.TrimPrefix(key, "pan:")]; l == nil || l.Title == "" {
-				continue // not read yet
-			}
-			name := panAssetName(st, key)
-			consider(key, nil, name, classify(name), false)
+	for _, key := range panCardKeys(st) {
+		if l, _ := panSub(st, key); l == nil || len(l.Files) == 0 {
+			continue // not read yet
 		}
+		v := panOnlyView(st, key)
+		consider(key, nil, v.AutoName, v.Category, false)
 	}
 	st.mu.RUnlock()
 	if len(jobs) > 60 {
@@ -399,6 +397,18 @@ func assetBooth(st *Store, key string, a *Asset) (string, string) {
 	if u != nil && u.BoothURL != "" {
 		if m := reBoothURL.FindStringSubmatch(u.BoothURL); m != nil {
 			return m[1], "user"
+		}
+	}
+	// a share whose folder or files carry the item number ("8099091/AONAMI_….zip")
+	if a == nil && strings.HasPrefix(key, "pan:") {
+		if l, it := panSub(st, key); l != nil {
+			info := analyzePan(l, parseBases(st.Settings.Bases))
+			if it == nil && len(splitPanCached(l)) >= 2 {
+				info.parts = nil // a collection: an item number inside it belongs to one of its products
+			}
+			if id := panBoothID(l, info); id != "" {
+				return id, "name"
+			}
 		}
 	}
 	if a != nil && a.BoothID != "" {
