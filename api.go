@@ -54,6 +54,7 @@ type AssetView struct {
 	Usage        []Usage       `json:"usage"`
 	GuidCount    int           `json:"guidCount"`
 	Packages     int           `json:"packages"`
+	Archives     int           `json:"archives,omitempty"` // archives (and unitypackages inside zips) to unpack for an import
 	Cover        string        `json:"cover"`
 	CoverBig     string        `json:"coverBig"`
 	LocalCovers  []string      `json:"localCovers"`
@@ -91,6 +92,8 @@ type AssetView struct {
 	PanPath      string        `json:"panPath,omitempty"`   // and where it is in the share
 	SplitInto    int           `json:"splitInto,omitempty"` // a share shown as this many product cards
 	CanSplit     int           `json:"canSplit,omitempty"`  // kept whole by the player, but holds this many products
+	FromPan      string        `json:"fromPan,omitempty"`   // downloaded by the program from this netdisk card
+	PanGot       []string      `json:"panGot,omitempty"`    // which parts of that card's file list ("/" = all)
 }
 
 type PanNews struct {
@@ -179,7 +182,7 @@ func buildView(st *Store, a *Asset) AssetView {
 	u := st.User[a.Key]
 	v := AssetView{Key: a.Key, AutoName: a.Name, RawName: a.RawName, AutoCategory: a.Category, AutoBases: a.Bases,
 		Locations: a.Locations, Size: a.Size, Files: a.Files, MTime: a.MTime, FirstSeen: a.FirstSeen, Usage: a.Usage,
-		GuidCount: a.GuidCount, Packages: len(a.Packages), LocalCovers: a.Covers, Hints: a.Hints, HasDir: a.HasDir,
+		GuidCount: a.GuidCount, Packages: len(a.Packages), Archives: len(a.Archives) + a.ZipPackages + a.OtherArchives, LocalCovers: a.Covers, Hints: a.Hints, HasDir: a.HasDir,
 		PSD: isPSDOnly(a), PSDs: a.PSDs, PSDCount: a.PSDCount, PSDInZip: a.PSDInZip}
 	id, src := assetBooth(st, a.Key, a)
 	if u == nil && id != "" {
@@ -319,15 +322,49 @@ func zhSourceOfView(v *AssetView) string {
 func allViews(st *Store) []AssetView {
 	var out []AssetView
 	onDisk := map[string]bool{}
+	// netdisk assets the program downloaded: the folder's card takes their place, with the share link
+	fromPan := map[string]string{}
+	for k, u := range st.User {
+		if strings.HasPrefix(k, "pan:") && u.Downloaded != "" && isDir(u.Downloaded) {
+			fromPan[pathKey(u.Downloaded)] = k
+		}
+	}
+	claimed := map[string]bool{}
 	for _, a := range st.Assets {
 		v := buildView(st, a)
 		if v.Purchase != nil {
 			onDisk[v.BoothID] = true
 		}
+		for _, l := range v.Locations {
+			// the folder itself, or (holding several products, it is scanned as several cards) a folder inside it
+			k, ok := "", false
+			for p, up := pathKey(l.Path), 0; up < 6 && !ok; up++ {
+				if k, ok = fromPan[p]; !ok {
+					q := filepath.Dir(p)
+					if q == p {
+						break
+					}
+					p = q
+				}
+			}
+			if ok && v.FromPan == "" {
+				v.FromPan, claimed[k] = k, true
+				v.PanGot = st.User[k].PanGot
+				surl, _ := splitPanKey(k)
+				if pu := st.User["pan:"+surl]; pu != nil && v.User.ShareURL == "" {
+					v.User.ShareURL, v.User.SharePwd = pu.ShareURL, pu.SharePwd
+					// the share's file list stays, to download more of it later
+					if pl, _ := panSub(st, k); pl != nil {
+						v.Pan = pl
+						v.PanParts = analyzePan(pl, parseBases(st.Settings.Bases)).parts
+					}
+				}
+			}
+		}
 		out = append(out, v)
 	}
 	for _, key := range sortedKeys(st.User) {
-		if !isPanShareKey(key) {
+		if !isPanShareKey(key) || claimed[key] {
 			continue
 		}
 		v := panOnlyView(st, key)
@@ -337,6 +374,9 @@ func allViews(st *Store) []AssetView {
 			out = append(out, v)
 			surl, _ := splitPanKey(key)
 			for _, it := range items {
+				if claimed[panItemKey(surl, it.Path)] {
+					continue
+				}
 				iv := panOnlyView(st, panItemKey(surl, it.Path))
 				if iv.Purchase != nil {
 					onDisk[iv.BoothID] = true
@@ -601,11 +641,17 @@ type stateResp struct {
 	BoothWeb    string        `json:"boothWeb"`           // https://booth.pm (tests: a local server)
 	BoothAcc    string        `json:"boothAccounts"`
 	XYBase      string        `json:"xyBase"` // https://www.goofish.com
+	Import      *ImportJob    `json:"importJob,omitempty"`
+	ArcTools    []string      `json:"arcTools"` // archive programs found (the player's default first)
+	PanJobs     []PanJob      `json:"panJobs"`
+	Baidu       BaiduAccount  `json:"baidu"`
+	BaiduLogin  string        `json:"baiduLogin"` // the login page
+	PanWeb      string        `json:"panWeb"`     // https://pan.baidu.com (tests: a local server)
 }
 
 func tasksSnapshot() []Task {
 	return []Task{taskScan.snapshot(), taskUsage.snapshot(), taskMatch.snapshot(), taskBooth.snapshot(), taskTrans.snapshot(),
-		taskPurchase.snapshot(), taskPan.snapshot(), taskUpdate.snapshot(), taskDownload.snapshot()}
+		taskPurchase.snapshot(), taskPan.snapshot(), taskUpdate.snapshot(), taskDownload.snapshot(), taskPanDL.snapshot(), taskImport.snapshot()}
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -669,6 +715,13 @@ func newMux(st *Store) *http.ServeMux {
 		resp.DefaultBrowser = browserLabel(defaultBrowserExe())
 		resp.Downloads, resp.DLNeedLogin, resp.BoothLogin = dlSnapshot(), dlNeedLogin(), len(loadBoothSession()) > 0
 		resp.PaneMode, resp.BoothWeb, resp.BoothAcc, resp.XYBase = paneMode(), boothWebBase(), boothAccountsBase(), xianyuBase()
+		resp.Import = importSnapshot()
+		resp.PanJobs, resp.Baidu, resp.BaiduLogin, resp.PanWeb = panJobsSnapshot(), baiduAccount(), baiduLoginURL(), panBase()
+		for _, t := range archiveTools() {
+			if t.kind != "tar" && !containsStr(resp.ArcTools, t.name) {
+				resp.ArcTools = append(resp.ArcTools, t.name)
+			}
+		}
 		resp.Tasks = tasksSnapshot()
 		resp.Busy = pipelineBusy()
 		writeJSON(w, resp)
@@ -676,7 +729,7 @@ func newMux(st *Store) *http.ServeMux {
 	mux.HandleFunc("/api/progress", func(w http.ResponseWriter, r *http.Request) {
 		lastPing.Store(time.Now().Unix())
 		writeJSON(w, map[string]any{"rev": curRev(), "tasks": tasksSnapshot(), "busy": pipelineBusy(), "purchaseBusy": purchaseBusy.Load(),
-			"downloads": dlSnapshot(), "dlNeedLogin": dlNeedLogin()})
+			"downloads": dlSnapshot(), "dlNeedLogin": dlNeedLogin(), "importJob": importSnapshot(), "panJobs": panJobsSnapshot()})
 	})
 	mux.HandleFunc("/thumb", func(w http.ResponseWriter, r *http.Request) {
 		p := r.URL.Query().Get("p")
@@ -771,6 +824,8 @@ func newMux(st *Store) *http.ServeMux {
 		old := st.User[key]
 		if old != nil { // marks kept by the server, whatever an older copy in the window says
 			u.PanSeen, u.BoothSeen = max(u.PanSeen, old.PanSeen), max(u.BoothSeen, old.BoothSeen)
+			u.Downloaded, u.DownloadDir = old.Downloaded, old.DownloadDir
+			u.PanCopy, u.PanSaved, u.PanGot = old.PanCopy, old.PanSaved, old.PanGot
 		}
 		st.User[key] = &u
 		panChanged := shareSurl(u.ShareURL) != "" && (old == nil || old.ShareURL != u.ShareURL || old.SharePwd != u.SharePwd ||
@@ -1022,6 +1077,14 @@ func newMux(st *Store) *http.ServeMux {
 	post("/api/booth/download", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		var ids []string
 		_ = json.Unmarshal(b["ids"], &ids)
+		if p := strings.TrimSpace(str(b, "importTo")); p != "" { // "下载并导入"
+			p = filepath.Clean(strings.Trim(p, `"`))
+			if !isUnityProject(p) {
+				writeJSON(w, map[string]any{"ok": false, "err": "这不是 Unity 工程（找不到 Assets 和 ProjectSettings 文件夹）"})
+				return
+			}
+			setPendingImport(str(b, "item"), ImportReq{Project: p, Pwd: str(b, "pwd"), Recycle: true})
+		}
 		n, err := QueueDownloads(st, str(b, "item"), ids)
 		if err != nil {
 			writeJSON(w, map[string]any{"ok": false, "err": err.Error()})
@@ -1092,6 +1155,9 @@ func newMux(st *Store) *http.ServeMux {
 			writeJSON(w, map[string]any{"ok": false, "err": "页面打不开：" + err.Error()})
 			return
 		}
+		if str(b, "kind") == "pan" && !baiduAccount().LoggedIn {
+			WatchBaiduLogin(st) // a netdisk page: once the player logs in there, downloads can use it
+		}
 		writeJSON(w, map[string]any{"ok": true, "mode": paneMode()})
 	})
 	post("/api/pane/place", func(w http.ResponseWriter, b map[string]json.RawMessage) {
@@ -1124,6 +1190,142 @@ func newMux(st *Store) *http.ServeMux {
 			return
 		}
 		writeJSON(w, map[string]any{"ok": true, "text": text})
+	})
+	// ---------- Baidu Netdisk: the account and downloads ----------
+	post("/api/baidu/check", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		s := loadBaiduSession()
+		if s == nil {
+			writeJSON(w, map[string]any{"ok": true, "baidu": baiduAccount()})
+			return
+		}
+		name, vip, err := newBdClient(st, s).whoami()
+		switch {
+		case errors.Is(err, errBaiduLogin):
+			forgetBaiduSession()
+			bumpRev()
+		case err == nil && (name != s.Name || vip != s.VIP):
+			c := *s
+			c.Name, c.VIP = name, vip
+			_ = saveBaiduSession(&c)
+			bumpRev()
+		}
+		res := map[string]any{"ok": err == nil || errors.Is(err, errBaiduLogin), "baidu": baiduAccount()}
+		if err != nil && !errors.Is(err, errBaiduLogin) {
+			res["err"] = err.Error()
+		}
+		writeJSON(w, res)
+	})
+	post("/api/baidu/logout", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		err := LogoutBaidu()
+		bumpRev()
+		if err != nil {
+			logf("退出百度网盘：%v", err)
+		}
+		writeJSON(w, map[string]any{"ok": true})
+	})
+	post("/api/pan/download", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		var imp *ImportReq
+		if p := strings.TrimSpace(str(b, "importTo")); p != "" {
+			p = filepath.Clean(strings.Trim(p, `"`))
+			if !isUnityProject(p) {
+				writeJSON(w, map[string]any{"ok": false, "err": "这不是 Unity 工程（找不到 Assets 和 ProjectSettings 文件夹）"})
+				return
+			}
+			imp = &ImportReq{Project: p, Pwd: str(b, "pwd"), Recycle: true}
+		}
+		var paths []string
+		_ = json.Unmarshal(b["paths"], &paths)
+		if err := QueuePanDownload(st, str(b, "key"), paths, imp); err != nil {
+			writeJSON(w, map[string]any{"ok": false, "err": err.Error()})
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "login": !baiduAccount().LoggedIn})
+	})
+	post("/api/pan/download/cancel", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		CancelPanDownloads()
+		writeJSON(w, map[string]any{"ok": true})
+	})
+	post("/api/pan/download/dismiss", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		DismissPanJob(str(b, "key"))
+		writeJSON(w, map[string]any{"ok": true})
+	})
+	// ---------- one-click import into a Unity project ----------
+	post("/api/import/start", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		var req ImportReq
+		raw, _ := json.Marshal(b)
+		_ = json.Unmarshal(raw, &req)
+		req.Project = filepath.Clean(strings.Trim(strings.TrimSpace(req.Project), `"`))
+		if err := StartImport(st, req); err != nil {
+			writeJSON(w, map[string]any{"ok": false, "err": err.Error()})
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true})
+	})
+	post("/api/import/choose", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		var paths []string
+		_ = json.Unmarshal(b["paths"], &paths)
+		writeJSON(w, map[string]any{"ok": ChooseImport(paths)})
+	})
+	post("/api/import/dismiss", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		DismissImport()
+		writeJSON(w, map[string]any{"ok": true})
+	})
+	// ---------- the 工程 page ----------
+	post("/api/projects", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		writeJSON(w, map[string]any{"ok": true, "projects": projectCards(st)})
+	})
+	post("/api/project/open", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		p, ok := knownProject(st, str(b, "path"))
+		if !ok {
+			writeJSON(w, map[string]any{"ok": false, "err": "不在工程列表里"})
+			return
+		}
+		if err := openInUnity(p); err != nil {
+			writeJSON(w, map[string]any{"ok": false, "err": err.Error()})
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true})
+	})
+	post("/api/project/cover", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		p, ok := knownProject(st, str(b, "path"))
+		if !ok {
+			writeJSON(w, map[string]any{"ok": false, "err": "不在工程列表里"})
+			return
+		}
+		var on bool
+		_ = json.Unmarshal(b["on"], &on)
+		if err := setCoverHelper(p, on); err != nil {
+			writeJSON(w, map[string]any{"ok": false, "err": err.Error()})
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "running": projectRunning(p)})
+	})
+	// a project picked for the import that the library does not know yet
+	post("/api/import/project", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		p := filepath.Clean(strings.Trim(strings.TrimSpace(str(b, "path")), `"`))
+		if !isUnityProject(p) {
+			writeJSON(w, map[string]any{"ok": false, "err": "这不是 Unity 工程（找不到 Assets 和 ProjectSettings 文件夹）"})
+			return
+		}
+		st.mu.Lock()
+		known := false
+		for _, pr := range st.Projects {
+			if pathKey(pr.Path) == pathKey(p) {
+				known = true
+			}
+		}
+		if !known {
+			st.Settings.ProjectRoots = cleanPaths(append(st.Settings.ProjectRoots, p))
+			st.Projects = append(st.Projects, ProjectInfo{Name: filepath.Base(p), Path: p})
+			sort.Slice(st.Projects, func(i, j int) bool { return st.Projects[i].Name < st.Projects[j].Name })
+		}
+		st.mu.Unlock()
+		if !known {
+			_ = st.Save()
+			bumpRev()
+			StartPipeline(st, false, true, false, false, nil)
+		}
+		writeJSON(w, map[string]any{"ok": true, "path": p, "name": filepath.Base(p)})
 	})
 	post("/api/purchases/cancel", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		purchaseCancel.Store(true)

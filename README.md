@@ -1,6 +1,6 @@
 # MioVRC素材托管工具（MioVRC_AssetManager）
 
-Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth 已购和百度网盘分享，整理成可以浏览、筛选的素材库，并标出哪些素材被 Unity 工程用到。
+Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth 已购和百度网盘分享，整理成可以浏览、筛选的素材库，标出哪些素材被 Unity 工程用到，并能一键导入工程。
 
 单个 exe，有自己的窗口，数据只保存在本机。网站：<https://miovrc.com/vrca/>
 
@@ -11,13 +11,17 @@ Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth �
 - 衣服风格标签：按 Booth 标签自动分类（JK、Sexy、H、可爱、女仆、成熟……），可自定义
 - PSD 源文件：列出 PSD / CLIP / SAI 等文件和尺寸
 - 工程使用：分析 Unity 工程，标出素材在哪些工程里用到
+- 工程页：每个 Unity 工程一张卡片（Unity 版本、上次打开、用到的素材），用对应版本的 Unity 一键打开；可选的封面插件（`com.miovrc.projectcard`，只在编辑器里运行）在打开工程、保存场景时给模型拍正面照当封面。工程里的插件管理交给 VCC / ALCOM
+- 一键导入 Unity 工程：自动解压素材里的压缩包（PSD 包、分卷、嵌套、带密码），解压完压缩包移到回收站，再把 unitypackage 直接写进工程（按 GUID 就地更新已有资源，重名不覆盖；不同素体的包按工程的素体自动选）。rar、7z、分卷用电脑上默认的解压软件（7-Zip、Bandizip、WinRAR、好压、NanaZip、PeaZip）
 - Booth 商品：按文件夹名里的编号、Booth 链接、已购记录或名称搜索关联，显示图片、标签和说明（可翻译）
 - Booth 页：点选分类、素体、风格标签逛 Booth（可多选），标出已购和素材库已有的，可以隐藏它们
 - 内置页面：Booth 的商品页、登录、购物车、已购列表和闲鱼都在软件里打开（第二个 WebView2，登录保存在本机），可以直接购买、和卖家聊天
 - 同步 Booth 已购：在内置页面登录 Booth，读取已购、礼物和订单
-- 下载 Booth 已购：在软件里直接下载（也包括在内置 Booth 页面里点的下载），zip 自动解压到素材文件夹并入库
+- 下载 Booth 已购：在软件里直接下载（也包括在内置 Booth 页面里点的下载），自动解压到素材文件夹并入库；可以「下载并导入」
 - 闲鱼：在内置页面搜索、聊天、下单；聊天里选中的网盘分享可以一键收进素材库
 - 百度网盘：读取分享里的文件列表，只在网盘里的素材也能收录；合集分享按分类文件夹拆成多张卡片
+- 百度网盘下载：在内置页面登录百度网盘（登录加密保存在本机，可以更换账号、退出），分享先存进自己网盘的 `/MioVRCA`，再下载、解压、入库；可以只勾选分享里的部分文件或文件夹；断了可以接着下。速度取决于账号的会员等级
+- 下载位置：默认是 C 盘以外剩余空间最大的盘的 `MioVRCdownload`（优先素材文件夹所在的盘），设置里可以改
 - 新素材自动整理：软件开着时，素材文件夹里新放入的素材会自动扫描归类
 - 更新提示：网盘分享每天、Booth 商品页每周检查一次变化
 - 中文名：素材名下面显示中文翻译，可以手动改
@@ -47,9 +51,11 @@ Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth �
 
 - `library.json`：素材库数据，包括备注、链接和翻译缓存
 - `covers\`：封面缓存
-- `web-login\`：内置页面（Booth、闲鱼）的登录和缓存，删掉等于退出登录
+- `web-login\`：内置页面（Booth、闲鱼、百度网盘）的登录和缓存，把它和 `web-session.dat` 一起删掉等于退出登录
 - `booth-profile\`：没有 WebView2 时，Booth / 闲鱼页面所用的 Edge / Chrome 窗口的配置
+- `web-session.dat`：内置页面里各网站「关掉浏览器就失效」的登录 Cookie 的备份（闲鱼的登录就是这种），启动时放回去，所以重启、更新后不用重新登录；同样用 DPAPI 加密，退出某个网站的登录时会删掉对应的部分
 - `booth-session.dat`：下载 Booth 已购用的登录信息（用 Windows DPAPI 加密，只有本机本用户能解开）
+- `baidu-session.dat`：下载百度网盘分享用的登录信息（只有网盘需要的几个 Cookie，同样用 DPAPI 加密）；在设置里退出百度网盘会删除它
 - `library.log`：运行日志
 
 ## 从源码构建
@@ -96,7 +102,11 @@ x86_64-w64-mingw32-windres --preprocessor=cat -c 65001 -O coff -i app.rc -o rsrc
 | `store.go` | `library.json` 的读写 |
 | `scan.go` / `usage.go` / `thumbs.go` | 扫描素材、分析工程使用情况、封面 |
 | `booth.go` / `boothmatch.go` | Booth 商品信息、搜索与匹配 |
-| `boothdl.go` | 下载 Booth 已购、解压（含 Shift-JIS 文件名） |
+| `boothdl.go` | 下载 Booth 已购、解压 zip（含 Shift-JIS 文件名） |
+| `archive.go` | 压缩包：分卷识别、嵌套解压、优先调用电脑上默认的解压软件（7-Zip / Bandizip / WinRAR / 好压 / NanaZip / PeaZip），移到回收站 |
+| `unityimport.go` | 一键导入：读 unitypackage、按 GUID 写进工程、选素体版本 |
+| `pandl.go` | 百度网盘登录（从内置页面取 Cookie）、转存到自己网盘（全部或勾选的部分）、断点续传下载 |
+| `projects.go` / `unityhelper/` | 工程页：Unity 版本、打开状态、找本机的 Unity 编辑器；工程封面插件 |
 | `boothshop.go` | Booth 页：标签转成 Booth 分类和搜索词，标出已购、已有 |
 | `webpane.go` / `webpane_windows.go` | 内置页面：窗口里的第二个 WebView2（没有时用单独的 Edge / Chrome 窗口），经 127.0.0.1 上的 DevTools 端口控制 |
 | `groups.go` / `psd.go` / `panparts.go` | 同款合并、「For_X」素体识别、衣服风格标签、PSD 统计、网盘分享内容分析 |
@@ -125,6 +135,7 @@ python3 test/mockweb.py 47991
 VRCLIB_BOOTH_BASE=http://127.0.0.1:47990 VRCLIB_BOOTH_DL=http://127.0.0.1:47990 \
 VRCLIB_PAN_BASE=http://127.0.0.1:47991 VRCLIB_BOOTH_WEB=http://127.0.0.1:47991 VRCLIB_BING_BASE=http://127.0.0.1:47991 \
 VRCLIB_XY_BASE=http://127.0.0.1:47991/xy \
+VRCLIB_PCS_BASE=http://127.0.0.1:47991 VRCLIB_BAIDU_LOGIN=http://127.0.0.1:47991/mock/bdlogin \
 VRCLIB_BROWSER=<chrome 路径> VRCLIB_HEADLESS=1 \
 go run . --no-window --data ./testdata
 ```
@@ -133,6 +144,7 @@ go run . --no-window --data ./testdata
 
 - 本工具和 BOOTH、pixiv、闲鱼、百度网盘、VRChat 都没有关系。它读取的是这些网站的网页和公开接口，网站改版后部分功能可能失效。
 - 本工具不会上传你的素材数据。它会连接：Booth、百度网盘、必应翻译（谷歌翻译备用）、GitHub（检查更新），发送反馈时连接 FormSubmit，以及设置里填写的代理；内置页面打开的网站（Booth、闲鱼等）由页面自己连接。
+- 百度网盘下载用的是网盘网页和客户端的接口，不是开放平台接口；只用你自己账号的正常权限，不绕过限速，也不会删除你网盘里的文件（存进 `/MioVRCA` 的副本需要时自己删）。
 - 内置页面开着时，会在 127.0.0.1 上开一个 DevTools 端口，软件靠它控制页面（后退、读取已购、下载按钮）。只有本机程序能连到它。
 
 ## 第三方代码
@@ -144,7 +156,7 @@ go run . --no-window --data ./testdata
 | [golang.org/x/sys](https://go.googlesource.com/sys) | BSD-3-Clause |
 | WebView2Loader.dll（Microsoft WebView2 SDK） | 见 `third_party/go-webview2/webviewloader/sdk/LICENSE.txt` |
 
-Booth 已购页面的读取方式参考了 [BoothDownloader](https://github.com/Myrkie/BoothDownloader) 和 [booth-library-manager](https://github.com/yoshiki-0428/booth-library-manager)，百度网盘分享的读取方式参考了 [AList 的百度分享驱动](https://alistgo.com/guide/drivers/baidu.share.html)。
+Booth 已购页面的读取方式参考了 [BoothDownloader](https://github.com/Myrkie/BoothDownloader) 和 [booth-library-manager](https://github.com/yoshiki-0428/booth-library-manager)，百度网盘分享的读取方式参考了 [AList 的百度分享驱动](https://alistgo.com/guide/drivers/baidu.share.html)，转存和下载参考了 [BaiduPCS-Go](https://github.com/qjfoidnh/BaiduPCS-Go) 和 [BaiduPCS-Py](https://github.com/PeterDing/BaiduPCS-Py)。
 
 A local desktop asset manager for VRChat avatar modding. Organize Booth purchases, local folders and Baidu Netdisk links (share codes & paths) as clickable cards. | VRChat改模素材管理工具：Booth购买记录、本地文件夹、百度网盘链接一站式管理 | VRChat改変素材管理ツール：BOOTH購入品・フォルダ・ネットドライブリンクを一括管理
 关键词：VRChat 改模 素材管理 换装 Booth 百度网盘 素材库

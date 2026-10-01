@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-var appVersion = "1.7.0" // a var so test builds can set it with -ldflags -X
+var appVersion = "1.7.1" // a var so test builds can set it with -ldflags -X
 
 var updatedFrom string // the version this run was updated from (shown once in the window)
 
@@ -86,9 +86,11 @@ func main() {
 	go autoCheckUpdate(st)
 	go watchRoots(st)
 	go syncLoop(st)
+	go keepLoginsLoop()
 	// an update has started the new exe: hand over to it
 	go func() {
 		<-updateDoneCh
+		pane.keepLogins()
 		_ = st.Save()
 		logf("退出（更新）")
 		os.Exit(0)

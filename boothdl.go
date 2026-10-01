@@ -127,14 +127,63 @@ func refreshSession(resp *http.Response) {
 // ---------- where files go ----------
 
 // downloadDir: the folder set in the settings, else the first asset folder. Caller holds st.mu.
+// downloadDir: where downloads go. Unless the player chose a folder: "MioVRCdownload" on the disk
+// (other than C:) with the most free space — one of the disks the library folders are on, else any
+// other hard disk. Once used it stays (st.AutoDLDir), so downloads do not end up all over the place.
+// Caller holds st.mu.
 func downloadDir(st *Store) string {
 	if d := strings.TrimSpace(st.Settings.DownloadDir); d != "" {
 		return d
 	}
-	if len(st.Settings.Roots) > 0 {
-		return st.Settings.Roots[0]
+	if st.AutoDLDir != "" && isDir(filepath.Dir(st.AutoDLDir)) {
+		return st.AutoDLDir
+	}
+	return autoDownloadDir(st.Settings.Roots)
+}
+
+const autoDLName = "MioVRCdownload"
+
+func autoDownloadDir(roots []string) string {
+	pick := func(drives []string) string {
+		best, most := "", uint64(0)
+		for _, d := range drives {
+			if f := diskFree(d + `\`); f > most {
+				best, most = d, f
+			}
+		}
+		return best
+	}
+	var mine []string
+	for _, r := range roots {
+		d := strings.ToUpper(filepath.VolumeName(r))
+		if len(d) == 2 && d[1] == ':' && d != systemDrive() && !containsStr(mine, d) {
+			mine = append(mine, d)
+		}
+	}
+	d := pick(mine)
+	if d == "" {
+		d = pick(fixedDrives())
+	}
+	if d != "" {
+		return d + `\` + autoDLName
+	}
+	if len(roots) > 0 {
+		return roots[0] // only the system disk: the first library folder, as before
 	}
 	return filepath.Join(dataDir, "downloads")
+}
+
+// pinDownloadDir keeps the folder the automatic choice made once something was downloaded there.
+func pinDownloadDir(st *Store, dir string) {
+	st.mu.Lock()
+	changed := strings.TrimSpace(st.Settings.DownloadDir) == "" && st.AutoDLDir != dir
+	if changed {
+		st.AutoDLDir = dir
+	}
+	st.mu.Unlock()
+	if changed {
+		_ = st.Save()
+	}
 }
 
 var winBad = strings.NewReplacer("<", "", ">", "", ":", "：", "\"", "", "/", "／", "\\", "＼", "|", "｜", "?", "？", "*", "＊")
@@ -396,6 +445,7 @@ func dlWorker(st *Store) {
 			default:
 				logf("下载失败 %s: %v", j.ID, err)
 				setJob(j, func(j *DLJob) { j.Status, j.Err = "failed", err.Error() })
+				dropPendingImport(j.Item)
 			}
 			if dlCancel.Load() {
 				CancelDownloads()
@@ -509,22 +559,27 @@ func downloadJob(st *Store, j *DLJob) error {
 	if err := os.MkdirAll(folder, 0755); err != nil {
 		return fmt.Errorf("建不了文件夹：%v", err)
 	}
+	pinDownloadDir(st, dir)
 	setJob(j, func(j *DLJob) { j.Name = name })
 	dst := filepath.Join(folder, name)
 	if err := fetchFile(st, cdn, dst, j); err != nil {
 		return err
 	}
 	final := dst
-	if extract && strings.EqualFold(filepath.Ext(name), ".zip") {
-		setJob(j, func(j *DLJob) { j.Status = "unpacking" })
-		taskDownload.Set(0, 0, "正在解压 "+name)
-		out, err := extractZip(dst, folder)
-		if err != nil {
-			logf("解压失败 %s: %v", dst, err)
-		} else {
-			final = out
+	if extract && isArchiveFile(dst) {
+		final = folder
+		// split archives come as several files: unpack once the item's last file is here, then
+		// what was inside (PSD packs in the main zip …)
+		if !moreOfItem(j) {
+			setJob(j, func(j *DLJob) { j.Status = "unpacking" })
+			taskDownload.Set(0, 0, "正在解压 "+name)
+			var remove func([]string) error
 			if !keep {
-				_ = os.Remove(dst)
+				remove = removeFiles
+			}
+			res := unpackAll([]string{folder}, "", remove, nil)
+			for a, e := range res.Failed {
+				logf("解压失败 %s: %s", a, e)
 			}
 		}
 	}
@@ -537,7 +592,57 @@ func downloadJob(st *Store, j *DLJob) error {
 	_ = st.Save()
 	setJob(j, func(j *DLJob) { j.Status, j.Path, j.Err = "done", final, "" })
 	logf("已下载 %s → %s", name, final)
+	if !moreOfItem(j) {
+		importAfterDownload(st, j, folder)
+	}
 	return nil
+}
+
+// moreOfItem: other files of the same item still waiting or downloading.
+func moreOfItem(j *DLJob) bool {
+	dlMu.Lock()
+	defer dlMu.Unlock()
+	for _, o := range dlJobs {
+		if o == j || (o.Status != "queued" && o.Status != "running") {
+			continue
+		}
+		if o.Item == j.Item && (j.Item != "" || o.ItemName == j.ItemName) {
+			return true
+		}
+	}
+	return false
+}
+
+// ---------- "下载并导入": an import that waits for the item's downloads ----------
+
+var (
+	pendMu      sync.Mutex
+	pendImports = map[string]ImportReq{} // Booth item id → where to import it
+)
+
+func setPendingImport(item string, req ImportReq) {
+	pendMu.Lock()
+	pendImports[item] = req
+	pendMu.Unlock()
+}
+
+func importAfterDownload(st *Store, j *DLJob, folder string) {
+	pendMu.Lock()
+	req, ok := pendImports[j.Item]
+	delete(pendImports, j.Item)
+	pendMu.Unlock()
+	if !ok || j.Item == "" {
+		return
+	}
+	req.Key, req.Paths = "purchase:"+j.Item, []string{folder}
+	startImportWhenFree(st, req)
+}
+
+// dropPendingImport: the download failed, so the import it was waiting for is off.
+func dropPendingImport(item string) {
+	pendMu.Lock()
+	delete(pendImports, item)
+	pendMu.Unlock()
 }
 
 // fetchFile downloads u into dst (through dst.part), reporting progress on the job.

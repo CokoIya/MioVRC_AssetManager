@@ -462,6 +462,7 @@ func (c *scanCtx) addAsset(g *group, root string, hints []string) {
 		a.Files += info.files
 		a.Packages = append(a.Packages, info.packages...)
 		a.Archives = append(a.Archives, info.archives...)
+		a.OtherArchives += info.otherArc
 		a.Covers = append(a.Covers, info.covers...)
 		a.MetaDirs = append(a.MetaDirs, info.metaDirs...)
 		a.PSDs = append(a.PSDs, info.psds...)
@@ -492,6 +493,9 @@ func (c *scanCtx) addAsset(g *group, root string, hints []string) {
 		}
 		if fi.ModTime().Unix() > a.MTime {
 			a.MTime = fi.ModTime().Unix()
+		}
+		if k != "zip" && isArchiveFile(f) {
+			a.OtherArchives++
 		}
 		switch k {
 		case "unitypackage":
@@ -612,6 +616,7 @@ func mergeAsset(dst, src *Asset) {
 	dst.Locations = append(dst.Locations, src.Locations...)
 	dst.Packages = append(dst.Packages, src.Packages...)
 	dst.Archives = append(dst.Archives, src.Archives...)
+	dst.OtherArchives += src.OtherArchives
 	dst.Covers = append(dst.Covers, src.Covers...)
 	dst.MetaDirs = append(dst.MetaDirs, src.MetaDirs...)
 	dst.Hints = append(dst.Hints, src.Hints...)
@@ -651,6 +656,7 @@ type walkInfo struct {
 	mtime        int64
 	packages     []string
 	archives     []string
+	otherArc     int // rar, 7z and split volumes: only unpacked for an import
 	covers       []string
 	metaDirs     []string
 	urlIDs       map[string]int
@@ -739,6 +745,8 @@ func walkAsset(root string) walkInfo {
 			info.packages = append(info.packages, p)
 		case ext == ".zip":
 			info.archives = append(info.archives, p)
+		case isArchiveFile(name):
+			info.otherArc++
 		case ext == ".meta":
 			dir := filepath.Dir(p)
 			if !metaSeen[dir] {

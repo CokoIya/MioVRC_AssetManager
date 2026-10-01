@@ -8,9 +8,11 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -53,6 +55,7 @@ type webPane struct {
 	shown    bool   // on screen (native: placed and visible; window: a visible window)
 	headless bool   // window mode: started without a window for a quiet login check
 	kind     string // "booth" | "xianyu": which tab the page belongs to
+	restored int    // the browser (by its port) whose saved logins were put back
 	shownAt  time.Time
 }
 
@@ -232,6 +235,15 @@ func (p *webPane) page() (*cdpConn, error) {
 	}
 	p.conn, p.target = c, pick.ID
 	c.onEvent = p.event
+	if p.restored != p.port { // this browser was just started
+		p.restored = p.port
+		if n := restoreLogins(c); n > 0 {
+			logf("内置浏览器：放回了 %d 个保存的登录信息", n)
+			if !strings.HasPrefix(pick.URL, "about:") {
+				_, _ = c.call("Page.reload", nil, 5*time.Second)
+			}
+		}
+	}
 	_, _ = c.call("Page.enable", nil, 5*time.Second)
 	_, _ = c.call("Runtime.enable", nil, 5*time.Second)
 	_, _ = c.call("Runtime.addBinding", map[string]any{"name": "mioDownload"}, 5*time.Second)
@@ -476,6 +488,7 @@ func (p *webPane) Cookies(urls []string) ([]savedCookie, error) {
 
 // forgetSites removes the cookies of these sites (by domain suffix) from the pane's profile.
 func (p *webPane) forgetSites(suffixes []string) error {
+	dropKeptLogins(suffixes)
 	raw, err := p.call("Network.getAllCookies", nil, 6*time.Second)
 	if err != nil {
 		return err
@@ -498,6 +511,235 @@ func (p *webPane) forgetSites(suffixes []string) error {
 		}
 	}
 	return nil
+}
+
+// ---------- keeping logins across restarts ----------
+//
+// Some sites give their login cookies no expiry date ("until the browser closes"). 闲鱼 / 淘宝 do, so that login
+// was gone every time the program was started again (an update restarts it). While the pane runs, such cookies of
+// the sites the program is for are
+//   - written back with an expiry date, so the browser keeps them in its profile like any other cookie, and
+//   - saved (encrypted, like the download logins) in web-session.dat, from where the missing ones are put back
+//     when the pane starts: the browser writes its cookies to disk only every half minute, and not at all when
+//     it is ended abruptly.
+// How long a login is good for is still up to the site.
+
+var keepLoginSites = []string{"goofish.com", "taobao.com", "booth.pm", "pixiv.net", "baidu.com"}
+
+const keepLoginFor = 180 * 24 * time.Hour
+
+func keepLoginSite(domain string) bool {
+	d := strings.ToLower(strings.TrimPrefix(domain, "."))
+	for _, s := range keepLoginSites {
+		if d == s || strings.HasSuffix(d, "."+s) {
+			return true
+		}
+	}
+	for _, base := range []string{xianyuBase(), boothWebBase(), panBase()} { // other hosts only in tests
+		if u, err := url.Parse(base); err == nil && u.Hostname() == d {
+			return true
+		}
+	}
+	return false
+}
+
+// keptCookie: a browser cookie as DevTools gives and takes it.
+type keptCookie struct {
+	Name         string          `json:"name"`
+	Value        string          `json:"value"`
+	Domain       string          `json:"domain"` // ".site.com" for the site and its subdomains, "www.site.com" for that host only
+	Path         string          `json:"path"`
+	Expires      float64         `json:"expires"`
+	HTTPOnly     bool            `json:"httpOnly,omitempty"`
+	Secure       bool            `json:"secure,omitempty"`
+	Session      bool            `json:"session,omitempty"`
+	SameSite     string          `json:"sameSite,omitempty"`
+	Priority     string          `json:"priority,omitempty"`
+	SourceScheme string          `json:"sourceScheme,omitempty"`
+	SourcePort   int             `json:"sourcePort,omitempty"`
+	PartitionKey json.RawMessage `json:"partitionKey,omitempty"`
+}
+
+func (k keptCookie) key() string { return k.Domain + "|" + k.Path + "|" + k.Name }
+
+func (k keptCookie) params() map[string]any {
+	m := map[string]any{"name": k.Name, "value": k.Value, "path": k.Path, "secure": k.Secure, "httpOnly": k.HTTPOnly, "expires": k.Expires}
+	if strings.HasPrefix(k.Domain, ".") {
+		m["domain"] = k.Domain
+	} else { // for that host only: it stays that way when given as an address
+		scheme := "http"
+		if k.Secure || k.SourceScheme == "Secure" {
+			scheme = "https"
+		}
+		m["url"] = scheme + "://" + k.Domain + k.Path
+	}
+	if k.SameSite != "" {
+		m["sameSite"] = k.SameSite
+	}
+	if k.Priority != "" {
+		m["priority"] = k.Priority
+	}
+	if k.SourceScheme != "" && k.SourceScheme != "Unset" {
+		m["sourceScheme"] = k.SourceScheme
+		if k.SourcePort > 0 {
+			m["sourcePort"] = k.SourcePort
+		}
+	}
+	return m
+}
+
+var (
+	keptMu   sync.Mutex
+	keptLast string // what the file holds, to write it only when something changed
+)
+
+func keptLoginsFile() string { return filepath.Join(dataDir, "web-session.dat") }
+
+func loadKeptLogins() []keptCookie {
+	b, err := os.ReadFile(keptLoginsFile())
+	if err != nil {
+		return nil
+	}
+	dec, err := unprotectData(b)
+	if err != nil {
+		return nil
+	}
+	var cs []keptCookie
+	_ = json.Unmarshal(dec, &cs)
+	return cs
+}
+
+func saveKeptLogins(cs []keptCookie) {
+	sort.Slice(cs, func(i, j int) bool { return cs[i].key() < cs[j].key() })
+	b, _ := json.Marshal(cs)
+	if string(b) == keptLast {
+		return
+	}
+	if len(cs) == 0 {
+		_ = os.Remove(keptLoginsFile())
+		keptLast = string(b)
+		return
+	}
+	if enc, err := protectData(b); err == nil && os.WriteFile(keptLoginsFile(), enc, 0600) == nil {
+		keptLast = string(b)
+	}
+}
+
+func browserCookies(c *cdpConn) ([]keptCookie, error) {
+	raw, err := c.call("Network.getAllCookies", nil, 5*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	var r struct {
+		Cookies []keptCookie `json:"cookies"`
+	}
+	if err := json.Unmarshal(raw, &r); err != nil {
+		return nil, err
+	}
+	return r.Cookies, nil
+}
+
+// keepLogins looks after the login cookies of those sites (see above). It returns how many it gave an expiry date.
+func (p *webPane) keepLogins() int {
+	p.mu.Lock()
+	c := p.conn
+	ok := p.port > 0 && c != nil && c.alive() // not worth starting the browser for
+	p.mu.Unlock()
+	if !ok {
+		return 0
+	}
+	keptMu.Lock()
+	defer keptMu.Unlock()
+	now := time.Now()
+	cs, err := browserCookies(c)
+	if err != nil {
+		return 0
+	}
+	ours := map[string]bool{} // the ones this has given their date before
+	for _, k := range loadKeptLogins() {
+		ours[k.key()] = true
+	}
+	n := 0
+	until := float64(now.Add(keepLoginFor).Unix())
+	var keep []keptCookie
+	for _, k := range cs {
+		if !keepLoginSite(k.Domain) || (len(k.PartitionKey) > 0 && string(k.PartitionKey) != "null") {
+			continue
+		}
+		stale := ours[k.key()] && k.Expires < float64(now.Add(keepLoginFor-7*24*time.Hour).Unix())
+		if !k.Session && !stale {
+			if ours[k.key()] {
+				keep = append(keep, k)
+			}
+			continue
+		}
+		k.Session, k.Expires, k.PartitionKey = false, until, nil
+		if _, err := c.call("Network.setCookie", k.params(), 3*time.Second); err == nil {
+			if !stale {
+				n++
+			}
+			keep = append(keep, k)
+		}
+	}
+	saveKeptLogins(keep)
+	return n
+}
+
+// restoreLogins puts back the saved login cookies the browser does not have (any more). Called once when the pane's
+// page is first reached; a page already loaded is loaded again so it sees them.
+func restoreLogins(c *cdpConn) int {
+	keptMu.Lock()
+	defer keptMu.Unlock()
+	saved := loadKeptLogins()
+	if len(saved) == 0 {
+		return 0
+	}
+	cs, err := browserCookies(c)
+	if err != nil {
+		return 0
+	}
+	have := map[string]bool{}
+	for _, k := range cs {
+		have[k.key()] = true
+	}
+	n, now := 0, float64(time.Now().Unix())
+	for _, k := range saved {
+		if have[k.key()] || k.Expires <= now || !keepLoginSite(k.Domain) {
+			continue
+		}
+		if _, err := c.call("Network.setCookie", k.params(), 3*time.Second); err == nil {
+			n++
+		}
+	}
+	return n
+}
+
+// dropKeptLogins forgets the saved login cookies of these sites (logging out).
+func dropKeptLogins(suffixes []string) {
+	keptMu.Lock()
+	defer keptMu.Unlock()
+	var keep []keptCookie
+	for _, k := range loadKeptLogins() {
+		d, gone := strings.TrimPrefix(k.Domain, "."), false
+		for _, s := range suffixes {
+			gone = gone || d == s || strings.HasSuffix(d, "."+s)
+		}
+		if !gone {
+			keep = append(keep, k)
+		}
+	}
+	keptLast = "?"
+	saveKeptLogins(keep)
+}
+
+// keepLoginsLoop runs for as long as the program does.
+func keepLoginsLoop() {
+	for {
+		time.Sleep(10 * time.Second)
+		if n := pane.keepLogins(); n > 0 {
+			logf("内置浏览器：%d 个登录信息改为长期保存", n)
+		}
+	}
 }
 
 // closeHidden ends a window-mode pane that was only started for a quiet check.
@@ -564,7 +806,7 @@ func (d *paneDriver) Cookies(urls []string) ([]savedCookie, error) { return pane
 // userLeft: the player closed the pane while the sync was still waiting for the login.
 func (d *paneDriver) userLeft() bool {
 	pane.mu.Lock()
-	other := pane.kind == "xianyu" // the page area went over to 闲鱼
+	other := pane.kind == "xianyu" || pane.kind == "pan" // the page area went over to 闲鱼 or the netdisk
 	pane.mu.Unlock()
 	if other {
 		return true

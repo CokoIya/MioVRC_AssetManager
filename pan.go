@@ -129,6 +129,7 @@ func (p *panClient) do(method, u string, body url.Values) ([]byte, *http.Respons
 }
 
 type panRaw struct {
+	FsID  json.Number `json:"fs_id"`
 	Name  string      `json:"server_filename"`
 	Path  string      `json:"path"`
 	IsDir json.Number `json:"isdir"`
@@ -226,15 +227,9 @@ func fetchPanWeb(st *Store, surl, pwd string, debug *strings.Builder) (*PanListi
 	if resp != nil {
 		fmt.Fprintf(debug, "page: %d %s (%d bytes)\n", resp.StatusCode, resp.Request.URL, len(b))
 	}
-	m := reLocals.FindSubmatch(b)
-	var info struct {
-		ShareUK  json.Number `json:"share_uk"`
-		ShareID  json.Number `json:"shareid"`
-		FileList []panRaw    `json:"file_list"`
-		Title    string      `json:"title"`
-	}
-	if m != nil {
-		_ = json.Unmarshal(m[1], &info)
+	info := parseSharePage(b)
+	if info == nil {
+		info = &bdShare{}
 	}
 	if len(info.FileList) == 0 {
 		page := string(b)

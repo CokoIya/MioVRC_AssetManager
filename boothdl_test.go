@@ -156,7 +156,7 @@ func TestDownloadJob(t *testing.T) {
 	if err := downloadJob(st, j); err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(lib, "9000003 【8アバター対応】Moon Dress", "MoonDress")
+	want := filepath.Join(lib, "9000003 【8アバター対応】Moon Dress") // the item's folder: everything unpacks in there
 	if j.Path != want || j.Status != "done" {
 		t.Errorf("job: %+v", j)
 	}

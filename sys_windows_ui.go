@@ -232,3 +232,66 @@ func createDesktopShortcut() (string, error) {
 	}
 	return strings.TrimSpace(string(out)), nil
 }
+
+// ---------- Recycle Bin ----------
+
+var procSHFileOperationW = modShell32.NewProc("SHFileOperationW")
+
+type shFileOpStruct struct {
+	hwnd                  uintptr
+	wFunc                 uint32
+	pFrom                 *uint16
+	pTo                   *uint16
+	fFlags                uint16
+	fAnyOperationsAborted int32
+	hNameMappings         uintptr
+	lpszProgressTitle     *uint16
+}
+
+// recycleFiles moves files to the Recycle Bin (so an unpacked archive can still be brought back).
+func recycleFiles(paths []string) error {
+	var buf []uint16
+	for _, p := range paths {
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			return err
+		}
+		u, err := syscall.UTF16FromString(abs)
+		if err != nil {
+			return err
+		}
+		buf = append(buf, u...) // each path ends with its NUL
+	}
+	if len(buf) == 0 {
+		return nil
+	}
+	buf = append(buf, 0) // the list ends with a second NUL
+	const foDelete, fofSilent, fofNoConfirmation, fofAllowUndo, fofNoErrorUI = 3, 0x4, 0x10, 0x40, 0x400
+	op := shFileOpStruct{wFunc: foDelete, pFrom: &buf[0], fFlags: fofSilent | fofNoConfirmation | fofAllowUndo | fofNoErrorUI}
+	r, _, _ := procSHFileOperationW.Call(uintptr(unsafe.Pointer(&op)))
+	if r != 0 {
+		return fmt.Errorf("SHFileOperation %d", r)
+	}
+	if op.fAnyOperationsAborted != 0 {
+		return errors.New("取消了")
+	}
+	return nil
+}
+
+// defaultArcExe: the program Windows opens files with this extension with ("" when none is chosen).
+func defaultArcExe(ext string) string {
+	var buf [1024]uint16
+	n := uint32(len(buf))
+	p, _ := syscall.UTF16PtrFromString(ext)
+	verb, _ := syscall.UTF16PtrFromString("open")
+	hr, _, _ := procAssocQueryString.Call(0, 2, uintptr(unsafe.Pointer(p)), uintptr(unsafe.Pointer(verb)),
+		uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&n)))
+	if hr != 0 {
+		return ""
+	}
+	exe := syscall.UTF16ToString(buf[:])
+	if strings.EqualFold(filepath.Base(exe), "explorer.exe") || strings.EqualFold(filepath.Base(exe), "rundll32.exe") {
+		return "" // Windows' own zip folders: no command line
+	}
+	return exe
+}

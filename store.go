@@ -74,6 +74,8 @@ type Asset struct {
 	PSDInZip    int       `json:"psdInZip,omitempty"`
 	ModelFiles  int       `json:"modelFiles,omitempty"`
 	ZipPackages int       `json:"zipPackages,omitempty"`
+	// rar / 7z / split volumes (unpacked only for an import)
+	OtherArchives int `json:"otherArchives,omitempty"`
 }
 
 // PSDFile is one texture source file (PSD, PSB, CLIP, SAI …) found in an asset folder.
@@ -107,6 +109,14 @@ type UserData struct {
 	NoSplit   bool     `json:"noSplit,omitempty"`   // a netdisk collection shown as one card
 	PanSeen   int64    `json:"panSeen,omitempty"`   // share changes up to then have been looked at
 	BoothSeen int64    `json:"boothSeen,omitempty"` // Booth page changes up to then have been looked at
+	// a netdisk asset downloaded by the program: its folder (the card gives way to the folder's)
+	Downloaded  string `json:"downloaded,omitempty"`
+	DownloadDir string `json:"downloadDir,omitempty"` // a download under way (or stopped) goes on here
+	// parts of the card's file list ("/folder/file.zip"; "/" = all of it) saved completely into the copy in the
+	// player's netdisk (PanCopy), and downloaded from there
+	PanCopy  string   `json:"panCopy,omitempty"`
+	PanSaved []string `json:"panSaved,omitempty"`
+	PanGot   []string `json:"panGot,omitempty"`
 }
 
 type BoothInfo struct {
@@ -166,6 +176,7 @@ type Store struct {
 	UpdateChecked int64                `json:"updateChecked,omitempty"`
 	NotesSeen     string               `json:"notesSeen,omitempty"`  // the version whose "what changed" was last shown
 	Downloaded    map[string]*DLRecord `json:"downloaded,omitempty"` // Booth files downloaded here, by downloadable id
+	AutoDLDir     string               `json:"autoDlDir,omitempty"`  // the download folder picked automatically, once used
 }
 
 func defaultSettings() Settings {

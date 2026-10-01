@@ -34,3 +34,18 @@ func pickFolder(title, initial string) (string, error) {
 	return "", errPickCancelled
 }
 func createDesktopShortcut() (string, error) { return "", errors.New("只支持 Windows") }
+
+func hidden(cmd *exec.Cmd) *exec.Cmd { return cmd }
+
+// recycleFiles: outside Windows there is no Recycle Bin to use; the files are removed.
+func recycleFiles(paths []string) error {
+	for _, p := range paths {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+// defaultArcExe: the program Windows opens this kind of file with (none elsewhere).
+func defaultArcExe(ext string) string { return "" }
