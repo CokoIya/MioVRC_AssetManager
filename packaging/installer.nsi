@@ -9,7 +9,7 @@ Target amd64-unicode
 !define EXENAME "MioVRC_AssetManager.exe"
 !define DIRNAME "MioVRCA"
 !define OLDNAME "VRC素材库"
-!define VERSION "1.6.1"
+!define VERSION "1.7.0"
 ; registry keys keep their pre-1.6 names, so installing over an older version updates it
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\VRCAssetLibrary"
 !define DIRKEY "Software\VRCAssetLibrary"
@@ -22,7 +22,7 @@ RequestExecutionLevel user
 SetCompressor /SOLID lzma
 BrandingText "${APPNAME} ${VERSION}"
 
-VIProductVersion "1.6.1.0"
+VIProductVersion "1.7.0.0"
 VIAddVersionKey /LANG=2052 "ProductName" "${APPNAME}"
 VIAddVersionKey /LANG=2052 "FileDescription" "${APPNAME} 安装程序"
 VIAddVersionKey /LANG=2052 "CompanyName" "Coko_Iya"

@@ -25,6 +25,9 @@ type Settings struct {
 	SkipVersion   string   `json:"skipVersion"`   // "remind me no more" for this release
 	NoWatch       bool     `json:"noWatch"`       // do not rescan by itself when the asset folders change
 	NoSync        bool     `json:"noSync"`        // do not re-read shares / Booth pages to spot updates
+	DownloadDir   string   `json:"downloadDir"`   // where Booth purchases are downloaded ("" = first asset folder)
+	NoExtract     bool     `json:"noExtract"`     // keep downloaded zips packed
+	KeepZip       bool     `json:"keepZip"`       // keep the zip after unpacking it
 }
 
 type Location struct {
@@ -158,10 +161,11 @@ type Store struct {
 	BoothMatch map[string]*BoothMatch `json:"boothMatch"` // asset key → Booth search result
 	Trans      map[string]string      `json:"trans"`      // text → simplified Chinese
 
-	ScanStart     int64       `json:"scanStart,omitempty"` // first scan ever: what came later is "new"
-	Update        *UpdateInfo `json:"update,omitempty"`    // latest release seen on GitHub
-	UpdateChecked int64       `json:"updateChecked,omitempty"`
-	NotesSeen     string      `json:"notesSeen,omitempty"` // the version whose "what changed" was last shown
+	ScanStart     int64                `json:"scanStart,omitempty"` // first scan ever: what came later is "new"
+	Update        *UpdateInfo          `json:"update,omitempty"`    // latest release seen on GitHub
+	UpdateChecked int64                `json:"updateChecked,omitempty"`
+	NotesSeen     string               `json:"notesSeen,omitempty"`  // the version whose "what changed" was last shown
+	Downloaded    map[string]*DLRecord `json:"downloaded,omitempty"` // Booth files downloaded here, by downloadable id
 }
 
 func defaultSettings() Settings {

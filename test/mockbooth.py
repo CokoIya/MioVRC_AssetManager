@@ -14,6 +14,7 @@ ITEMS = {
     "9000005": ("【無料】ふわふわ尻尾", "Tail Shop", "tailshop", ["fluffy_tail.zip", "Texture.zip"]),
 }
 GIFTS = {"9000006": ("誕生日のお祝いリボン", "Gift Shop", "giftshop", ["ribbon_gift.zip"])}
+AUTO = [True]
 PAGES = [["9000001", "7770415", "9000003"], ["9000004", "9000005"]]
 ORDERS = [  # id, date, items (None = list page does not show items)
     ("51000001", "2026/09/20", ["9000001"]),
@@ -50,6 +51,38 @@ def page_shell(body, nav=""):
 <main><div class="w-full">{body}</div>{nav}</main><footer><a href="https://booth.pm/ja/items/2222222">footer item</a></footer></body></html>'''
 
 
+def tiny_unitypackage(path):
+    import tarfile
+    bio = io.BytesIO()
+    with tarfile.open(fileobj=bio, mode="w:gz") as tf:
+        for name, data in [("0123456789abcdef0123456789abcdef/pathname", path.encode()), ("0123456789abcdef0123456789abcdef/asset", b"%YAML 1.1")]:
+            ti = tarfile.TarInfo(name); ti.size = len(data); tf.addfile(ti, io.BytesIO(data))
+    return bio.getvalue()
+
+
+def make_file(name):
+    """What a download contains: a zip with the product folder inside (one with Shift-JIS names, as
+    zips made on Japanese Windows have), or a unitypackage."""
+    import zipfile
+    stem = name.rsplit(".", 1)[0]
+    if name.endswith(".unitypackage"):
+        return tiny_unitypackage("Assets/" + stem + "/" + stem + ".prefab")
+    bio = io.BytesIO()
+    sjis = name == "fluffy_tail.zip"
+    real = "ふわふわ尻尾/尻尾.unitypackage".encode("cp932")
+    fake = "X" * len(real)
+    with zipfile.ZipFile(bio, "w", zipfile.ZIP_DEFLATED) as zf:
+        if sjis:
+            zf.writestr(fake, tiny_unitypackage("Assets/Tail/Tail.prefab"))
+        else:
+            zf.writestr(stem + "/" + stem + ".unitypackage", tiny_unitypackage("Assets/" + stem + "/" + stem + ".prefab"))
+            zf.writestr(stem + "/readme.txt", "read me")
+    b = bio.getvalue()
+    if sjis:  # same length: the names in both headers are swapped for the Shift-JIS bytes, no UTF-8 flag
+        b = b.replace(fake.encode(), real)
+    return b
+
+
 class H(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -73,11 +106,39 @@ class H(http.server.BaseHTTPRequestHandler):
             im = Image.new("RGB", (300, 300), (200, 80 + int(u.path[-6:-4]) % 100, 120))
             bio = io.BytesIO(); im.save(bio, "JPEG")
             return self.send(200, bio.getvalue(), "image/jpeg")
+        if u.path.startswith("/cdn/"):  # the CDN needs no login
+            name = urllib.parse.unquote(u.path.split("/")[3])
+            if "PSD" in name or name == "Texture.zip":  # a big file that takes a few seconds
+                import zipfile, os as _os, time as _t
+                bio = io.BytesIO()
+                with zipfile.ZipFile(bio, "w", zipfile.ZIP_STORED) as zf:
+                    zf.writestr(name[:-4] + "/body.psd", _os.urandom(6 << 20))
+                b = bio.getvalue()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", str(len(b)))
+                self.end_headers()
+                for i in range(0, len(b), 256 << 10):
+                    self.wfile.write(b[i:i + (256 << 10)]); self.wfile.flush(); _t.sleep(0.25)
+                return
+            return self.send(200, make_file(name), "application/octet-stream")
+        if u.path == "/mock/autologin":  # off: the sign-in page waits for the player
+            AUTO[0] = q.get("on", ["1"])[0] == "1"
+            return self.send(200, "ok")
         if u.path == "/users/sign_in":
+            if not AUTO[0]:
+                return self.send(200, "<html><body><h1>ログイン</h1><p>waiting</p></body></html>")
             return self.send(200, '''<html><body><h1>ログイン</h1><p>logging in…</p><script>
-              setTimeout(() => { document.cookie = "session=ok; path=/"; location.href = "/library"; }, 2500);</script></body></html>''')
+              setTimeout(() => { document.cookie = "session=ok; path=/; max-age=86400"; document.cookie = "_plaza_session_nktz7u=mock; path=/; max-age=86400"; location.href = "/library"; }, 2500);</script></body></html>''')
         if not logged:
             return self.send(302, "", headers={"Location": "/users/sign_in"})
+        if u.path.startswith("/downloadables/"):  # booth.pm/downloadables/<id>: a redirect to the file on the CDN
+            n = int(u.path.split("/")[2])
+            iid, k = str(n // 10), n % 10
+            it = ITEMS.get(iid) or GIFTS.get(iid)
+            if not it or k >= len(it[3]):
+                return self.send(404, "not found")
+            return self.send(302, "", headers={"Location": f"http://127.0.0.1:{PORT}/cdn/{n}/{urllib.parse.quote(it[3][k])}"})
         if u.path == "/library":
             if page > len(PAGES):
                 return self.send(200, page_shell("<p>購入した商品はありません</p>"))

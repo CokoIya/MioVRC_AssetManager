@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,6 +24,18 @@ type pageDriver interface {
 	Dead() bool
 	Close()
 	CloseBrowser()
+	Cookies(urls []string) ([]savedCookie, error) // the browser's cookies for these sites
+}
+
+// boothCookieURLs: the Booth sites whose cookies make up the login.
+func boothCookieURLs() []string {
+	var out []string
+	for _, u := range []string{boothAccountsBase(), boothDLBase(), boothWebBase()} {
+		if u = u + "/"; !containsStr(out, u) {
+			out = append(out, u)
+		}
+	}
+	return out
 }
 
 func evalString(d pageDriver, expr string, timeout time.Duration) (string, error) {
@@ -112,6 +125,36 @@ func (d *cdpDriver) Navigate(u string) error {
 }
 
 func (d *cdpDriver) Dead() bool { return d.c == nil || d.c.err != nil }
+
+func (d *cdpDriver) Cookies(urls []string) ([]savedCookie, error) {
+	if d.c == nil {
+		return nil, errCDPClosed
+	}
+	res, err := d.c.call("Network.getCookies", map[string]any{"urls": urls}, 8*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	var r struct {
+		Cookies []struct {
+			Name    string  `json:"name"`
+			Value   string  `json:"value"`
+			Domain  string  `json:"domain"`
+			Expires float64 `json:"expires"`
+		} `json:"cookies"`
+	}
+	if err := json.Unmarshal(res, &r); err != nil {
+		return nil, err
+	}
+	var out []savedCookie
+	for _, c := range r.Cookies {
+		exp := int64(c.Expires)
+		if exp < 0 {
+			exp = 0
+		}
+		out = append(out, savedCookie{Name: c.Name, Value: c.Value, Domain: c.Domain, Expires: exp})
+	}
+	return out, nil
+}
 func (d *cdpDriver) Close() {
 	if d.c != nil {
 		d.c.Close()
@@ -129,7 +172,7 @@ type bidiDriver struct {
 
 var reBidiListen = regexp.MustCompile(`WebDriver BiDi listening on (ws://[^\s]+)`)
 
-func startFirefoxDriver(exe, profile, startURL string) (*bidiDriver, error) {
+func startFirefoxDriver(exe, profile, startURL string, extra []string) (*bidiDriver, error) {
 	_ = os.MkdirAll(profile, 0755)
 	userJS := filepath.Join(profile, "user.js")
 	if !fileExists(userJS) {
@@ -145,7 +188,8 @@ func startFirefoxDriver(exe, profile, startURL string) (*bidiDriver, error) {
 		_ = os.WriteFile(userJS, []byte(strings.Join(prefs, "\n")+"\n"), 0644)
 	}
 	_ = os.Remove(filepath.Join(profile, "WebDriverBiDiServer.json"))
-	cmd := exec.Command(exe, "--no-remote", "--profile", profile, "--remote-debugging-port=0", "--wait-for-browser", "--new-window", startURL)
+	args := append([]string{"--no-remote", "--profile", profile, "--remote-debugging-port=0", "--wait-for-browser"}, extra...)
+	cmd := exec.Command(exe, append(args, "--new-window", startURL)...)
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return nil, err
@@ -277,7 +321,41 @@ func (d *bidiDriver) Navigate(u string) error {
 }
 
 func (d *bidiDriver) Dead() bool { return d.c == nil || d.c.err != nil }
-func (d *bidiDriver) Close()     {}
+
+func (d *bidiDriver) Cookies(urls []string) ([]savedCookie, error) {
+	res, err := d.c.call("storage.getCookies", map[string]any{}, 8*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	var r struct {
+		Cookies []struct {
+			Name  string `json:"name"`
+			Value struct {
+				Value string `json:"value"`
+			} `json:"value"`
+			Domain string `json:"domain"`
+			Expiry int64  `json:"expiry"`
+		} `json:"cookies"`
+	}
+	if err := json.Unmarshal(res, &r); err != nil {
+		return nil, err
+	}
+	var out []savedCookie
+	for _, c := range r.Cookies {
+		dom := strings.TrimPrefix(c.Domain, ".")
+		keep := false
+		for _, u := range urls {
+			if pu, err := url.Parse(u); err == nil && (pu.Hostname() == dom || strings.HasSuffix(pu.Hostname(), "."+dom)) {
+				keep = true
+			}
+		}
+		if keep {
+			out = append(out, savedCookie{Name: c.Name, Value: c.Value.Value, Domain: c.Domain, Expires: c.Expiry})
+		}
+	}
+	return out, nil
+}
+func (d *bidiDriver) Close() {}
 func (d *bidiDriver) CloseBrowser() {
 	if d.c != nil && d.c.err == nil {
 		_, _ = d.c.call("browser.close", map[string]any{}, 5*time.Second)

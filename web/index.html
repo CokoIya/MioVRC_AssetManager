@@ -11,12 +11,23 @@
 <body>
 <header class="top">
   <div class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="9" width="26" height="19" rx="4"/><path d="M10 9V7a6 6 0 0 1 12 0v2"/></svg><span>MioVRC素材托管工具</span></div>
+  <div class="views" role="tablist" aria-label="视图">
+    <button id="vLib" class="on" role="tab" aria-selected="true">素材库</button>
+    <button id="vShop" role="tab" aria-selected="false">Booth</button>
+    <button id="vXy" role="tab" aria-selected="false">闲鱼</button>
+  </div>
   <label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="q" type="search" placeholder="搜索名称、店铺、标签、路径" autocomplete="off"></label>
   <select id="sort" title="排序">
     <option value="recent">最近添加</option>
     <option value="name">名称</option>
     <option value="size">占用空间</option>
     <option value="used">在用优先</option>
+  </select>
+  <select id="shopSort" title="排序" hidden>
+    <option value="popular">人气</option>
+    <option value="new">新上架</option>
+    <option value="cheap">价格从低到高</option>
+    <option value="pricey">价格从高到低</option>
   </select>
   <button id="btnPanAdd" class="btn addpan" title="添加百度网盘分享"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>网盘素材</span></button>
   <button id="btnUpdate" class="btn update" hidden></button>
@@ -29,6 +40,7 @@
   <main class="main">
     <div class="resultbar" id="resultbar"></div>
     <div class="grid" id="grid"></div>
+    <section class="webview" id="webview" hidden><div class="webbar" id="webbar"></div><div class="webhost" id="webhost"></div></section>
   </main>
 </div>
 
