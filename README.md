@@ -21,8 +21,8 @@ Windows 上的 VRChat 素材管理工具。它会扫描你下载的素材文件�
 
 在 [Releases](../../releases) 里下载：
 
-- `VRC素材库-安装-x.y.z.exe`：安装版，装在当前用户目录，不需要管理员权限。
-- `VRC素材库-便携版-x.y.z.zip`：便携版，解压到任意文件夹就能用。
+- `VRCLib-Setup-x.y.z.exe`：安装版，装在当前用户目录，不需要管理员权限。
+- `VRCLib-Portable-x.y.z.zip`：便携版，解压到任意文件夹就能用。
 
 运行要求：Windows 10 / 11（64 位）。界面用的是系统自带的 WebView2；极少数没有 WebView2 的电脑会改用 Edge 的独立窗口。
 
