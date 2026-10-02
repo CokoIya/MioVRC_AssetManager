@@ -238,9 +238,13 @@ func findProjects(roots []string) []ProjectInfo {
 }
 
 // projectGUIDs returns every GUID in the project plus the subset living under Packages/ (shared libraries such as lilToon).
-func projectGUIDs(p string) (map[string]bool, map[string]bool) {
-	set := map[string]bool{}
-	pkg := map[string]bool{}
+// projectGUIDs: every GUID of the project, the ones that belong to a package, and for the ones under Assets/
+// the folder they sit in (Assets/<shop>/<item>, or Assets/<item>), as an index into folders.
+func projectGUIDs(p string) (set, pkg map[string]bool, fold map[string]uint16, folders []string) {
+	set = map[string]bool{}
+	pkg = map[string]bool{}
+	fold = map[string]uint16{}
+	folderIdx := map[string]uint16{}
 	var mu sync.Mutex
 	type job struct {
 		path string
@@ -258,6 +262,17 @@ func projectGUIDs(p string) (map[string]bool, map[string]bool) {
 					set[g] = true
 					if j.pkg {
 						pkg[g] = true
+					} else if f := assetFolder(p, j.path); f != "" {
+						i, ok := folderIdx[f]
+						if !ok && len(folders) < 60000 {
+							i = uint16(len(folders))
+							folderIdx[f] = i
+							folders = append(folders, f)
+							ok = true
+						}
+						if ok {
+							fold[g] = i
+						}
 					}
 					mu.Unlock()
 				}
@@ -286,7 +301,23 @@ func projectGUIDs(p string) (map[string]bool, map[string]bool) {
 	}
 	close(paths)
 	wg.Wait()
-	return set, pkg
+	return set, pkg, fold, folders
+}
+
+// assetFolder: "Assets/<a>/<b>" (or "Assets/<a>") for a .meta file under the project's Assets.
+func assetFolder(project, metaPath string) string {
+	rel, err := filepath.Rel(project, metaPath)
+	if err != nil {
+		return ""
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	if len(parts) < 3 || parts[0] != "Assets" {
+		return ""
+	}
+	if len(parts) >= 4 {
+		return "Assets/" + parts[1] + "/" + parts[2]
+	}
+	return "Assets/" + parts[1]
 }
 
 // RunUsageScan computes which Unity projects use which assets by comparing GUIDs.
@@ -301,9 +332,12 @@ func RunUsageScan(st *Store, prog *Task) {
 	prog.Set(0, len(projects)+len(assets), "索引 Unity 工程")
 	guidProj := map[string]uint64{}
 	libGuids := map[string]bool{}
+	projFold := make([]map[string]uint16, len(projects))
+	projDirs := make([][]string, len(projects))
 	for i, p := range projects {
 		prog.Set(i, len(projects)+len(assets), "索引工程 "+p.Name)
-		set, pkg := projectGUIDs(p.Path)
+		set, pkg, fold, dirs := projectGUIDs(p.Path)
+		projFold[i], projDirs[i] = fold, dirs
 		for g := range pkg {
 			libGuids[g] = true
 		}
@@ -404,7 +438,20 @@ func RunUsageScan(st *Store, prog *Task) {
 				default:
 					continue
 				}
-				us = append(us, Usage{Project: p.Name, Matched: matched[j], Total: len(eligible), Ratio: r, Status: status})
+				// where in the project most of its files sit
+				count := map[uint16]int{}
+				for _, g := range eligible {
+					if fi, ok := projFold[j][g]; ok {
+						count[fi]++
+					}
+				}
+				folder, best := "", 0
+				for fi, n := range count {
+					if n > best || (n == best && projDirs[j][fi] < folder) {
+						folder, best = projDirs[j][fi], n
+					}
+				}
+				us = append(us, Usage{Project: p.Name, Matched: matched[j], Total: len(eligible), Ratio: r, Status: status, Folder: folder})
 				counts[p.Name]++
 			}
 		}

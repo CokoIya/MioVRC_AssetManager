@@ -4,7 +4,7 @@
 set -e
 VERSION=$(sed -n 's/^var appVersion = "\([^"]*\)".*/\1/p' main.go)
 APP=MioVRC_AssetManager
-CN=MioVRC素材托管工具
+CN=MioVRCA
 mkdir -p dist
 go test .
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-H windowsgui -s -w" -o "dist/$APP.exe" .

@@ -44,7 +44,7 @@ func webView2Version() string {
 func focusExistingWindow() bool {
 	cls, _ := syscall.UTF16PtrFromString("webview")
 	var h uintptr
-	for _, t := range []string{windowTitle, legacyName} { // a window of a version from before the rename too
+	for _, t := range append([]string{windowTitle}, formerNames...) { // a window of a version from before the renames too
 		title, _ := syscall.UTF16PtrFromString(t)
 		if h, _, _ = procFindWindowW.Call(uintptr(unsafe.Pointer(cls)), uintptr(unsafe.Pointer(title))); h != 0 {
 			break
@@ -110,6 +110,9 @@ func runNativeWindow(url string) bool {
 		return false
 	}
 	logf("窗口：WebView2 %s", ver)
+	if !webview2.IconLoaded {
+		logf("窗口图标没有加载到（exe 里的图标资源读不出来）")
+	}
 	nativePane = &winPane{wv: wv} // Booth / 闲鱼 pages open inside this window
 	webview2.MoveHook = paneParentMoved
 	wv.SetSize(int(w)*55/100, int(h)*60/100, webview2.HintMin)

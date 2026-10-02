@@ -34,6 +34,7 @@ var (
 	User32GetClientRect      = user32.NewProc("GetClientRect")
 	User32PostQuitMessage    = user32.NewProc("PostQuitMessage")
 	User32PostMessageW       = user32.NewProc("PostMessageW")
+	User32SendMessageW       = user32.NewProc("SendMessageW")
 	User32SetWindowTextW     = user32.NewProc("SetWindowTextW")
 	User32PostThreadMessageW = user32.NewProc("PostThreadMessageW")
 	User32GetWindowLongW     = user32.NewProc("GetWindowLongW")

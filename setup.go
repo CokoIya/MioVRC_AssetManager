@@ -33,10 +33,18 @@ func resolveDataDir(exeDir string) string {
 }
 
 const (
-	appName    = "MioVRC素材托管工具"        // shown to people: window title, shortcuts
-	appID      = "MioVRC_AssetManager" // file names, folders, update downloads
+	appName    = "MioVRCA"             // shown to people: window title, shortcuts
+	appID      = "MioVRC_AssetManager" // file names, folders, update downloads (unchanged by the renames)
 	legacyName = "VRC素材库"              // before 1.6: data folder, window title, exe name
 )
+
+// formerNames: what the window and the shortcuts were called before, newest first. A window of an older
+// version is still found by them, and their shortcuts make way for the new one.
+//
+//	MioVRCA素材托管Tools  builds between 1.7.1 and 1.7.2
+//	MioVRC素材托管工具     1.6 to 1.7.1
+//	VRC素材库            before 1.6
+var formerNames = []string{"MioVRCA素材托管Tools", "MioVRC素材托管工具", legacyName}
 
 // appDataFolder: the per-user folder under base (%LOCALAPPDATA%); a library kept there by a version
 // from before the rename stays where it is.

@@ -259,8 +259,7 @@ func openInUnity(p string) error {
 
 // setCoverHelper puts the cover package into the project, or takes it (and the pictures it took) out again.
 func setCoverHelper(p string, on bool) error {
-	pkgs := filepath.Join(p, "Packages")
-	dir := filepath.Join(pkgs, coverPkg)
+	dir := filepath.Join(p, "Packages", coverPkg)
 	ours := func() bool {
 		b, err := os.ReadFile(filepath.Join(dir, "package.json"))
 		var m struct {
@@ -280,39 +279,16 @@ func setCoverHelper(p string, on bool) error {
 				return fmt.Errorf("没能删掉封面插件：%v（Unity 开着的话，关掉再试）", err)
 			}
 		}
-		_ = os.RemoveAll(filepath.Join(p, "UserSettings", "MioVRCA"))
+		// its pictures; what else is in the folder (the AI assistant's) stays
+		ms, _ := filepath.Glob(filepath.Join(p, "UserSettings", "MioVRCA", "cover_*.png"))
+		for _, m := range ms {
+			_ = os.Remove(m)
+		}
+		_ = os.Remove(filepath.Join(p, "UserSettings", "MioVRCA"))
 		logf("工程封面插件已移除：%s", p)
 		return nil
 	}
-	if err := os.MkdirAll(pkgs, 0755); err != nil {
-		return err
-	}
-	// written next to it under a name Unity skips ("~"), then moved in at once
-	tmp := dir + "~"
-	_ = os.RemoveAll(tmp)
-	root := "unityhelper/" + coverPkg
-	err := fs.WalkDir(unityHelper, root, func(fp string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		dst := filepath.Join(tmp, filepath.FromSlash(strings.TrimPrefix(fp, root)))
-		if d.IsDir() {
-			return os.MkdirAll(dst, 0755)
-		}
-		b, err := unityHelper.ReadFile(fp)
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(dst, b, 0644)
-	})
-	if err == nil && statOK(dir) {
-		err = os.RemoveAll(dir) // an older copy of ours
-	}
-	if err == nil {
-		err = os.Rename(tmp, dir)
-	}
-	if err != nil {
-		_ = os.RemoveAll(tmp)
+	if err := putPackage(p, coverPkg, writeEmbeddedPackage(coverPkg)); err != nil {
 		return fmt.Errorf("没能放进封面插件：%v", err)
 	}
 	logf("工程封面插件已放进 %s", p)

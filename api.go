@@ -631,27 +631,28 @@ type stateResp struct {
 
 	Changelog []ChangeEntry `json:"changelog"`
 
-	ShopCats    []string      `json:"shopCats"`
-	Downloads   []DLJob       `json:"downloads"`
-	DLNeedLogin bool          `json:"dlNeedLogin"`
-	DLDir       string        `json:"dlDir"`
-	BoothLogin  bool          `json:"boothLogin"`         // a saved Booth login exists
-	WhatsNew    []ChangeEntry `json:"whatsNew,omitempty"` // shown once after an update
-	PaneMode    string        `json:"paneMode"`           // how Booth / 闲鱼 pages open: "native", "window" or "" (system browser)
-	BoothWeb    string        `json:"boothWeb"`           // https://booth.pm (tests: a local server)
-	BoothAcc    string        `json:"boothAccounts"`
-	XYBase      string        `json:"xyBase"` // https://www.goofish.com
-	Import      *ImportJob    `json:"importJob,omitempty"`
-	ArcTools    []string      `json:"arcTools"` // archive programs found (the player's default first)
-	PanJobs     []PanJob      `json:"panJobs"`
-	Baidu       BaiduAccount  `json:"baidu"`
-	BaiduLogin  string        `json:"baiduLogin"` // the login page
-	PanWeb      string        `json:"panWeb"`     // https://pan.baidu.com (tests: a local server)
+	ShopCats    []string       `json:"shopCats"`
+	Downloads   []DLJob        `json:"downloads"`
+	DLNeedLogin bool           `json:"dlNeedLogin"`
+	DLDir       string         `json:"dlDir"`
+	BoothLogin  bool           `json:"boothLogin"`         // a saved Booth login exists
+	WhatsNew    []ChangeEntry  `json:"whatsNew,omitempty"` // shown once after an update
+	PaneMode    string         `json:"paneMode"`           // how Booth / 闲鱼 pages open: "native", "window" or "" (system browser)
+	BoothWeb    string         `json:"boothWeb"`           // https://booth.pm (tests: a local server)
+	BoothAcc    string         `json:"boothAccounts"`
+	XYBase      string         `json:"xyBase"` // https://www.goofish.com
+	Import      *ImportJob     `json:"importJob,omitempty"`
+	NewProject  *NewProjectJob `json:"newProject,omitempty"`
+	ArcTools    []string       `json:"arcTools"` // archive programs found (the player's default first)
+	PanJobs     []PanJob       `json:"panJobs"`
+	Baidu       BaiduAccount   `json:"baidu"`
+	BaiduLogin  string         `json:"baiduLogin"` // the login page
+	PanWeb      string         `json:"panWeb"`     // https://pan.baidu.com (tests: a local server)
 }
 
 func tasksSnapshot() []Task {
 	return []Task{taskScan.snapshot(), taskUsage.snapshot(), taskMatch.snapshot(), taskBooth.snapshot(), taskTrans.snapshot(),
-		taskPurchase.snapshot(), taskPan.snapshot(), taskUpdate.snapshot(), taskDownload.snapshot(), taskPanDL.snapshot(), taskImport.snapshot()}
+		taskPurchase.snapshot(), taskPan.snapshot(), taskUpdate.snapshot(), taskDownload.snapshot(), taskPanDL.snapshot(), taskImport.snapshot(), taskNP.snapshot()}
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -716,6 +717,7 @@ func newMux(st *Store) *http.ServeMux {
 		resp.Downloads, resp.DLNeedLogin, resp.BoothLogin = dlSnapshot(), dlNeedLogin(), len(loadBoothSession()) > 0
 		resp.PaneMode, resp.BoothWeb, resp.BoothAcc, resp.XYBase = paneMode(), boothWebBase(), boothAccountsBase(), xianyuBase()
 		resp.Import = importSnapshot()
+		resp.NewProject = newProjectSnapshot()
 		resp.PanJobs, resp.Baidu, resp.BaiduLogin, resp.PanWeb = panJobsSnapshot(), baiduAccount(), baiduLoginURL(), panBase()
 		for _, t := range archiveTools() {
 			if t.kind != "tar" && !containsStr(resp.ArcTools, t.name) {
@@ -729,7 +731,7 @@ func newMux(st *Store) *http.ServeMux {
 	mux.HandleFunc("/api/progress", func(w http.ResponseWriter, r *http.Request) {
 		lastPing.Store(time.Now().Unix())
 		writeJSON(w, map[string]any{"rev": curRev(), "tasks": tasksSnapshot(), "busy": pipelineBusy(), "purchaseBusy": purchaseBusy.Load(),
-			"downloads": dlSnapshot(), "dlNeedLogin": dlNeedLogin(), "importJob": importSnapshot(), "panJobs": panJobsSnapshot()})
+			"downloads": dlSnapshot(), "dlNeedLogin": dlNeedLogin(), "importJob": importSnapshot(), "newProject": newProjectSnapshot(), "panJobs": panJobsSnapshot()})
 	})
 	mux.HandleFunc("/thumb", func(w http.ResponseWriter, r *http.Request) {
 		p := r.URL.Query().Get("p")
@@ -784,7 +786,13 @@ func newMux(st *Store) *http.ServeMux {
 	post("/api/openurl", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		u := str(b, "url")
 		mail := strings.HasPrefix(strings.ToLower(u), "mailto:"+strings.ToLower(feedbackMail))
-		if !(strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://") || mail) {
+		// a unityhub:// link installs the Unity version VRChat wants; it needs Unity Hub on this computer
+		hub := strings.HasPrefix(u, "unityhub://")
+		if hub && findUnityHub() == "" {
+			writeJSON(w, map[string]any{"ok": false, "err": "这台电脑上没找到 Unity Hub：先装 Unity Hub（unity.com/download），再来点这里装 Unity"})
+			return
+		}
+		if !(strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://") || mail || hub) {
 			writeJSON(w, map[string]any{"ok": false, "err": "不是网址"})
 			return
 		}
@@ -1271,6 +1279,8 @@ func newMux(st *Store) *http.ServeMux {
 		writeJSON(w, map[string]any{"ok": true})
 	})
 	// ---------- the 工程 page ----------
+	registerAI(st, post)
+	registerPipe(st, post)
 	post("/api/projects", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		writeJSON(w, map[string]any{"ok": true, "projects": projectCards(st)})
 	})

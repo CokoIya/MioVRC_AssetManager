@@ -20,6 +20,9 @@ const ICON = {
   x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
   ext: '<svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
   cube: '<svg viewBox="0 0 24 24"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></svg>',
+  spark: '<svg viewBox="0 0 24 24"><path d="M11 3l1.9 5.1L18 10l-5.1 1.9L11 17l-1.9-5.1L4 10l5.1-1.9z"/><path d="M18.5 15l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z"/></svg>',
+  play: '<svg viewBox="0 0 24 24"><path d="M7 5v14l11-7z"/></svg>',
+  belt: '<svg viewBox="0 0 24 24"><rect x="3" y="14" width="18" height="5" rx="2.5"/><circle cx="6" cy="16.5" r="1"/><circle cx="12" cy="16.5" r="1"/><circle cx="18" cy="16.5" r="1"/><rect x="6" y="6" width="5" height="6" rx="1"/><rect x="13" y="6" width="5" height="6" rx="1"/></svg>',
 };
 
 const S = {
@@ -207,6 +210,7 @@ function renderAll() {
   if (S.view === "shop") { renderShopSide(); renderShopGrid(); }
   else if (S.view === "xianyu") renderXySide();
   else if (S.view === "proj") { renderProjSide(); renderProjGrid(); }
+  else if (S.view === "pipe") { renderPipeSide(); renderPipeMain(); }
   else { renderSide(); renderGrid(); }
   if (webVisible()) renderWeb();
   renderStatus();
@@ -451,28 +455,32 @@ function renderStatus() {
 // Tags instead of Japanese search words: a kind of item (several add up), base bodies and styles
 // (all of them have to match). Cards say what was bought and what is in the library already.
 function applyView() {
-  const v = S.view, shop = v === "shop", xy = v === "xianyu", proj = v === "proj";
+  const v = S.view, shop = v === "shop", xy = v === "xianyu", proj = v === "proj", pipe = v === "pipe";
   document.body.classList.toggle("shopview", shop);
   document.body.classList.toggle("xyview", xy);
   document.body.classList.toggle("projview", proj);
+  document.body.classList.toggle("pipeview", pipe);
   $("#grid").classList.toggle("projgrid", proj);
-  for (const [id, name] of [["#vLib", "lib"], ["#vProj", "proj"], ["#vShop", "shop"], ["#vXy", "xianyu"]]) {
+  $("#grid").classList.toggle("pipegrid", pipe);
+  for (const [id, name] of [["#vLib", "lib"], ["#vProj", "proj"], ["#vPipe", "pipe"], ["#vShop", "shop"], ["#vXy", "xianyu"]]) {
     $(id).classList.toggle("on", v === name); $(id).setAttribute("aria-selected", String(v === name));
   }
-  $("#q").placeholder = shop ? "在 Booth 里搜索（可不填）" : xy ? "在闲鱼搜索，按回车" : proj ? "搜索工程" : "搜索名称、店铺、标签、路径";
+  $("#q").placeholder = shop ? "在 Booth 里搜索（可不填）" : xy ? "在闲鱼搜索，按回车" : proj || pipe ? "搜索工程" : "搜索名称、店铺、标签、路径";
   $("#sort").hidden = v !== "lib"; $("#shopSort").hidden = !shop;
-  $("#btnPanAdd").hidden = shop || proj; $("#btnScan").hidden = v !== "lib";
+  $("#btnPanAdd").hidden = shop || proj || pipe; $("#btnScan").hidden = v !== "lib";
   const web = webVisible();
   $("#webview").hidden = !web; $("#resultbar").hidden = web; $("#grid").hidden = web;
   $(".main").classList.toggle("webon", web);
 }
 function setView(v) {
   if (S.view === v) return;
+  if (S.view === "pipe") pipeKeep();
   S.view = v; saveUI(); closeDrawer();
-  $("#q").value = v === "shop" ? S.shop.q : v === "xianyu" ? S.web.xq : v === "proj" ? S.pq : S.q;
+  $("#q").value = v === "shop" ? S.shop.q : v === "xianyu" ? S.web.xq : v === "proj" || v === "pipe" ? S.pq : S.q;
   $(".main").scrollTop = 0;
   renderAll();
   if (v === "proj") loadProjects();
+  if (v === "pipe") pipeEnter();
   if (v === "shop" && !S.shop.started) shopSearch(true);
   if (S.data.paneMode && webVisible()) ensurePaneFor(v);
 }
@@ -686,7 +694,9 @@ async function loadProjects() {
   if (!r.ok) return;
   const was = JSON.stringify(S.projs);
   S.projs = r.projects || [];
-  if (S.view === "proj" && JSON.stringify(S.projs) !== was) { renderProjSide(); renderProjGrid(); }
+  if (JSON.stringify(S.projs) === was) return;
+  if (S.view === "proj") { renderProjSide(); renderProjGrid(); }
+  if (S.view === "pipe") { if (AI.proj) { const p = S.projs.find(x => x.path === AI.proj.path); if (p) AI.proj = p; } renderPipeSide(); }
 }
 function renderProjSide() {
   const ps = S.projs || [], busy = (S.data.tasks || []).some(t => t.name === "usage" && t.running);
@@ -694,6 +704,10 @@ function renderProjSide() {
     <div class="sidelinks"><button class="navitem" id="btnProjAdd"><span>添加工程…</span></button>
       <button class="navitem" id="btnProjUsage"${busy ? " disabled" : ""}><span>${busy ? "正在统计用到的素材…" : "重新统计用到的素材"}</span></button></div>
     <p class="sidenote">${ps.length ? `${ps.length} 个工程，` : ""}从设置里的「Unity 工程」文件夹找到。工程里的插件和模型请用 VCC 或 ALCOM 管理。</p>
+    <h3>流水线</h3>
+    <p class="sidenote">在卡片上点「流水线」：把导入的衣服、头发、配饰、道具装到模型上，按你定的层级生成菜单开关和图标，还能让 AI 接着做别的改模操作。</p>
+    <p class="sidenote">没有工程的话，到「流水线」页一键新建基础工程。</p>
+    <div class="sidelinks"><button class="navitem" id="btnNewProj"><span>新建基础工程…</span></button><button class="navitem" id="btnAICfg"><span>设置 AI 服务…</span></button></div>
     <h3>封面</h3>
     <p class="sidenote">在卡片上点「开启封面」，会往那个工程的 Packages 里放一个小插件。之后每次打开工程、保存场景，它会给场景里的模型拍一张正面照当封面，旧的自动删掉。</p>
     <p class="sidenote">插件只在 Unity 编辑器里运行，不改场景，也不会跟模型一起上传。点「关闭封面」会删掉插件和照片。</p>`;
@@ -717,6 +731,7 @@ function projCardHTML(p) {
       <div class="pacts">
         <button class="btn small primary" data-pa="unity"${p.running ? ` disabled title="已经在 Unity 里打开了"` : ""}>${ICON.cube}<span>打开 Unity</span></button>
         <button class="btn small" data-pa="folder">${ICON.folder}<span>文件夹</span></button>
+        <button class="btn small" data-pa="ai" title="到流水线页：给这个工程的模型装素材、生成菜单">${ICON.belt}<span>流水线</span></button>
         <button class="btn small ghost" data-pa="cover">${p.helper ? "关闭封面" : "开启封面"}</button>
       </div>
       ${p.assets ? `<button class="puse" data-pa="assets">用到素材库里的 ${p.assets} 个素材</button>` : `<div class="puse none">没用到素材库里的素材</div>`}
@@ -742,6 +757,7 @@ async function addProject() {
 async function projAction(what, path, btn) {
   const p = (S.projs || []).find(x => x.path === path); if (!p) return;
   if (what === "folder") return openPath(p.path);
+  if (what === "ai") return openAI(p.path);
   if (what === "assets") { S.usage = "p:" + p.name; setView("lib"); renderSide(); renderGrid(); return; }
   if (what === "unity") {
     btn.disabled = true;
@@ -1268,7 +1284,7 @@ function impResult(j) {
     <div class="small">${tops ? `放在 ${esc(tops)}。` : ""}Unity 开着的话，切回 Unity 就会刷新；没开就等下次打开工程。</div>
     ${j.removed ? `<div class="small">已把 ${j.removed} 个压缩包移到回收站。</div>` : ""}
     ${(j.failed || []).length ? `<div class="small warnline">没解压开：${j.failed.map(esc).join("；")}</div>` : ""}
-    <div class="btnrow"><button class="btn small" data-gopen="${esc(j.project)}">打开工程文件夹</button><button class="btn small ghost" data-d="impdismiss">知道了</button></div></div>`;
+    <div class="btnrow"><button class="btn small primary" data-aidress="${esc(j.project)}">${ICON.belt}<span>去流水线装上它</span></button><button class="btn small" data-gopen="${esc(j.project)}">打开工程文件夹</button><button class="btn small ghost" data-d="impdismiss">知道了</button></div></div>`;
 }
 function impProgress(j) {
   if (j.stage === "choose") {
@@ -1384,6 +1400,7 @@ function panDoneSec(a) {
 function refreshJobs(imp, pans) {
   const d = S.data, oldImp = d.importJob || null, oldPans = d.panJobs || [];
   d.importJob = imp || null; d.panJobs = pans || [];
+  renderNPLive();
   const stages = (i, ps) => JSON.stringify([i && [i.key, i.stage], ps.map(j => [j.key, j.stage])]);
   if (stages(oldImp, oldPans) !== stages(d.importJob, d.panJobs)) return load();
   document.querySelectorAll("[data-panitem]").forEach(el => { const h = panBar(el.dataset.panitem); if (h) el.outerHTML = h; else el.remove(); });
@@ -1646,6 +1663,22 @@ function renderUpdateBtn() {
   const t = (d.tasks || []).find(x => x.name === "update");
   if (t && t.running && $("#modal").dataset.kind === "update") renderUpdateModal();
 }
+// A newer version was found: the update window opens by itself, once per version each time the program runs.
+// Not over something the player has open; the next tick tries again.
+function announceUpdate() {
+  const d = S.data; if (!d) return;
+  const u = d.update;
+  if (!d.updateNewer || !u || u.version === d.settings.skipVersion || S.updShown === u.version) return;
+  if (S.setup || Date.now() - BOOT_AT < 2500) return; // the first-run screen and "what is new" come first
+  if ($("#modal").classList.contains("on") || S.openKey || S.shopOpen) return;
+  const ae = document.activeElement;
+  if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return; // not in the middle of typing
+  S.updShown = u.version;
+  const m = $("#modal");
+  m.dataset.kind = "update"; S.upd = { info: u, newer: true };
+  renderUpdateModal(); m.classList.add("on"); $("#scrim").classList.add("on");
+}
+const BOOT_AT = Date.now();
 function fmtDate(iso) { const t = Date.parse(iso || ""); return isNaN(t) ? "" : fmtTime(t / 1000).replace(/ .*/, ""); }
 async function openUpdate(force) {
   const m = $("#modal");
@@ -1675,7 +1708,7 @@ function renderUpdateModal() {
   } else if (info && versionNewer(info.version, d.version)) {
     const how = info.zip ? `下载后自动替换并重启，约 ${fmtSize(info.zip.size)}` : info.setup ? "下载安装程序后打开" : "没有安装包，请去发布页下载";
     top = `<div class="uphead"><b>新版本 ${esc(info.version)}</b>${info.published ? `<span class="muted small">${esc(fmtDate(info.published))}</span>` : ""}<span class="muted small">当前 ${esc(d.version)}</span></div>
-      ${info.notes ? `<div class="upnotes">${mdLite(info.notes)}</div>` : ""}
+      ${info.notes ? `<div class="upnotes">${mdLite(info.notes)}</div>` : `<p class="muted small">这一版改了什么，点「发布页」可以看到。</p>`}
       <p class="muted small">${how}${t.msg && t.msg.startsWith("更新失败") ? `<br><span class="err">${esc(t.msg)}</span>` : ""}</p>`;
     foot = `<button class="btn ghost" data-m="upskip">跳过这个版本</button><button class="btn ghost" data-m="uppage">发布页</button><span class="spacer"></span>
       <button class="btn ghost" data-m="close">以后再说</button>
@@ -1756,6 +1789,9 @@ function openSettings(focusId) {
       <div class="muted small" style="margin-top:6px">登录后可以在软件里直接下载网盘分享。登录信息加密保存在这台电脑上。下载速度取决于账号的会员等级，普通账号会被百度限速。</div></div>
     <div class="row"><label>Booth 已购${S.data.purchaseSync ? `<span class="muted small">　已同步 ${S.data.purchaseCount} 件（${esc(fmtTime(S.data.purchaseSync))}）</span>` : ""}</label>
       <div class="btnrow" style="margin-top:0"><button class="btn small" data-m="sync">同步</button><button class="btn small" data-m="forget">退出登录</button>${S.data.purchaseSync ? `<button class="btn small" data-m="clearp">清空记录</button>` : ""}</div></div>
+    <div class="row"><label>流水线的 AI<span class="muted small">　${AI.cfg && AI.cfg.ready ? esc(aiProvLabel(AI.cfg)) : "还没有设置 AI 服务"}</span></label>
+      <div class="btnrow" style="margin-top:0"><button class="btn small" data-m="aicfg">设置 AI 服务</button></div>
+      <div class="muted small" style="margin-top:6px">「流水线」页把导入的素材装到模型上、生成菜单；设置了 AI 服务后还能让 AI 接着改模。不设置也能跑（按网格名字分组）。</div></div>
     <div class="row"><label>其他</label>
       <div class="btnrow" style="margin-top:0"><button class="btn small" data-m="checkupd">更新公告</button><button class="btn small" data-m="feedback">反馈和建议</button>${S.data.canShortcut ? `<button class="btn small" data-m="shortcut">创建桌面快捷方式</button>` : ""}</div></div>
     <div class="row muted small">数据位置：${esc(S.data.dataDir)}</div>
@@ -1766,7 +1802,9 @@ function openSettings(focusId) {
 function closeModal(force) {
   if (S.setup && !force) return; // the first-run screen has to be finished
   if ($("#modal").dataset.kind === "feedback") fbKeep();
-  if (["update", "feedback", "whatsnew"].includes($("#modal").dataset.kind)) $("#modal").dataset.kind = "";
+  if ($("#modal").dataset.kind === "np") npKeep();
+  if (["update", "feedback", "whatsnew", "aicfg", "np"].includes($("#modal").dataset.kind)) $("#modal").dataset.kind = "";
+  $("#modal").classList.remove("wide");
   $("#modal").classList.remove("on"); if (!S.openKey) $("#scrim").classList.remove("on");
 }
 
@@ -1879,6 +1917,554 @@ async function finishSetup() {
   toast("开始扫描"); await load(); poll(true);
 }
 
+// ---------- 流水线的 AI 服务 ----------
+// cfg: the AI service as saved; proj: the project the panel is open for; sess: what the server says about it
+const AI = { cfg: null, proj: null, sess: null, timer: 0, back: null, cfgForm: null, shown: "" };
+async function aiLoadCfg() { const r = await api("/api/ai/config", {}); if (r.ok) AI.cfg = r.ai; return AI.cfg; }
+function aiProvLabel(c) {
+  const p = (c.providers || []).find(x => x.id === c.provider);
+  return p ? `${p.label} · ${(c.profiles[p.id] || {}).model || "还没选模型"}` : "";
+}
+// ---------- 流水线 (the fifth tab: the AI assistant as an assembly line) ----------
+const KINDS = ["素体", "衣服", "头发", "配饰", "道具", "其他"];
+const PIPE = { tool: null, assets: null, pick: {}, kind: {}, extra: [], preset: null, loading: false, hier: "", noAI: false, text: "", err: "" };
+function pipeActive() { return S.view === "pipe" && !!AI.proj; }
+function pipeProject(path) {
+  return (S.projs || []).find(x => x.path === path) || ((S.data || {}).projects || []).find(x => x.path === path);
+}
+// the project card's 「AI 助手」 and the import result's button land here, on that project
+async function openAI(path, folders) {
+  const p = pipeProject(path);
+  if (!p) { toast("这个工程不在工程列表里"); return; }
+  if (folders && folders.length) PIPE.preset = folders.slice();
+  pipeSelect(p, true);
+  if (S.view !== "pipe") setView("pipe"); else { renderPipeSide(); renderPipeMain(); pipeLoad(); }
+}
+function pipeKeep() {
+  if (S.view !== "pipe") return;
+  const h = $("#pipe_hier"), n = $("#pipe_noai"), t = $("#ai_text");
+  if (h) PIPE.hier = h.value;
+  if (n) PIPE.noAI = n.checked;
+  if (t) PIPE.text = t.value;
+}
+function pipeSelect(p, quiet) {
+  if (AI.proj && AI.proj.path === p.path) return;
+  pipeKeep();
+  AI.proj = p; AI.sess = null; PIPE.assets = null; PIPE.pick = {}; PIPE.kind = {}; PIPE.extra = []; PIPE.err = "";
+  try { localStorage.setItem("vrclib.pipeproj", p.path); } catch (e) {}
+  if (!quiet) { renderPipeSide(); renderPipeMain(); pipeLoad(); }
+}
+// coming to the tab: the last project, or the one open in Unity, or the newest
+function pipeEnter() {
+  if (!AI.proj) {
+    let want = ""; try { want = localStorage.getItem("vrclib.pipeproj") || ""; } catch (e) {}
+    const ps = (S.projs || (S.data || {}).projects || []).slice().sort((a, b) => ((b.running || 0) - (a.running || 0)) || (b.opened || 0) - (a.opened || 0) || a.name.localeCompare(b.name));
+    const p = ps.find(x => x.path === want) || ps[0];
+    if (p) AI.proj = p;
+  }
+  renderPipeSide(); renderPipeMain(); pipeLoad();
+  if (!S.projs) loadProjects().then(() => { if (S.view === "pipe") { if (!AI.proj) pipeEnter(); else renderPipeSide(); } });
+}
+async function pipeLoad() {
+  const p = AI.proj;
+  PIPE.loading = true;
+  const jobs = [aiLoadCfg().catch(() => {}), api("/api/pipe/toolchain", {}).then(r => { if (r.ok) PIPE.tool = r.toolchain; }).catch(() => {})];
+  if (p) jobs.push(api("/api/pipe/assets", { project: p.path }).then(r => {
+    if (!AI.proj || AI.proj.path !== p.path) return;
+    if (!r.ok) { PIPE.err = r.err || "读不到工程"; PIPE.assets = []; return; }
+    PIPE.err = ""; PIPE.assets = r.assets || []; AI.sess = Object.assign(AI.sess || {}, { kit: r.kit });
+    pipeDefaults();
+  }).catch(() => { PIPE.err = "软件没有回应"; PIPE.assets = []; }));
+  await Promise.all(jobs);
+  PIPE.loading = false;
+  if (S.view !== "pipe") return;
+  if (!PIPE.hier) PIPE.hier = (AI.cfg || {}).hierarchy || "";
+  renderPipeSide(); renderPipeMain(); aiPoll();
+}
+// which rows start ticked: what was just imported, else what the library knows and is not on the avatar yet
+function pipeDefaults() {
+  const rows = PIPE.assets || [];
+  const preset = (PIPE.preset || []).map(x => x.toLowerCase().replace(/\\/g, "/").replace(/\/+$/, ""));
+  for (const a of rows) {
+    if (PIPE.pick[a.folder] !== undefined) continue;
+    const low = a.folder.toLowerCase();
+    if (preset.length) PIPE.pick[a.folder] = preset.some(t => low === t || low.startsWith(t + "/") || t.startsWith(low + "/"));
+    else PIPE.pick[a.folder] = !!a.source && !a.worn && a.kind !== "其他" && a.kind !== "素体";
+  }
+  if (preset.length) { // a folder the scan did not list (nothing with a prefab in it yet) is still offered
+    for (const t of preset) {
+      const covered = rows.some(a => { const l = a.folder.toLowerCase(); return l === t || l.startsWith(t + "/") || t.startsWith(l + "/"); });
+      if (!covered && !PIPE.extra.some(x => x.folder.toLowerCase() === t)) PIPE.extra.push({ folder: t, name: t.split("/").pop(), kind: "衣服", prefabs: 0, pick: true });
+    }
+    PIPE.preset = null;
+  }
+}
+function pipeRows() {
+  const rows = (PIPE.assets || []).map(a => Object.assign({}, a, { kind: PIPE.kind[a.folder] || a.kind, pick: !!PIPE.pick[a.folder] }));
+  for (const x of PIPE.extra) rows.push(Object.assign({}, x, { kind: PIPE.kind[x.folder] || x.kind, pick: PIPE.pick[x.folder] === undefined ? x.pick : !!PIPE.pick[x.folder], extra: true }));
+  return rows;
+}
+function pipePicked() { return pipeRows().filter(a => a.pick && a.kind !== "其他"); }
+
+function renderPipeSide() {
+  const ps = (S.projs || (S.data || {}).projects || []).slice().sort((a, b) => ((b.running || 0) - (a.running || 0)) || (b.opened || 0) - (a.opened || 0) || a.name.localeCompare(b.name));
+  const q = (S.pq || "").toLowerCase(), cur = AI.proj ? AI.proj.path : "";
+  const t = PIPE.tool, c = AI.cfg || {};
+  const list = ps.filter(p => !q || (p.name + " " + p.path).toLowerCase().includes(q));
+  const tool = (ok, name, val, btn) => `<div class="toolrow"><i class="dot ${ok ? "ok" : "warn"}"></i><span class="k">${name}</span><span class="v">${val}</span>${btn || ""}</div>`;
+  let tools = "";
+  if (t) {
+    tools += tool(!!t.unity, `Unity ${esc(t.unityWant)}`, t.unity ? "已安装" : "没找到", t.unity ? "" : `<button class="btn small" data-url="${esc(t.hubInstallLink)}" title="在 Unity Hub 里安装 VRChat 要求的这个版本">安装</button>`);
+    tools += tool(t.alcomSeen, "ALCOM", t.alcom ? "已安装" : t.alcomSeen ? "有配置，没找到程序" : "没找到", t.alcom ? `<button class="btn small" data-pipe="launch" data-what="alcom">打开</button>` : `<button class="btn small" data-url="https://vrc-get.anatawa12.com/alcom/" title="ALCOM 是 VRChat 官方 VCC 的替代品，管理工程里的插件">下载</button>`);
+    if (t.vcc) tools += tool(true, "VCC", "已安装", `<button class="btn small" data-pipe="launch" data-what="vcc">打开</button>`);
+    if (!t.alcom && !t.vcc) tools += tool(false, "VCC", "没找到", "");
+  } else tools = `<div class="toolrow"><i class="dot"></i><span class="k">正在检测…</span></div>`;
+  $("#side").innerHTML = `<h3 class="withact">工程<span class="foldn">${ps.length ? ps.length : ""}</span></h3>
+    <div class="projlist">${list.map(p => `<button class="navitem${p.path === cur ? " on" : ""}" data-pipeproj="${esc(p.path)}" title="${esc(p.path)}"><span class="dot" style="background:${p.running ? "var(--ok)" : "transparent"}"></span><span class="nm">${esc(p.name)}</span></button>`).join("")
+      || `<p class="sidenote">${ps.length ? "没有符合条件的工程" : "还没有 Unity 工程。新建一个基础工程，或者在设置里添加放工程的文件夹。"}</p>`}</div>
+    <div class="sidelinks"><button class="navitem strong" id="btnNewProj"><span>${ICON.plus}新建基础工程…</span></button><button class="navitem" id="btnProjAdd"><span>添加已有工程…</span></button></div>
+    <h3>这台电脑</h3>
+    <div class="tools">${tools}</div>
+    <div class="toolrow"><i class="dot ${c.ready ? "ok" : "warn"}"></i><span class="k">AI 服务</span><span class="v" title="${c.ready ? esc(aiProvLabel(c)) : "不用 AI 也能跑流水线"}">${c.ready ? esc(aiProvLabel(c)) : "还没设置"}</span><button class="btn small" id="btnAICfg">${c.ready ? "更换" : "设置"}</button></div>
+    <h3>流水线是什么</h3>
+    <p class="sidenote">把素材库里导入工程的衣服、头发、配饰、道具，按类别装到模型上，生成菜单开关和图标。每一步都在 Unity 里能 Ctrl+Z 撤销，不会替你保存场景。</p>
+    <p class="sidenote">没有工程的话先「新建基础工程」：自动建好 Unity 工程、装上 VRChat SDK 和常用改模插件，还能顺手把素体导进去。</p>`;
+}
+
+// the stations of the line, with what each one shows right now
+function pipeStations() {
+  const p = AI.proj, k = (AI.sess || {}).kit || {}, steps = (AI.sess || {}).steps || [], picked = pipePicked();
+  const st = [];
+  const ready = !!k.alive && !k.hint;
+  st.push({ id: 1, name: "工程", dot: !p ? "" : ready ? "ok" : "warn", text: !p ? "选一个工程" : ready ? "Unity 已连接" : !k.pipeline ? "装插件、开 Unity" : k.alive ? "有事要处理" : "等 Unity 连上" });
+  st.push({ id: 2, name: "素材", dot: picked.length ? "ok" : "", text: PIPE.assets === null ? "正在读取" : picked.length ? `勾了 ${picked.length} 件` : "勾选要装的" });
+  const last = (tool) => { for (let i = steps.length - 1; i >= 0; i--) if (steps[i].kind === "tool" && steps[i].tool === tool) return steps[i]; return null; };
+  const busy = (AI.sess || {}).busy;
+  const d = last("dress") || last("place_avatar"), m = last("build_menu"), say = steps.length && steps[steps.length - 1].kind === "say";
+  const state = (s, after) => !s ? (busy && after ? { dot: "run", text: "等上一站" } : { dot: "", text: "待开始" }) : s.busy ? { dot: "run", text: "进行中" } : s.ok ? { dot: "ok", text: "完成" } : { dot: "warn", text: "出错了" };
+  st.push(Object.assign({ id: 3, name: "装配" }, state(d, true)));
+  st.push(Object.assign({ id: 4, name: "菜单" }, state(m, true)));
+  st.push({ id: 5, name: "验收", dot: m && !m.busy && m.ok && say && !busy ? "warn" : "", text: m && !m.busy && m.ok && say && !busy ? "去 Unity 看看" : "做完再来" });
+  return st;
+}
+function pipeBeltHTML() {
+  const busy = !!(AI.sess || {}).busy;
+  return `<div class="belt${busy ? " moving" : ""}" role="tablist" aria-label="流水线工位">${pipeStations().map(s =>
+    `<button class="station" data-station="${s.id}" role="tab"><span class="can"><i class="dot ${s.dot}"></i><b>${s.id}</b></span><span class="nm">${s.name}</span><span class="ds">${esc(s.text)}</span></button>`).join("")}</div>`;
+}
+function renderPipeMain() {
+  const g = $("#grid"), p = AI.proj;
+  $("#resultbar").innerHTML = "";
+  if (!p) {
+    g.innerHTML = `<div class="empty"><h2>还没有 Unity 工程</h2><p>流水线要在一个 Unity 工程里干活。没有的话，一键建一个带 VRChat SDK 和常用插件的基础工程。</p>
+      <div class="btnrow center"><button class="btn primary" id="btnNewProj">${ICON.plus}<span>新建基础工程…</span></button><button class="btn" id="btnProjAdd">添加已有工程…</button></div></div>`;
+    return;
+  }
+  const f = PIPE;
+  g.innerHTML = `<div class="pipe">
+    <div id="pipe_belt">${pipeBeltHTML()}</div>
+    <section class="stn" id="stn1"><header><span class="no">1</span><h2>工程</h2><span class="pname" title="${esc(p.path)}">${esc(p.name)}<span class="sub">${esc(p.path)}</span></span>
+      <div class="hacts"><button class="btn small" data-pipe="folder">${ICON.folder}<span>文件夹</span></button>${PIPE.tool && PIPE.tool.alcom ? `<button class="btn small" data-pipe="launch" data-what="alcom" title="管理这个工程的插件">在 ALCOM 里打开</button>` : ""}</div></header>
+      <div class="aistat" id="ai_stat"></div></section>
+    <section class="stn" id="stn2"><header><span class="no">2</span><h2>素材</h2><span class="hint">工程里已导入的素材，自动从 Assets 里读出来；勾上要装的，类别不对就在下拉里改。</span>
+      <div class="hacts"><button class="btn small" data-pipe="rescan" title="重新读取工程里的素材">重新检测</button></div></header>
+      <div id="pipe_assets">${pipeAssetsHTML()}</div>
+      <div class="addrow"><input id="pipe_add" placeholder="手动添加位置：Assets/店铺名/素材名（也可以直接填 prefab）" autocomplete="off" spellcheck="false"><button class="btn small" data-pipe="add">添加</button></div></section>
+    <section class="stn" id="stn3"><header><span class="no">3</span><h2>装配</h2><span class="no">4</span><h2>菜单</h2><span class="hint">按类别装到模型上，再生成菜单开关和图标。</span></header>
+      <div class="howrow"><span>素体 → 场景里没有模型时放进去</span><span>衣服 → 互斥切换，可按部件开关</span><span>头发 → 单独互斥</span><span>配饰 → 开关，默认显示</span><span>道具 → 开关，默认隐藏</span></div>
+      <div class="row"><label for="pipe_hier">菜单层级</label>
+        <div class="inline"><input id="pipe_hier" value="${esc(f.hier || (AI.cfg || {}).hierarchy || "")}" autocomplete="off"><button class="btn small" data-ai="hierdef">恢复默认</button></div>
+        <div class="hint2">用 &gt; 隔开每一层。{分类} 是衣服 / 头发 / 配饰 / 道具这一层，{素材} 是每个素材自己的一层，{开关} 是它的开关；去掉 {素材}，每个素材就只做一个总开关。也可以用自己的话写，AI 会照着排。</div></div>
+      <div class="aigo"><label class="check"><input type="checkbox" id="pipe_noai"${f.noAI ? " checked" : ""}>不用 AI，按网格名字分组（快，不花钱，分得粗一些）</label>
+        <button class="btn big" id="pipe_go" data-ai="dress">${ICON.play}<span>开始流水线</span></button></div></section>
+    <section class="stn" id="stn5"><header><span class="no">5</span><h2>验收</h2><span class="hint">每一步会列在下面。做完后到 Unity 里检查，满意再保存。</span></header>
+      <div class="ailog" id="ai_log" aria-live="polite"></div>
+      <div class="aifoot"><textarea id="ai_text" placeholder="让 AI 接着做别的，例如：把鞋子开关改名叫凉鞋；给外套加一个红色配色；检查有没有丢失的材质。Ctrl+Enter 发送">${esc(f.text)}</textarea>
+        <div class="aibtns" id="ai_btns"></div></div>
+      <ul class="accept"><li>在 Unity 里进 Play 模式，用 Gesture Manager 把菜单点一遍：互斥是不是只留一件、开关是不是对的物体。</li><li>满意就按 Ctrl+S 保存场景；不满意按 Ctrl+Z，或者点「撤销上一步」。</li><li>上传前看 VRChat SDK 面板：同步参数不能超过 256 位，有警告就回来让 AI 减几个开关。</li></ul></section>
+  </div>`;
+  aiRenderLive();
+}
+function pipeAssetsHTML() {
+  if (PIPE.err) return `<div class="aiempty err">${esc(PIPE.err)}</div>`;
+  if (PIPE.assets === null) return `<div class="aiempty">正在读取工程里的素材…</div>`;
+  const rows = pipeRows();
+  if (!rows.length) return `<div class="aiempty">这个工程的 Assets 里还没有素材。到「素材库」里挑一件，用「一键导入」导进来，或者在下面手动填位置。</div>`;
+  const k = (AI.sess || {}).kit || {};
+  const sel = a => `<select data-pkind="${esc(a.folder)}" title="类别">${KINDS.map(x => `<option${x === a.kind ? " selected" : ""}>${x}</option>`).join("")}</select>`;
+  return `<table class="atable"><thead><tr><th></th><th>素材</th><th>类别</th><th>在工程里的位置</th><th class="r">prefab</th><th></th></tr></thead><tbody>${rows.map(a => {
+    const marks = [];
+    if (a.worn) marks.push(`<span class="tag ok" title="它的 prefab 已经在模型上">已装上</span>`);
+    if (a.avatar) marks.push(`<span class="tag" title="里面有整只模型的 prefab">整只模型</span>`);
+    if (a.source) marks.push(`<span class="tag faint" title="${a.source === "导入" ? "这个软件导进来的" : "按文件匹配到素材库里的素材"}">${esc(a.source)}</span>`);
+    if (a.extra) marks.push(`<button class="tag x" data-pipe="drop" data-folder="${esc(a.folder)}" title="去掉这一行">×</button>`);
+    return `<tr class="${a.pick ? "on" : ""}${a.kind === "其他" ? " dim" : ""}"><td><input type="checkbox" data-ppick="${esc(a.folder)}"${a.pick ? " checked" : ""} aria-label="装这个"></td>
+      <td class="nm" title="${esc(a.name)}">${esc(a.name)}</td><td>${sel(a)}</td><td class="path" title="${esc(a.folder)}">${esc(a.folder)}</td><td class="r muted">${a.prefabs || ""}</td><td class="marks">${marks.join("")}</td></tr>`;
+  }).join("")}</tbody></table>${k.alive ? "" : `<div class="hint2">Unity 连上后，这里还会标出哪些已经装在模型上、哪些是整只模型。</div>`}`;
+}
+// the one thing to do next gets the coloured button: the plugins, Unity, the service, then the line itself
+function aiNext() {
+  const c = AI.cfg || {}, k = (AI.sess || {}).kit;
+  if (!k) return "";
+  if (!k.pipeline || k.pipelineOld) return "install";
+  if (!k.running && k.editor) return "unity";
+  if (!k.alive) return "";
+  if (!c.ready && !PIPE.noAI && !($("#pipe_noai") || {}).checked) return "cfg";
+  return ((AI.sess || {}).steps || []).length ? "send" : "dress";
+}
+function aiStatHTML() {
+  const c = AI.cfg || {}, k = (AI.sess || {}).kit, next = aiNext(), pri = w => next === w ? " primary" : "";
+  const row = (dot, key, val, btn) => `<div class="airow"><i class="dot ${dot}"></i><span class="k">${key}</span><span class="v">${val}</span>${btn || ""}</div>`;
+  let h = "";
+  if (!k) return row("", "Unity 插件", "正在检查…") + row("", "Unity", "正在检查…");
+  const sk = k.skills ? `UnitySkills ${esc(k.skillsVer || "")}${k.skills === "own" ? "（工程自带）" : ""}` : "";
+  h += k.pipeline
+    ? row(k.pipelineOld ? "warn" : "ok", "Unity 插件", `${k.pipelineOld ? "已安装，有新版" : "已安装"}<span class="sub">　流水线插件${sk ? " + " + sk : ""}</span>`,
+      `${k.pipelineOld ? `<button class="btn small${pri("install")}" data-ai="install">更新</button>` : ""}<button class="btn small ghost" data-ai="remove">移除</button>`)
+    : row("warn", "Unity 插件", "这个工程还没有装", `<button class="btn small${pri("install")}" data-ai="install">安装并打开 Unity</button>`);
+  if (!k.pipeline) return h + row("", "Unity", k.running ? "开着" : "没有打开", !k.running && k.editor ? `<button class="btn small" data-ai="unity">打开 Unity</button>` : "");
+  const ok = k.alive && !k.hint;
+  const conn = k.alive ? `已连接${k.skillsOn ? `<span class="sub">　UnitySkills 端口 ${k.port}${k.mode ? "，" + esc(k.mode) + " 模式" : ""}</span>` : `<span class="sub">　UnitySkills 服务还没启动（穿戴和菜单不受影响）</span>`}` : "";
+  h += row(ok ? "ok" : "warn", "Unity", k.hint ? `${conn ? conn + "<br>" : ""}<span class="warnline">${esc(k.hint)}</span>` : conn,
+    !k.running && k.editor ? `<button class="btn small${pri("unity")}" data-ai="unity">打开 Unity</button>` : "");
+  if (!c.ready) h += row("warn", "AI 服务", "还没设置。不用 AI 也能跑流水线（按网格名字分组）", `<button class="btn small${pri("cfg")}" data-ai="cfg">设置</button>`);
+  return h;
+}
+function aiLogHTML() {
+  const steps = (AI.sess || {}).steps || [];
+  if (!steps.length) return `<div class="aiempty">流水线做的每一步会列在这里。<br>改动都能在 Unity 里按 Ctrl+Z 撤销；它不会替你保存场景。</div>`;
+  const busyTool = steps.some(s => s.busy);
+  return steps.map(s => {
+    if (s.kind === "ask") {
+      return `<div class="aistep ask${s.busy ? " open" : ""}"><div>${esc(s.text)}</div>${s.busy
+        ? `<div class="btnrow"><button class="btn small primary" data-ai="allow">允许这一次</button><button class="btn small" data-ai="allowall" title="这段对话里之后的这类操作都不再问">这次对话都允许</button><button class="btn small" data-ai="deny">不允许</button></div>`
+        : `<div class="out">${esc(s.out || "")}</div>`}</div>`;
+    }
+    if (s.kind === "tool") {
+      const mark = s.busy ? `<i class="spin"></i>` : s.ok ? `<i class="mk ok">✓</i>` : `<i class="mk bad">!</i>`;
+      return `<div class="aistep tool${s.busy ? " busy" : ""}">${mark}<span><b>${esc(s.text)}</b>${s.out ? `<span class="out">　${esc(s.out)}</span>` : ""}</span></div>`;
+    }
+    return `<div class="aistep ${s.kind === "error" ? "err" : s.kind}">${esc(s.text)}</div>`;
+  }).join("") + ((AI.sess || {}).busy && !busyTool ? `<div class="aistep tool busy"><i class="spin"></i><span class="out">AI 正在想下一步…</span></div>` : "");
+}
+function aiBtnsHTML() {
+  const s = AI.sess || {};
+  if (s.busy) return `<button class="btn" data-ai="stop">停止</button>`;
+  return `<button class="btn${aiNext() === "send" ? " primary" : ""}" data-ai="send">发送</button>
+    <div class="aimini">${s.changes ? `<button class="btn small ghost" data-ai="undo" title="相当于在 Unity 里按一次 Ctrl+Z">撤销上一步</button>` : ""}${(s.steps || []).length ? `<button class="btn small ghost" data-ai="reset" title="清空这段对话，AI 不再记得前面说过什么。Unity 里已经做的改动不受影响">新对话</button>` : ""}</div>`;
+}
+// only the parts that change are redrawn, so what the player is typing stays
+function aiRenderLive() {
+  if (!pipeActive() || !$("#pipe_belt")) return;
+  const parts = { pipe_belt: pipeBeltHTML(), ai_stat: aiStatHTML(), ai_log: aiLogHTML(), ai_btns: aiBtnsHTML() };
+  for (const id in parts) {
+    const el = $("#" + id); if (!el || el.dataset.h === parts[id]) continue;
+    const atEnd = id === "ai_log" && el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+    el.innerHTML = parts[id]; el.dataset.h = parts[id];
+    if (atEnd) el.scrollTop = el.scrollHeight;
+  }
+  const go = $("#pipe_go"); if (go) { go.classList.toggle("primary", aiNext() === "dress"); go.disabled = !!(AI.sess || {}).busy; }
+}
+// after a button did its work: draw again even if nothing in the text changed (a disabled button comes back)
+function aiFresh() {
+  for (const id of ["pipe_belt", "ai_stat", "ai_log", "ai_btns"]) { const el = $("#" + id); if (el) delete el.dataset.h; }
+  return aiPoll();
+}
+async function aiPoll() {
+  clearTimeout(AI.timer);
+  if (!pipeActive()) return;
+  const path = AI.proj.path, hadSteps = ((AI.sess || {}).steps || []).length, wasBusy = !!(AI.sess || {}).busy;
+  try {
+    const r = await api("/api/ai/session", { project: path });
+    if (!AI.proj || AI.proj.path !== path) return;
+    if (r.ok) { AI.sess = r; aiRenderLive(); }
+  } catch (e) {}
+  const s = AI.sess || {};
+  // a run just ended: the asset list may know more now (what is on the avatar)
+  if (wasBusy && !s.busy && (s.steps || []).length >= hadSteps) pipeRescan(true);
+  AI.timer = setTimeout(aiPoll, s.busy || !(s.kit || {}).alive ? 900 : 3000);
+}
+async function pipeRescan(quiet) {
+  const p = AI.proj; if (!p) return;
+  let r; try { r = await api("/api/pipe/assets", { project: p.path, fresh: true }); } catch (e) { return; }
+  if (!AI.proj || AI.proj.path !== p.path || !r.ok) { if (!quiet && r && !r.ok) toast(r.err || "读不到工程"); return; }
+  PIPE.assets = r.assets || []; AI.sess = Object.assign(AI.sess || {}, { kit: r.kit }); pipeDefaults();
+  const el = $("#pipe_assets"); if (el) el.innerHTML = pipeAssetsHTML();
+  aiRenderLive();
+  if (!quiet) toast(`读到 ${PIPE.assets.length} 项`);
+}
+async function aiRun(body) {
+  const r = await api("/api/ai/run", Object.assign({ project: AI.proj.path }, body));
+  if (!r.ok) { toast(r.err || "没能开始", 5000); return false; }
+  const log = $("#ai_log"); if (log) log.scrollTop = log.scrollHeight;
+  const sec = $("#stn5"); if (sec) sec.scrollIntoView({ behavior: "smooth", block: "start" });
+  aiPoll(); return true;
+}
+async function aiSend() {
+  const ta = $("#ai_text"); if (!ta || (AI.sess || {}).busy) return;
+  const text = ta.value.trim(); if (!text) { ta.focus(); return; }
+  if (!AI.cfg.ready) { toast("先设置 AI 服务"); pipeKeep(); AI.back = AI.proj.path; return openAICfg(); }
+  if (await aiRun({ mode: "chat", text })) { ta.value = ""; PIPE.text = ""; }
+}
+async function pipeStart() {
+  const p = AI.proj, k = (AI.sess || {}).kit || {}, noAI = $("#pipe_noai").checked, hierarchy = $("#pipe_hier").value.trim();
+  const picked = pipePicked();
+  if (!picked.length) { toast("先在「素材」里勾上要装的素材", 4500); const s = $("#stn2"); if (s) s.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+  if (!noAI && !AI.cfg.ready) { toast("先设置 AI 服务，或者勾上「不用 AI」"); pipeKeep(); AI.back = p.path; return openAICfg(); }
+  if (!k.alive) { toast(k.hint || "Unity 还没有连上", 5000); const s = $("#stn1"); if (s) s.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+  pipeKeep();
+  await aiRun({ mode: "dress", assets: picked.map(a => ({ folder: a.folder, kind: a.kind, name: a.name })), hierarchy, noAI });
+}
+async function pipeAction(b) {
+  const what = b.dataset.pipe, p = AI.proj;
+  if (what === "launch") {
+    b.disabled = true;
+    const r = await api("/api/pipe/launch", { what: b.dataset.what });
+    b.disabled = false; toast(r.ok ? "正在打开" : r.err || "没能打开", 4000); return;
+  }
+  if (what === "folder" && p) return openPath(p.path);
+  if (what === "rescan") { b.disabled = true; await pipeRescan(false); b.disabled = false; return; }
+  if (what === "add") {
+    const inp = $("#pipe_add"), f = inp.value.trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+    if (!f) { inp.focus(); return; }
+    if (!/^Assets\//i.test(f)) { toast("位置要以 Assets/ 开头", 4000); inp.focus(); return; }
+    if (pipeRows().some(a => a.folder.toLowerCase() === f.toLowerCase())) { toast("已经在列表里了"); inp.value = ""; return; }
+    PIPE.extra.push({ folder: f, name: f.replace(/\.prefab$/i, "").split("/").pop(), kind: "衣服", prefabs: 0, pick: true });
+    inp.value = ""; $("#pipe_assets").innerHTML = pipeAssetsHTML(); aiRenderLive(); return;
+  }
+  if (what === "drop") {
+    PIPE.extra = PIPE.extra.filter(x => x.folder !== b.dataset.folder); delete PIPE.pick[b.dataset.folder];
+    $("#pipe_assets").innerHTML = pipeAssetsHTML(); aiRenderLive(); return;
+  }
+}
+async function aiAction(b) {
+  const what = b.dataset.ai, p = AI.proj;
+  if (b.dataset.aiprov) { aiCfgKeep(); AI.cfgForm.provider = b.dataset.aiprov; return openAICfg(true); }
+  if (what === "cfg") { pipeKeep(); AI.back = p ? p.path : null; return openAICfg(); }
+  if (what === "hierdef") { $("#pipe_hier").value = AI.cfg.defaultHierarchy; PIPE.hier = AI.cfg.defaultHierarchy; return; }
+  if (what === "install") {
+    const k = (AI.sess || {}).kit || {};
+    if (!k.pipeline && !confirm(`给「${p.name}」安装 AI 插件？\n\n会往这个工程的 Packages 里放两个编辑器插件：\n· MioVRCA 改模流水线：放素体、穿戴素材、生成菜单和图标\n· UnitySkills ${k.skills === "own" ? "（工程里已经有，用它自己的）" : "2.8.4（开源，MIT）：让 AI 能做更多 Unity 操作"}\n\n只在 Unity 编辑器里运行，不会跟模型一起上传。装完会打开 Unity，第一次要编译一两分钟。\n随时可以在这里点「移除」。`)) return;
+    b.disabled = true;
+    const r = await api("/api/ai/setup", { project: p.path, on: true });
+    toast(r.ok ? r.note || "已安装" : r.err || "没能安装", 6000); return aiFresh();
+  }
+  if (what === "remove") {
+    if (!confirm(`从「${p.name}」移除 AI 插件？\n\n会删掉软件放进去的插件（工程自带的 UnitySkills 不动）。已经穿好的衣服和生成的菜单都会留着，它们只依赖 Modular Avatar。`)) return;
+    const r = await api("/api/ai/setup", { project: p.path, on: false });
+    toast(r.ok ? r.note : r.err || "没能移除", 5000); return aiFresh();
+  }
+  if (what === "unity") {
+    b.disabled = true;
+    const r = await api("/api/project/open", { path: p.path });
+    toast(r.ok ? "正在打开 Unity，连上后这里会变成「已连接」" : r.err || "没能打开", 5000); return aiFresh();
+  }
+  if (what === "dress") return pipeStart();
+  if (what === "send") return aiSend();
+  if (what === "allow" || what === "allowall" || what === "deny") {
+    b.disabled = true;
+    await api("/api/ai/answer", { project: p.path, ok: what !== "deny", all: what === "allowall" }); return aiFresh();
+  }
+  if (what === "pick") { closeModal(); return openAI(b.dataset.path); }
+  if (what === "stop") { await api("/api/ai/cancel", { project: p.path }); toast("正在停止"); return aiFresh(); }
+  if (what === "undo") {
+    b.disabled = true;
+    const r = await api("/api/ai/undo", { project: p.path });
+    toast(r.ok ? "已撤销：" + (r.undone || "上一步") : r.err || "没能撤销", 4000); return aiFresh();
+  }
+  if (what === "reset") {
+    if (!confirm("开始新对话？AI 不再记得前面说过什么。Unity 里已经做的改动不受影响。")) return;
+    await api("/api/ai/reset", { project: p.path }); return aiFresh();
+  }
+  // the AI service form
+  if (what === "cfgclose") return aiCfgDone();
+  if (b.dataset.aimodel !== undefined) { $("#ai_model").value = b.dataset.aimodel; aiCfgKeep(); return aiModelList(false); }
+  if (what === "models" && !b.dataset.again && $("#ai_modelist") && !$("#ai_modelist").hidden) return aiModelList(false); // open: the button folds it away
+  if (what === "models" && (AI.cfgForm.models[AI.cfgForm.provider] || []).length && !b.dataset.again) return aiModelList(true, true);
+  if (what === "models" || what === "test") {
+    const out = $("#ai_test"), body = aiCfgBody();
+    b.disabled = true; out.className = "aitest"; out.textContent = what === "test" ? "正在连接…" : "正在读取模型…";
+    let r; try { r = await api("/api/ai/" + what, body); } catch (e) { r = { ok: false, err: "软件没有回应" }; }
+    b.disabled = false;
+    if (!$("#ai_test")) return;
+    if (!r.ok) { out.className = "aitest err"; out.textContent = r.err; return; }
+    if (what === "test") { out.className = "aitest ok"; out.textContent = r.note; return; }
+    AI.cfgForm.models[body.provider] = r.models;
+    out.className = "aitest ok"; out.textContent = `读到 ${r.models.length} 个模型，在列表里点一个`;
+    return aiModelList(true, true);
+  }
+  if (what === "cfgsave" || what === "keyclear") {
+    const body = aiCfgBody();
+    if (what === "keyclear") body.key = ""; else if (!body.key) delete body.key;
+    const r = await api("/api/ai/save", body);
+    if (!r.ok) { const out = $("#ai_test"); out.className = "aitest err"; out.textContent = r.err; return; }
+    AI.cfg = r.ai;
+    if (what === "keyclear") { AI.cfgForm = null; toast("已清除保存的 Key"); return openAICfg(); }
+    toast("已保存");
+    if (!AI.back && AI.cfg.ready && S.view !== "pipe") { AI.cfgForm = null; return openAIPick(); } // set up from the settings: which project is it for?
+    return aiCfgDone();
+  }
+}
+
+// ---------- 新建基础工程 ----------
+function npJob() { return (S.data || {}).newProject || null; }
+function npBusy() { const j = npJob(); return !!(j && !["done", "failed"].includes(j.stage)); }
+async function openNewProject() {
+  const m = $("#modal");
+  if (!PIPE.tool) { try { const r = await api("/api/pipe/toolchain", {}); if (r.ok) PIPE.tool = r.toolchain; } catch (e) {} }
+  const t = PIPE.tool || { plugins: [], bases: [] };
+  if (!PIPE.npForm) {
+    const picked = {}; for (const pl of t.plugins || []) picked[pl.pkg] = !!pl.default;
+    PIPE.npForm = { name: "", parent: t.defaultDir || "", base: "", plugins: picked, aiKit: true };
+  }
+  m.dataset.kind = "np"; m.classList.remove("wide");
+  renderNP(); m.classList.add("on"); $("#scrim").classList.add("on");
+  const n = $("#np_name"); if (n) n.focus();
+}
+function npKeep() {
+  const f = PIPE.npForm; if (!f || !$("#np_name")) return;
+  f.name = $("#np_name").value; f.parent = $("#np_parent").value; f.base = $("#np_base").value; f.aiKit = $("#np_kit").checked;
+  for (const x of document.querySelectorAll("[data-npplug]")) f.plugins[x.dataset.npplug] = x.checked;
+}
+const NP_STAGES = [["prepare", "准备"], ["repos", "读取插件仓库"], ["packages", "下载插件"], ["settings", "写工程设置"], ["base", "导入素体"], ["kit", "装 AI 插件"]];
+function renderNP() {
+  const m = $("#modal"), t = PIPE.tool || { plugins: [], bases: [] }, f = PIPE.npForm, j = npJob();
+  if (j) { // a job is running or just ended: its progress replaces the form
+    const idx = NP_STAGES.findIndex(s => s[0] === j.stage);
+    const list = NP_STAGES.map((s, i) => {
+      const cls = j.stage === "done" || i < idx ? "done" : i === idx && j.stage !== "failed" ? "cur" : i === idx ? "bad" : "";
+      return `<li class="${cls}"><i>${cls === "done" ? "✓" : cls === "cur" ? "" : cls === "bad" ? "!" : ""}</i>${s[1]}${i === idx && j.stage !== "done" && j.stage !== "failed" ? `<span class="muted">　${esc(j.msg || "")}</span>` : ""}</li>`;
+    }).join("");
+    const imp = S.data.importJob, choose = j.stage === "base" && imp && imp.stage === "choose";
+    const pct = j.total ? Math.round(j.done / j.total * 100) : 0;
+    let tail = "";
+    if (j.stage === "done") tail = `<div class="impres ok"><div>工程建好了：<b>${esc(j.name)}</b></div><div class="small">${esc(j.path)}</div>
+        ${(j.packages || []).length ? `<div class="small">装了 ${j.packages.length} 个包：${j.packages.map(esc).join("、")}</div>` : ""}
+        ${(j.notes || []).map(n => `<div class="small${/没|失败|不了|出错|跳过/.test(n) ? " warnline" : ""}">${esc(n)}</div>`).join("")}</div>`;
+    else if (j.stage === "failed") tail = `<div class="impres err"><div>${esc(j.err || "没能建好")}</div>${(j.notes || []).map(n => `<div class="small">${esc(n)}</div>`).join("")}<div class="small">已经建出来的文件留在 ${esc(j.path)}，可以删掉重来。</div></div>`;
+    else if (choose) tail = `<div class="impchoose"><div>素体有不同的版本，选要导入的：</div>
+        ${(imp.choices || []).map((c, i) => `<label class="check"><input type="checkbox" data-ipick="${i}"${c.pick ? " checked" : ""}><span class="n">${esc(c.name)}</span>${(c.bases || []).map(b => `<span class="base">${esc(b)}</span>`).join("")}<span class="s">${fmtSize(c.size)}</span></label>`).join("")}
+        <div class="btnrow"><button class="btn small primary" data-np="impgo">导入所选</button><button class="btn small ghost" data-np="impskip">不导入素体</button></div></div>`;
+    else tail = `<div class="bar wide"><i style="width:${pct}%"></i></div>`;
+    m.innerHTML = `<div class="mhead">新建基础工程</div><div class="mbody"><ol class="npstages">${list}</ol>${tail}</div>
+      <div class="mfoot">${j.stage === "done" ? `<button class="btn ghost" data-np="dismiss">关闭</button><button class="btn primary" data-np="goto">去流水线</button>`
+        : j.stage === "failed" ? `<button class="btn ghost" data-np="dismiss">关闭</button><button class="btn" data-np="again">改一改再试</button>`
+        : `<button class="btn ghost" data-np="cancel">取消</button>`}</div>`;
+    return;
+  }
+  const unity = t.unity ? `<span class="okline">Unity ${esc(t.unityWant)} 已安装</span>` : `<span class="warnline">这台电脑没有 Unity ${esc(t.unityWant)}</span>　<button class="linkbtn" data-url="${esc(t.hubInstallLink || "")}">用 Unity Hub 安装</button>`;
+  const alcom = t.alcom ? `<span class="okline">ALCOM 已安装，新工程会出现在它的列表里</span>` : t.alcomSeen ? `<span class="muted">有 ALCOM / VCC 的配置，新工程会加进它的列表</span>` : `<span class="muted">没有 ALCOM / VCC 也能建；插件直接从官方仓库下载</span>`;
+  m.innerHTML = `<div class="mhead">新建基础工程</div><div class="mbody">
+    <p class="lead">一键建一个 VRChat 改模工程：Unity ${esc(t.unityWant)} 的工程设置、VRChat SDK（Avatars）和常用改模插件都装好，还能顺手把素体导进去。</p>
+    <div class="row"><label for="np_name">工程名</label><input id="np_name" value="${esc(f.name)}" placeholder="例如 Kaguya_Mod" autocomplete="off" spellcheck="false"></div>
+    <div class="row"><label for="np_parent">放在哪个文件夹</label><div class="inline"><input id="np_parent" value="${esc(f.parent)}" placeholder="D:\\VRChat_Project" autocomplete="off" spellcheck="false"><button class="btn small" data-np="pick">选择…</button></div>
+      <div class="hint2">工程会建在这个文件夹下的「工程名」子文件夹里。</div></div>
+    <div class="row"><label for="np_base">素体</label><select id="np_base"><option value="">不导入（之后在素材库里一键导入）</option>${(t.bases || []).map(b => `<option value="${esc(b.key)}"${b.key === f.base ? " selected" : ""}>${esc(b.name)}${(b.bases || []).length ? "（" + esc(b.bases.join("、")) + "）" : ""}</option>`).join("")}</select>
+      <div class="hint2">素材库里分类是「素体」的素材。选了就在建好工程后直接导入，之后流水线能把它放进场景。</div></div>
+    <div class="row"><label>插件</label><div class="plugs">${(t.plugins || []).map(pl => `<label class="check opt"><input type="checkbox" data-npplug="${esc(pl.pkg)}"${f.plugins[pl.pkg] ? " checked" : ""}${pl.fixed ? " disabled" : ""}><span><b>${esc(pl.label)}</b><span class="muted">　${esc(pl.note || "")}</span></span></label>`).join("")}</div>
+      <div class="hint2">都从各自的官方仓库下载最新稳定版（ALCOM / VCC 已经下载过的直接复用）。VRChat SDK 和 Modular Avatar 是流水线必需的。</div></div>
+    <label class="check opt"><input type="checkbox" id="np_kit"${f.aiKit ? " checked" : ""}><span>建好后装上 AI 插件并打开 Unity</span></label>
+    <div class="npenv">${unity}<br>${alcom}</div>
+  </div><div class="mfoot"><button class="btn ghost" data-m="close">取消</button><button class="btn primary" data-np="create">创建</button></div>`;
+}
+function renderNPLive() { if ($("#modal").dataset.kind === "np" && $("#modal").classList.contains("on")) renderNP(); }
+async function npAction(b) {
+  const what = b.dataset.np, j = npJob();
+  if (what === "pick") { npKeep(); const p = await pickInto("选择放工程的文件夹"); if (p) { PIPE.npForm.parent = p; renderNP(); } return; }
+  if (what === "create") {
+    npKeep();
+    const f = PIPE.npForm, plugins = Object.keys(f.plugins).filter(k => f.plugins[k]);
+    if (!f.name.trim()) { toast("给工程起个名字"); $("#np_name").focus(); return; }
+    if (!f.parent.trim()) { toast("选一个放工程的文件夹"); $("#np_parent").focus(); return; }
+    b.disabled = true;
+    const r = await api("/api/pipe/create", { name: f.name.trim(), parent: f.parent.trim(), base: f.base, plugins, aiKit: f.aiKit });
+    if (!r.ok) { b.disabled = false; toast(r.err || "没能开始", 5000); return; }
+    S.data.newProject = r.job; renderNP(); poll(true); return;
+  }
+  if (what === "cancel") { await api("/api/pipe/create/cancel", {}); toast("正在取消"); return poll(true); }
+  if (what === "impgo") {
+    const cs = (S.data.importJob || {}).choices || [];
+    const paths = [...document.querySelectorAll("#modal [data-ipick]")].filter(x => x.checked).map(x => (cs[+x.dataset.ipick] || {}).path).filter(Boolean);
+    if (!paths.length) { toast("至少选一个"); return; }
+    await api("/api/import/choose", { paths }); return poll(true);
+  }
+  if (what === "impskip") { await api("/api/import/dismiss", {}); return poll(true); }
+  if (what === "dismiss" || what === "goto" || what === "again") {
+    const path = j ? j.path : "";
+    await api("/api/pipe/create/dismiss", {});
+    if (what === "again") { S.data.newProject = null; return renderNP(); }
+    PIPE.npForm = null; closeModal(); await load();
+    if (what === "goto" && path) { await loadProjects(); openAI(path); }
+    return;
+  }
+}
+// which project the AI is to work on
+function openAIPick() {
+  const ps = (S.projs || (S.data || {}).projects || []).slice().sort((a, b) => ((b.running || 0) - (a.running || 0)) || (b.opened || 0) - (a.opened || 0) || a.name.localeCompare(b.name));
+  if (!ps.length) { closeModal(); toast("AI 服务已保存。到「流水线」页新建或添加 Unity 工程后就能用", 6000); return; }
+  const m = $("#modal");
+  m.dataset.kind = "aicfg"; m.classList.remove("wide");
+  m.innerHTML = `<div class="mhead">给哪个工程用 AI？</div><div class="mbody">
+    <p class="lead">选一个工程：下一步到「流水线」页给它装上 AI 插件并打开 Unity，连上后就能装素材、做菜单。</p>
+    <div class="aipick">${ps.map(p => `<button class="cand" data-ai="pick" data-path="${esc(p.path)}"><span class="p"><b>${esc(p.name)}</b><br><span class="muted small">${esc(p.path)}</span></span>${p.running ? `<span class="note okline">Unity 里开着</span>` : p.unity ? `<span class="note">Unity ${esc(p.unity)}</span>` : ""}</button>`).join("")}</div>
+  </div><div class="mfoot"><button class="btn ghost" data-m="close">以后再说</button></div>`;
+  m.classList.add("on"); $("#scrim").classList.add("on");
+  if (!S.projs) loadProjects().then(() => { if ($("#modal .aipick")) openAIPick(); });
+}
+// The list of the service's models under the model field. all: show every model (the button was pressed);
+// otherwise the ones that match what is typed.
+function aiModelList(open, all) {
+  const box = $("#ai_modelist"), btn = $('[data-ai="models"]'); if (!box) return;
+  const f = AI.cfgForm, ms = (f.models || {})[f.provider] || [];
+  if (!open || !ms.length) { box.hidden = true; if (btn) btn.setAttribute("aria-expanded", "false"); return; }
+  const cur = $("#ai_model").value.trim(), q = cur.toLowerCase();
+  let list = all || ms.includes(cur) ? ms : ms.filter(m => m.toLowerCase().includes(q));
+  if (!list.length) list = ms;
+  box.innerHTML = list.map(m => `<button class="mopt${m === cur ? " on" : ""}" data-aimodel="${esc(m)}">${esc(m)}</button>`).join("") +
+    `<button class="mopt again" data-ai="models" data-again="1">重新读取列表</button>`;
+  box.hidden = false; if (btn) btn.setAttribute("aria-expanded", "true");
+  const on = box.querySelector(".mopt.on"); if (on) on.scrollIntoView({ block: "nearest" });
+}
+// what is typed in the service form, per provider, so switching back and forth loses nothing
+function aiCfgKeep() {
+  const f = AI.cfgForm; if (!f || !$("#ai_base")) return;
+  f.vals[f.provider] = { base: $("#ai_base").value, model: $("#ai_model").value, key: $("#ai_key").value };
+}
+function aiCfgBody() {
+  aiCfgKeep();
+  const f = AI.cfgForm, v = f.vals[f.provider];
+  return { provider: f.provider, baseUrl: v.base.trim(), model: v.model.trim(), key: v.key.trim() };
+}
+function aiCfgDone() {
+  AI.cfgForm = null;
+  if (AI.back) { const p = AI.back; AI.back = null; return openAI(p); }
+  closeModal();
+}
+async function openAICfg(keep) {
+  if (!keep) { try { await aiLoadCfg(); } catch (e) { toast("读不到 AI 设置"); return; } AI.cfgForm = null; }
+  const c = AI.cfg;
+  if (!AI.cfgForm) AI.cfgForm = { provider: c.provider || "deepseek", vals: {}, models: {} };
+  const f = AI.cfgForm, info = c.providers.find(x => x.id === f.provider), saved = c.profiles[f.provider] || {};
+  const v = f.vals[f.provider] || (f.vals[f.provider] = { base: saved.baseUrl || info.base, model: saved.model || "", key: "" });
+  const tail = (c.keys || {})[f.provider];
+  const m = $("#modal");
+  clearTimeout(AI.timer); m.dataset.kind = "aicfg"; m.classList.remove("wide");
+  m.innerHTML = `<div class="mhead">AI 服务</div><div class="mbody">
+    <p class="lead">流水线用你自己的 AI 账号干活，费用由服务商按用量收。API Key 加密保存在这台电脑上，只会发给下面填的接口地址。</p>
+    <div class="row"><label>服务商</label><div class="seg">${c.providers.map(p => `<button class="segbtn${p.id === f.provider ? " on" : ""}" data-aiprov="${p.id}" aria-pressed="${p.id === f.provider}">${esc(p.label)}</button>`).join("")}</div>
+      <div class="hint2">${esc(info.note)}</div></div>
+    <div class="row"><label for="ai_base">接口地址</label><input id="ai_base" value="${esc(v.base)}" placeholder="${esc(info.base)}" autocomplete="off" spellcheck="false"></div>
+    <div class="row"><label for="ai_key">API Key${tail ? `<span class="muted small">　已保存（${esc(tail)}）</span>` : ""}</label>
+      <div class="inline"><input id="ai_key" type="password" value="${esc(v.key)}" placeholder="${tail ? "留空就继续用已保存的" : "粘贴 API Key"}" autocomplete="off" spellcheck="false">${tail ? `<button class="btn small" data-ai="keyclear">清除</button>` : ""}</div></div>
+    <div class="row"><label for="ai_model">模型</label>
+      <div class="inline"><input id="ai_model" value="${esc(v.model)}" placeholder="${esc(info.model || "点「选择模型」挑一个，或直接填模型名")}" autocomplete="off" spellcheck="false" aria-controls="ai_modelist"><button class="btn small" data-ai="models" aria-expanded="false">选择模型 ▾</button></div>
+      <div class="modelist" id="ai_modelist" hidden></div>
+      <div class="hint2">点「选择模型」从服务商那里读出列表再点选，也可以直接填模型名。要选支持工具调用（function calling）的对话模型。</div></div>
+    <div class="aitest" id="ai_test" role="status"></div>
+  </div><div class="mfoot"><button class="btn" data-ai="test">测试连接</button><span class="spacer"></span><button class="btn ghost" data-ai="cfgclose">取消</button><button class="btn primary" data-ai="cfgsave">保存</button></div>`;
+  m.classList.add("on"); $("#scrim").classList.add("on");
+}
+
 // ---------- events ----------
 document.addEventListener("click", async e => {
   const t = e.target;
@@ -1897,6 +2483,22 @@ document.addEventListener("click", async e => {
   if (t.closest("#vShop")) { if (S.view === "shop" && S.web.open.shop) closeWeb(); else setView("shop"); return; }
   if (t.closest("#vXy")) { setView("xianyu"); return; }
   if (t.closest("#vProj")) { setView("proj"); return; }
+  if (t.closest("#vPipe")) { setView("pipe"); return; }
+  if (t.closest("#btnNewProj")) return openNewProject();
+  const npb = t.closest("[data-np]");
+  if (npb) return npAction(npb);
+  const pp = t.closest("[data-pipeproj]");
+  if (pp) { const p = pipeProject(pp.dataset.pipeproj); if (p) pipeSelect(p); return; }
+  const pb = t.closest("[data-pipe]");
+  if (pb) return pipeAction(pb);
+  const stb = t.closest("[data-station]");
+  if (stb) { const sec = $("#stn" + (stb.dataset.station === "4" ? "3" : stb.dataset.station)); if (sec) sec.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+  if (!t.closest("#modal")) {
+    const ab = t.closest("[data-ai]");
+    if (ab) return aiAction(ab);
+    const ub = t.closest("[data-url]");
+    if (ub && !t.closest(".drawer")) return /^unityhub:/.test(ub.dataset.url) ? openURL(ub.dataset.url) : openLink(ub.dataset.url);
+  }
   const wb = t.closest("[data-w]");
   if (wb) { webAction(wb.dataset.w); return; }
   const xl = t.closest("[data-xy]");
@@ -1964,6 +2566,9 @@ document.addEventListener("click", async e => {
   if (t.closest("#btnUpdate")) { openUpdate(false); return; }
   if (t.closest("#btnVersion")) { openUpdate(true); return; }
   if (t.closest("#btnFeedback")) { openFeedback(); return; }
+  if (t.closest("#btnAICfg")) { pipeKeep(); AI.back = S.view === "pipe" && AI.proj ? AI.proj.path : null; return openAICfg(); }
+  const ad = t.closest("[data-aidress]");
+  if (ad) { const j = S.data.importJob; return openAI(ad.dataset.aidress, j && j.project === ad.dataset.aidress ? j.tops || [] : []); }
   const pa = t.closest("[data-pa]");
   if (pa) return projAction(pa.dataset.pa, pa.closest("[data-proj]").dataset.proj, pa);
   if (t.closest("#btnProjAdd")) return addProject();
@@ -2121,15 +2726,18 @@ document.addEventListener("click", async e => {
     if (ov) { await api("/api/override", { path: ov.dataset.ov, mode: "" }); toast("已撤销，正在重新扫描"); closeModal(); poll(true); return; }
     const fk = t.closest("[data-fbkind]");
     if (fk) { fbKeep(); S.fb.kind = fk.dataset.fbkind; renderFeedback(); return; }
+    const ab = t.closest("[data-aimodel], [data-ai], [data-aiprov]");
+    if (ab) return aiAction(ab);
     const b = t.closest("[data-m]"); if (!b) return;
     if (b.dataset.m === "close") return closeModal();
     if (b.dataset.m === "feedback") { closeModal(); return openFeedback(); }
+    if (b.dataset.m === "aicfg") { AI.back = null; return openAICfg(); }
     if (b.dataset.m === "fbsend") return sendFeedback();
     if (b.dataset.m === "fbcopy") { fbKeep(); return copyText(fbPlain(), "已复制，粘贴到邮件正文里发送就行"); }
     if (b.dataset.m === "fbaddr") return copyText(fbMail(), "已复制邮箱地址");
     if (b.dataset.m === "fbmail") {
       fbKeep(); const f = S.fb;
-      return openURL(`mailto:${fbMail()}?subject=${encodeURIComponent(`[VRC素材库 ${S.data.version}] ${f.kind}`)}&body=${encodeURIComponent(fbPlain().slice(0, 1800))}`);
+      return openURL(`mailto:${fbMail()}?subject=${encodeURIComponent(`[${S.data.appName || "MioVRCA"} ${S.data.version}] ${f.kind}`)}&body=${encodeURIComponent(fbPlain().slice(0, 1800))}`);
     }
     if (b.dataset.m === "uppage") { openURL((S.upd && S.upd.info && S.upd.info.url) || (S.data.update && S.data.update.url) || S.data.releases); return; }
     if (b.dataset.m === "upskip") { await api("/api/update/skip", { version: (S.data.update || {}).version || "" }); closeModal(); toast("已跳过 " + ((S.data.update || {}).version || "")); load(); return; }
@@ -2187,6 +2795,10 @@ document.addEventListener("change", e => {
   }
   if (e.target.id === "imp_proj" || e.target.id === "pan_proj") { S.dirty.delete(e.target.id); if (e.target.value === "__pick") pickProject(e.target); else if (e.target.value) setProject(e.target.value); return; }
   if (e.target.id === "imp_recycle") { S.impRecycle = e.target.checked; return; }
+  if (e.target.dataset && e.target.dataset.ppick !== undefined) { PIPE.pick[e.target.dataset.ppick] = e.target.checked; const tr = e.target.closest("tr"); if (tr) tr.classList.toggle("on", e.target.checked); aiRenderLive(); return; }
+  if (e.target.dataset && e.target.dataset.pkind !== undefined) { PIPE.kind[e.target.dataset.pkind] = e.target.value; const tr = e.target.closest("tr"); if (tr) tr.classList.toggle("dim", e.target.value === "其他"); aiRenderLive(); return; }
+  if (e.target.id === "pipe_noai") { PIPE.noAI = e.target.checked; aiRenderLive(); return; }
+  if (e.target.id === "pipe_hier") { PIPE.hier = e.target.value; return; }
   if (e.target.dataset && e.target.dataset.sk && S.setup) { S.setup[e.target.dataset.sk][+e.target.dataset.si].checked = e.target.checked; return; }
   if (e.target.id === "showHidden") { S.showHidden = e.target.checked; renderSide(); renderGrid(); }
   if (e.target.id === "sort") { S.sort = e.target.value; saveUI(); renderGrid(); }
@@ -2203,6 +2815,11 @@ document.addEventListener("keydown", e => {
   if (e.key === "Enter" && e.target.id === "bs_q" && S.openKey) { const a = findAsset(S.openKey); if (a) runBoothSearch(a, e.target.value.trim()); }
   if (e.key === "Enter" && e.target.id === "f_newstyle" && S.openKey) { e.preventDefault(); addStyle(e.target.value); S.dirty.delete("f_newstyle"); }
 });
+document.addEventListener("keydown", e => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && e.target.id === "ai_text") { e.preventDefault(); aiSend(); }
+});
+// typing in the model field narrows the list, when the service's models have been read
+document.addEventListener("input", e => { if (e.target.id === "ai_model") aiModelList(true); });
 document.addEventListener("contextmenu", e => {
   const card = e.target.closest(".card"); if (!card) return;
   e.preventDefault(); renderDrawer(card.dataset.key);
@@ -2235,6 +2852,7 @@ $("#q").addEventListener("input", e => {
   clearTimeout(qTimer);
   if (S.view === "xianyu") { S.web.xq = e.target.value; return; }
   if (S.view === "proj") { qTimer = setTimeout(() => { S.pq = e.target.value.trim(); renderProjGrid(); }, 120); return; }
+  if (S.view === "pipe") { qTimer = setTimeout(() => { S.pq = e.target.value.trim(); renderPipeSide(); }, 120); return; }
   if (S.view === "shop") { qTimer = setTimeout(() => { S.shop.q = e.target.value.trim(); shopSearch(true); }, 700); return; }
   qTimer = setTimeout(() => { S.q = e.target.value.trim(); renderSide(); renderGrid(); }, 120);
 });
@@ -2257,11 +2875,13 @@ async function poll(fast) {
       S.data.tasks = p.tasks; S.data.busy = p.busy; S.data.purchaseBusy = p.purchaseBusy; S.data.dlNeedLogin = p.dlNeedLogin; renderStatus();
       if (p.downloads && JSON.stringify(p.downloads) !== JSON.stringify(S.data.downloads || [])) refreshDL(p.downloads);
       if (JSON.stringify([p.importJob || null, p.panJobs || []]) !== JSON.stringify([S.data.importJob || null, S.data.panJobs || []])) refreshJobs(p.importJob, p.panJobs);
+      if (JSON.stringify(p.newProject || null) !== JSON.stringify(S.data.newProject || null)) { S.data.newProject = p.newProject || null; renderNPLive(); }
       if (flip && S.view === "lib") renderSide();
     }
     if (p.rev !== S.rev) await load();
-    if (S.view === "proj" && !document.hidden) loadProjects();
-    const dling = (p.tasks || []).some(t => ["download", "pandl", "import"].includes(t.name) && t.running);
+    announceUpdate();
+    if ((S.view === "proj" || S.view === "pipe") && !document.hidden) loadProjects();
+    const dling = (p.tasks || []).some(t => ["download", "pandl", "import", "newproject"].includes(t.name) && t.running);
     pollTimer = setTimeout(poll, p.busy || p.purchaseBusy || fast || S.updWatch || dling ? 1000 : 5000);
   } catch (e) {
     if (S.updWatch) { S.updRestart = true; if ($("#modal").dataset.kind === "update") renderUpdateModal(); }
@@ -2270,8 +2890,10 @@ async function poll(fast) {
 }
 setInterval(() => fetch("/api/ping").catch(() => {}), 15000);
 load().then(() => {
+  aiLoadCfg().catch(() => {});
   if (S.data.setupNeeded) openSetup();
   else if (S.data.paneMode && webVisible()) ensurePaneFor(S.view);
   if (S.view === "shop" && !S.shop.started) shopSearch(true); // the app was closed on the Booth tab
+  if (S.view === "pipe") pipeEnter();
   poll();
 });

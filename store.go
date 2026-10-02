@@ -42,7 +42,8 @@ type Usage struct {
 	Matched int     `json:"matched"`
 	Total   int     `json:"total"`
 	Ratio   float64 `json:"ratio"`
-	Status  string  `json:"status"` // used, partial
+	Status  string  `json:"status"`           // used, partial
+	Folder  string  `json:"folder,omitempty"` // Assets/<shop>/<item> where most of its files are
 }
 
 type Asset struct {

@@ -5,3 +5,4 @@
 *.ico binary
 *.syso binary
 *.dll binary
+*.zip binary

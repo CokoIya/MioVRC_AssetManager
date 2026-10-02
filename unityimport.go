@@ -700,6 +700,7 @@ func runImport(st *Store, assetBases []string) {
 		j.Stage, j.Msg, j.Imported, j.Files, j.Tops, j.Done, j.Total = "done", msg, done, files, tops, len(pick), len(pick)
 	})
 	taskImport.Set(1, 1, msg+"到 "+filepath.Base(j.Project))
+	aiRemember(j.Project, j.Key, tops) // the pipeline page starts from what was just imported
 	// the library sees the unpacked folders, and the project now uses the asset
 	StartPipeline(st, true, true, false, false, nil)
 }
