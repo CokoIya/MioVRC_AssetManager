@@ -1,4 +1,4 @@
-# MioVRC素材托管工具（MioVRC_AssetManager）
+# MioVRC素材托管工具（MioVRC_AssetManager）(MioVRCA)
 
 Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth 已购和百度网盘分享，整理成可以浏览、筛选的素材库，标出哪些素材被 Unity 工程用到，并能一键导入工程。
 
@@ -158,6 +158,6 @@ go run . --no-window --data ./testdata
 
 Booth 已购页面的读取方式参考了 [BoothDownloader](https://github.com/Myrkie/BoothDownloader) 和 [booth-library-manager](https://github.com/yoshiki-0428/booth-library-manager)，百度网盘分享的读取方式参考了 [AList 的百度分享驱动](https://alistgo.com/guide/drivers/baidu.share.html)，转存和下载参考了 [BaiduPCS-Go](https://github.com/qjfoidnh/BaiduPCS-Go) 和 [BaiduPCS-Py](https://github.com/PeterDing/BaiduPCS-Py)。
 
-A local desktop asset manager for VRChat avatar modding. Organize Booth purchases, local folders and Baidu Netdisk links (share codes & paths) as clickable cards. | VRChat改模素材管理工具：Booth购买记录、本地文件夹、百度网盘链接一站式管理 | VRChat改変素材管理ツール：BOOTH購入品・フォルダ・ネットドライブリンクを一括管理
-关键词：VRChat 改模 素材管理 换装 Booth 百度网盘 素材库
-キーワード：VRChat アバター改変 素材管理 BOOTH 購入品管理 衣装
+A local desktop asset manager for VRChat avatar modding. Organize Booth purchases, local folders and Baidu Netdisk links (share codes & paths) as clickable cards. | VRChat改模素材管理工具：Booth购买记录、本地文件夹、百度网盘链接一站式管理 | VRChat改変素材管理ツール：BOOTH購入品・フォルダ・ネットドライブリンクを一括管理MioVRCA
+关键词：VRChat 改模 素材管理 换装 Booth 百度网盘 素材库MioVRCA
+キーワード：VRChat アバター改変 素材管理 BOOTH 購入品管理 衣装MioVRCA
