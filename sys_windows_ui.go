@@ -222,9 +222,17 @@ func createDesktopShortcut() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// a shortcut to this exe under a name the program had before goes away: one icon, not two
+	var old []string
+	for _, n := range formerNames {
+		old = append(old, psQuote(n+".lnk"))
+	}
 	out, err := powershell(`[Console]::OutputEncoding=[Text.Encoding]::UTF8;` +
-		`$p=Join-Path ([Environment]::GetFolderPath('Desktop')) ` + psQuote(appName+".lnk") + `;` +
-		`$s=(New-Object -ComObject WScript.Shell).CreateShortcut($p);` +
+		`$d=[Environment]::GetFolderPath('Desktop'); $w=New-Object -ComObject WScript.Shell;` +
+		`foreach($n in ` + strings.Join(old, ",") + `){ $o=Join-Path $d $n;` +
+		` if((Test-Path -LiteralPath $o) -and ($w.CreateShortcut($o).TargetPath -ieq ` + psQuote(exe) + `)){ Remove-Item -LiteralPath $o } };` +
+		`$p=Join-Path $d ` + psQuote(appName+".lnk") + `;` +
+		`$s=$w.CreateShortcut($p);` +
 		`$s.TargetPath=` + psQuote(exe) + `; $s.WorkingDirectory=` + psQuote(filepath.Dir(exe)) + `;` +
 		`$s.IconLocation=` + psQuote(exe+",0") + `; $s.Save(); $p`)
 	if err != nil {

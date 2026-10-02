@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -60,6 +61,15 @@ func githubAPI() string {
 	return "https://api.github.com"
 }
 
+// githubSite: the web site itself, asked when the API will not answer (it allows 60 requests an hour per
+// address, which a shared proxy uses up for everyone behind it).
+func githubSite() string {
+	if v := os.Getenv("VRCLIB_GITHUB_SITE"); v != "" { // tests only
+		return strings.TrimRight(v, "/")
+	}
+	return "https://github.com"
+}
+
 func releasesPage() string { return "https://github.com/" + updateRepo + "/releases" }
 
 func parseVer(s string) []int {
@@ -102,8 +112,91 @@ func updateClient(st *Store, timeout time.Duration) *http.Client {
 	return c
 }
 
-// fetchLatestRelease reads the newest published (not draft, not pre-release) release.
+// fetchLatestRelease reads the newest published (not draft, not pre-release) release: from the API, and from
+// the release pages when the API cannot be reached or has had enough of this address.
 func fetchLatestRelease(st *Store) (*UpdateInfo, error) {
+	info, err := fetchLatestAPI(st)
+	if err == nil || errors.Is(err, errNoRelease) {
+		return info, err
+	}
+	if alt, e2 := fetchLatestSite(st); e2 == nil {
+		logf("检查更新：API 没有回答（%v），改从发布页读到 %s", err, alt.Version)
+		return alt, nil
+	}
+	return nil, err
+}
+
+var errNoRelease = errors.New("GitHub 上还没有发布版本")
+
+// fetchLatestSite: /releases/latest redirects to the newest release's page, which gives the tag; the files are
+// where the releases of this program always put them.
+func fetchLatestSite(st *Store) (*UpdateInfo, error) {
+	c := updateClient(st, 25*time.Second)
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	base := githubSite() + "/" + updateRepo + "/releases"
+	req, _ := http.NewRequest("GET", base+"/latest", nil)
+	req.Header.Set("User-Agent", appID+"/"+appVersion)
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("连不上 GitHub（%s）", friendlyNetErr(err))
+	}
+	resp.Body.Close()
+	loc := resp.Header.Get("Location")
+	i := strings.LastIndex(loc, "/releases/tag/")
+	if resp.StatusCode < 300 || resp.StatusCode > 399 || i < 0 {
+		return nil, fmt.Errorf("GitHub 的发布页返回 %d", resp.StatusCode)
+	}
+	tag := loc[i+len("/releases/tag/"):]
+	if t, err := url.PathUnescape(tag); err == nil {
+		tag = t
+	}
+	info := &UpdateInfo{Tag: tag, Version: reVerNum.FindString(tag), URL: base + "/tag/" + url.PathEscape(tag)}
+	if info.Version == "" {
+		return nil, errors.New("发布版本的标签里没有版本号（例如 v1.4.0）")
+	}
+	head := updateClient(st, 25*time.Second)
+	probe := func(name string) *UpdateAsset {
+		u := base + "/download/" + url.PathEscape(tag) + "/" + name
+		a := &UpdateAsset{Name: name, URL: u}
+		req, _ := http.NewRequest("HEAD", u, nil)
+		req.Header.Set("User-Agent", appID+"/"+appVersion)
+		if resp, err := head.Do(req); err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == 200 {
+				if resp.ContentLength > 0 {
+					a.Size = resp.ContentLength
+				}
+				return a
+			}
+			if resp.StatusCode == 404 {
+				return nil
+			}
+		}
+		// a file store that will not answer HEAD: ask for the first byte instead
+		req, _ = http.NewRequest("GET", u, nil)
+		req.Header.Set("User-Agent", appID+"/"+appVersion)
+		req.Header.Set("Range", "bytes=0-0")
+		resp, err := head.Do(req)
+		if err != nil {
+			return nil
+		}
+		resp.Body.Close()
+		if resp.StatusCode != 200 && resp.StatusCode != 206 {
+			return nil
+		}
+		if _, total, ok := strings.Cut(resp.Header.Get("Content-Range"), "/"); ok {
+			if n, err := strconv.ParseInt(total, 10, 64); err == nil && n > 0 {
+				a.Size = n
+			}
+		}
+		return a
+	}
+	info.Zip = probe(appID + "-portable-" + info.Version + ".zip")
+	info.Setup = probe(appID + "-setup-" + info.Version + ".exe")
+	return info, nil
+}
+
+func fetchLatestAPI(st *Store) (*UpdateInfo, error) {
 	req, _ := http.NewRequest("GET", githubAPI()+"/repos/"+updateRepo+"/releases/latest", nil)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", appID+"/"+appVersion)
@@ -116,7 +209,7 @@ func fetchLatestRelease(st *Store) (*UpdateInfo, error) {
 	switch resp.StatusCode {
 	case 200:
 	case 404:
-		return nil, errors.New("GitHub 上还没有发布版本")
+		return nil, errNoRelease
 	case 403, 429:
 		return nil, errors.New("GitHub 暂时限制了访问次数，过一会儿再试")
 	default:
@@ -177,18 +270,19 @@ func fetchLatestRelease(st *Store) (*UpdateInfo, error) {
 	return info, nil
 }
 
-// CheckUpdate asks GitHub for the latest release (at most every few hours unless forced).
+// CheckUpdate asks GitHub for the latest release (at most once an hour unless forced). A check that failed
+// does not count: the next one asks again.
 func CheckUpdate(st *Store, force bool) (*UpdateInfo, error) {
 	st.mu.RLock()
 	cached, last := st.Update, st.UpdateChecked
 	st.mu.RUnlock()
-	if !force && cached != nil && time.Now().Unix()-last < 6*3600 {
+	if !force && cached != nil && time.Now().Unix()-last < 3600 {
 		return cached, nil
 	}
 	info, err := fetchLatestRelease(st)
 	st.mu.Lock()
-	st.UpdateChecked = time.Now().Unix()
 	if err == nil {
+		st.UpdateChecked = time.Now().Unix()
 		st.Update = info
 	}
 	st.mu.Unlock()
@@ -448,16 +542,19 @@ func afterUpdate(waitPid int) {
 	}()
 }
 
-// autoCheckUpdate: a quiet check some seconds after start.
+// autoCheckUpdate: a quiet check some seconds after start, then every two hours while the program stays open
+// (a release published in the meantime is noticed without a restart).
 func autoCheckUpdate(st *Store) {
 	time.Sleep(8 * time.Second)
-	st.mu.RLock()
-	off := st.Settings.NoUpdateCheck
-	st.mu.RUnlock()
-	if off {
-		return
-	}
-	if _, err := CheckUpdate(st, false); err != nil {
-		logf("检查更新失败: %v", err)
+	for {
+		st.mu.RLock()
+		off := st.Settings.NoUpdateCheck
+		st.mu.RUnlock()
+		if !off && !updateBusy.Load() {
+			if _, err := CheckUpdate(st, false); err != nil {
+				logf("检查更新失败: %v", err)
+			}
+		}
+		time.Sleep(2 * time.Hour)
 	}
 }

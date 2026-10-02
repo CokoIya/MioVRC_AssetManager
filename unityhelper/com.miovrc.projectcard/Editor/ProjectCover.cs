@@ -1,6 +1,6 @@
-// MioVRC素材托管工具 — 工程封面
+// MioVRCA — 工程封面
 //
-// Takes a front picture of the avatar in the open scene for this project's card in MioVRC素材托管工具:
+// Takes a front picture of the avatar in the open scene for this project's card in MioVRCA:
 // once when the project is opened, and a moment after a scene is saved or opened. The picture is written to
 // UserSettings/MioVRCA/cover_<time>.png (outside Assets, so Unity imports nothing) and the older ones are deleted.
 // Nothing in the scene changes: other objects are only left out of that one picture, and the camera (and a light,

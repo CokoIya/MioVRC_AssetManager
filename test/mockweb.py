@@ -280,7 +280,7 @@ class H(http.server.BaseHTTPRequestHandler):
             if not assets:
                 return self.send(404, '{"message":"Not Found"}', "application/json")
             tag = os.environ.get("MOCK_TAG", "v9.9.9")
-            return self.send(200, json.dumps({"tag_name": tag, "name": "MioVRC素材托管工具 " + tag[1:], "draft": False, "prerelease": False,
+            return self.send(200, json.dumps({"tag_name": tag, "name": "MioVRCA " + tag[1:], "draft": False, "prerelease": False,
                 "published_at": "2026-10-05T03:00:00Z", "html_url": "https://github.com/CokoIya/MioVRC_AssetManager/releases/tag/" + tag,
                 "body": "## 更新内容\n- 新功能：**测试**\n- 修复：`library.json` 测试\n\n**下载**：[发布页](https://example.com)", "assets": assets}), "application/json")
         if u.path == "/mock/browselog":

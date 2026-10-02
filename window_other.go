@@ -7,3 +7,5 @@ package main
 func webView2Version() string         { return "" }
 func focusExistingWindow() bool       { return false }
 func runNativeWindow(url string) bool { return false }
+
+func refreshShellIcon() {}

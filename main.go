@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-var appVersion = "1.7.1" // a var so test builds can set it with -ldflags -X
+var appVersion = "1.7.2" // a var so test builds can set it with -ldflags -X
 
 var updatedFrom string // the version this run was updated from (shown once in the window)
 
@@ -50,6 +50,7 @@ func main() {
 		logger = log.New(os.Stderr, "", log.LstdFlags)
 	}
 	logf("启动 v%s data=%s", appVersion, dataDir)
+	go refreshShellIcon() // after an update: the taskbar and the shortcuts show the new exe's icon
 	st := LoadStore(filepath.Join(dataDir, "library.json"))
 	if !st.Settings.SetupDone {
 		st.NotesSeen = appVersion // a first install: nothing to tell about changes

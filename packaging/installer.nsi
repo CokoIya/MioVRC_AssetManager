@@ -4,12 +4,16 @@ Target amd64-unicode
 !include "LogicLib.nsh"
 !include "WinMessages.nsh"
 
-!define APPNAME "MioVRC素材托管工具"
+!define APPNAME "MioVRCA"
 !define APPID "MioVRC_AssetManager"
 !define EXENAME "MioVRC_AssetManager.exe"
 !define DIRNAME "MioVRCA"
 !define OLDNAME "VRC素材库"
-!define VERSION "1.7.1"
+; 1.6 to 1.7.1: the name on the window and the shortcuts
+!define MIDNAME "MioVRC素材托管工具"
+; builds between 1.7.1 and 1.7.2
+!define PREVNAME "MioVRCA素材托管Tools"
+!define VERSION "1.7.2"
 ; registry keys keep their pre-1.6 names, so installing over an older version updates it
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\VRCAssetLibrary"
 !define DIRKEY "Software\VRCAssetLibrary"
@@ -22,7 +26,7 @@ RequestExecutionLevel user
 SetCompressor /SOLID lzma
 BrandingText "${APPNAME} ${VERSION}"
 
-VIProductVersion "1.7.1.0"
+VIProductVersion "1.7.2.0"
 VIAddVersionKey /LANG=2052 "ProductName" "${APPNAME}"
 VIAddVersionKey /LANG=2052 "FileDescription" "${APPNAME} 安装程序"
 VIAddVersionKey /LANG=2052 "CompanyName" "Coko_Iya"
@@ -58,6 +62,16 @@ Var PickDrive ; first disk other than the system one with room to spare
 Function ${UN}IsRunning
   StrCpy $0 ""
   FindWindow $1 "webview" "${APPNAME}"
+  ${If} $1 <> 0
+    StrCpy $0 "1"
+    Return
+  ${EndIf}
+  FindWindow $1 "webview" "${PREVNAME}"
+  ${If} $1 <> 0
+    StrCpy $0 "1"
+    Return
+  ${EndIf}
+  FindWindow $1 "webview" "${MIDNAME}"
   ${If} $1 <> 0
     StrCpy $0 "1"
     Return
@@ -108,6 +122,16 @@ FunctionEnd
 Function ${UN}CloseApp
   StrCpy $7 ""
   FindWindow $1 "webview" "${APPNAME}"
+  ${If} $1 <> 0
+    SendMessage $1 ${WM_CLOSE} 0 0 /TIMEOUT=3000
+    StrCpy $7 "1"
+  ${EndIf}
+  FindWindow $1 "webview" "${PREVNAME}"
+  ${If} $1 <> 0
+    SendMessage $1 ${WM_CLOSE} 0 0 /TIMEOUT=3000
+    StrCpy $7 "1"
+  ${EndIf}
+  FindWindow $1 "webview" "${MIDNAME}"
   ${If} $1 <> 0
     SendMessage $1 ${WM_CLOSE} 0 0 /TIMEOUT=3000
     StrCpy $7 "1"
@@ -242,6 +266,17 @@ Section "Install"
   Delete "$SMPROGRAMS\${OLDNAME}\使用说明.lnk"
   Delete "$SMPROGRAMS\${OLDNAME}\卸载 ${OLDNAME}.lnk"
   RMDir "$SMPROGRAMS\${OLDNAME}"
+  ; 1.6 to 1.7.1 were called ${MIDNAME}, builds after that ${PREVNAME}: their shortcuts make way for the ones below
+  Delete "$DESKTOP\${MIDNAME}.lnk"
+  Delete "$SMPROGRAMS\${MIDNAME}\${MIDNAME}.lnk"
+  Delete "$SMPROGRAMS\${MIDNAME}\使用说明.lnk"
+  Delete "$SMPROGRAMS\${MIDNAME}\卸载 ${MIDNAME}.lnk"
+  RMDir "$SMPROGRAMS\${MIDNAME}"
+  Delete "$DESKTOP\${PREVNAME}.lnk"
+  Delete "$SMPROGRAMS\${PREVNAME}\${PREVNAME}.lnk"
+  Delete "$SMPROGRAMS\${PREVNAME}\使用说明.lnk"
+  Delete "$SMPROGRAMS\${PREVNAME}\卸载 ${PREVNAME}.lnk"
+  RMDir "$SMPROGRAMS\${PREVNAME}"
   ; installed somewhere else before: take the old copy away (only its own files)
   ${If} $OldDir != ""
   ${AndIf} $OldDir != $INSTDIR
@@ -258,6 +293,8 @@ Section "Install"
   CreateShortcut "$SMPROGRAMS\${APPNAME}\使用说明.lnk" "$INSTDIR\使用说明.txt"
   CreateShortcut "$SMPROGRAMS\${APPNAME}\卸载 ${APPNAME}.lnk" "$INSTDIR\卸载.exe"
   CreateShortcut "$DESKTOP\${APPNAME}.lnk" "$INSTDIR\${EXENAME}" "" "$INSTDIR\${EXENAME}" 0
+  ; the exe was replaced: Explorer reads its icon again (taskbar pin, shortcuts) instead of keeping a stale or blank one
+  System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x1000, p 0, p 0)'
 
   WriteRegStr HKCU "${DIRKEY}" "InstallDir" "$INSTDIR"
   WriteRegStr HKCU "${UNINSTKEY}" "DisplayName" "${APPNAME}"
@@ -269,7 +306,7 @@ Section "Install"
   WriteRegStr HKCU "${UNINSTKEY}" "URLInfoAbout" "https://miovrc.com/vrca/"
   WriteRegDWORD HKCU "${UNINSTKEY}" "NoModify" 1
   WriteRegDWORD HKCU "${UNINSTKEY}" "NoRepair" 1
-  WriteRegDWORD HKCU "${UNINSTKEY}" "EstimatedSize" 9000
+  WriteRegDWORD HKCU "${UNINSTKEY}" "EstimatedSize" 15000
 SectionEnd
 
 Section "Uninstall"
@@ -290,6 +327,16 @@ Section "Uninstall"
   Delete "$SMPROGRAMS\${OLDNAME}\使用说明.lnk"
   Delete "$SMPROGRAMS\${OLDNAME}\卸载 ${OLDNAME}.lnk"
   RMDir "$SMPROGRAMS\${OLDNAME}"
+  Delete "$DESKTOP\${MIDNAME}.lnk"
+  Delete "$SMPROGRAMS\${MIDNAME}\${MIDNAME}.lnk"
+  Delete "$SMPROGRAMS\${MIDNAME}\使用说明.lnk"
+  Delete "$SMPROGRAMS\${MIDNAME}\卸载 ${MIDNAME}.lnk"
+  RMDir "$SMPROGRAMS\${MIDNAME}"
+  Delete "$DESKTOP\${PREVNAME}.lnk"
+  Delete "$SMPROGRAMS\${PREVNAME}\${PREVNAME}.lnk"
+  Delete "$SMPROGRAMS\${PREVNAME}\使用说明.lnk"
+  Delete "$SMPROGRAMS\${PREVNAME}\卸载 ${PREVNAME}.lnk"
+  RMDir "$SMPROGRAMS\${PREVNAME}"
   DeleteRegKey HKCU "${UNINSTKEY}"
   DeleteRegKey HKCU "${DIRKEY}"
   IfFileExists "$LOCALAPPDATA\${APPID}\library.json" askdata

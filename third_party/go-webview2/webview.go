@@ -38,6 +38,9 @@ func setWindowContext(wnd uintptr, data interface{}) {
 // MoveHook runs when the window moves (vrclib patch).
 var MoveHook func()
 
+// IconLoaded says whether the window's icon was found in the exe's resources (vrclib patch).
+var IconLoaded bool
+
 type browser interface {
 	Embed(hwnd uintptr) bool
 	Resize()
@@ -373,6 +376,13 @@ func (w *webview) CreateWithOptions(opts WindowOptions) bool {
 		0,
 	)
 	setWindowContext(w.hwnd, w)
+	// vrclib patch: the icons go on the window itself too, not only on its class. The taskbar and Alt+Tab ask
+	// the window first, and an answer from the window does not depend on what the shell has cached for the exe.
+	IconLoaded = icon != 0
+	if opts.IconId != 0 && icon != 0 {
+		_, _, _ = w32.User32SendMessageW.Call(w.hwnd, 0x0080, 1, icon)   // WM_SETICON, ICON_BIG
+		_, _, _ = w32.User32SendMessageW.Call(w.hwnd, 0x0080, 0, iconSm) // WM_SETICON, ICON_SMALL
+	}
 
 	_, _, _ = w32.User32ShowWindow.Call(w.hwnd, w32.SWShow)
 	_, _, _ = w32.User32UpdateWindow.Call(w.hwnd)
