@@ -58,7 +58,7 @@ func QueuePanFetch(st *core.Store, keys ...string) {
 				if surl == "" {
 					continue
 				}
-				netdisk.TaskPan.Set(done, done+left+1, "读取网盘分享")
+				netdisk.TaskPan.Set(done, done+left+1, "正在获取网盘分享")
 				l, err := netdisk.FetchPanListing(st, link, pwd)
 				st.Mu.Lock()
 				if err != nil {

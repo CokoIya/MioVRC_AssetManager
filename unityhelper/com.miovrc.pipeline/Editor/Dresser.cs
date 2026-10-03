@@ -16,10 +16,10 @@ namespace MioVRCA.Pipeline
             Transform root = avatar.transform;
             string path = J.Str(args, "prefab").Replace('\\', '/');
             var asset = AssetDatabase.LoadAssetAtPath<GameObject>(path);
-            if (asset == null) throw new PipelineException("工程里没有这个 prefab：" + path);
+            if (asset == null) throw new PipelineException("工程中未找到该 prefab：" + path);
             Type desc = Refl.DescriptorType;
             if (desc != null && asset.GetComponentInChildren(desc, true) != null)
-                throw new PipelineException("「" + asset.name + "」是带素体的整只模型，不是单独的衣服；换一个只有衣服的 prefab");
+                throw new PipelineException("「" + asset.name + "」是包含素体的完整模型，不是单独的衣服，请改用仅含衣服的 prefab");
             Type merge = Refl.MAType("ModularAvatarMergeArmature");
 
             var res = new Dictionary<string, object>();
@@ -41,10 +41,10 @@ namespace MioVRCA.Pipeline
             {
                 string backup = Bridge.BackupScene(root.gameObject);
                 if (backup != "") res["sceneBackup"] = backup;
-                Undo.SetCurrentGroupName("MioVRCA 穿戴 " + asset.name);
+                Undo.SetCurrentGroupName("MioVRCA 装配 " + asset.name);
                 go = PrefabUtility.InstantiatePrefab(asset, root) as GameObject;
-                if (go == null) throw new PipelineException("没能把「" + asset.name + "」放进场景");
-                Undo.RegisterCreatedObjectUndo(go, "MioVRCA 穿戴 " + asset.name);
+                if (go == null) throw new PipelineException("无法将「" + asset.name + "」放入场景");
+                Undo.RegisterCreatedObjectUndo(go, "MioVRCA 装配 " + asset.name);
             }
             string name = J.Str(args, "name");
             if (name != "" && go.name != name)
@@ -63,8 +63,8 @@ namespace MioVRCA.Pipeline
                 {
                     bool skinned = go.GetComponentInChildren<SkinnedMeshRenderer>(true) != null;
                     warnings.Add(skinned
-                        ? "Modular Avatar 没能把它的骨架对到头像上" + (why != "" ? "（" + why + "）" : "") + "：多半不是给这个素体做的，或者骨架结构特殊；它现在只是放在头像下面，不会跟着动"
-                        : "它没有骨架（配饰、道具这类）：已经放到头像下面，位置需要自己摆，或者挂到对应的骨头上");
+                        ? "Modular Avatar 无法将该素材的骨架对应到模型" + (why != "" ? "（" + why + "）" : "") + "，可能不是为该素体制作，或骨架结构特殊，目前仅放置在模型下，不会跟随模型运动"
+                        : "该素材不含骨架（配饰、道具等），已放置在模型下，需手动调整位置或挂到对应骨骼上");
                 }
             }
             res["setUp"] = pinned || go.GetComponentInChildren(merge, true) != null;
@@ -74,7 +74,7 @@ namespace MioVRCA.Pipeline
                 bool on = J.Bool(args, "active");
                 if (go.activeSelf != on) { Undo.RecordObject(go, "MioVRCA 显示"); go.SetActive(on); }
             }
-            Undo.SetCurrentGroupName("MioVRCA 穿戴 " + asset.name); // Modular Avatar named the group after itself
+            Undo.SetCurrentGroupName("MioVRCA 装配 " + asset.name); // Modular Avatar named the group after itself
             Undo.CollapseUndoOperations(undoGroup);
             res["outfit"] = AvatarInspect.Describe(root, go.transform);
             res["note"] = "场景没有保存；Ctrl+Z 可以撤销";
@@ -86,7 +86,7 @@ namespace MioVRCA.Pipeline
         {
             Type setup = Refl.Find("nadena.dev.modular_avatar.core.editor.SetupOutfit");
             MethodInfo run = setup != null ? setup.GetMethod("SetupOutfitUI", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(GameObject) }, null) : null;
-            if (run == null) throw new PipelineException("这个版本的 Modular Avatar 没有 Setup Outfit 接口（需要 1.8 以上）");
+            if (run == null) throw new PipelineException("当前版本的 Modular Avatar 不支持 Setup Outfit 接口（需要 1.8 以上）");
             FieldInfo msgs = setup.GetField("errorMessageGroups", BindingFlags.NonPublic | BindingFlags.Static);
             if (msgs != null) msgs.SetValue(null, null); // what an earlier run left there is not about this outfit
             Type win = Refl.Find("nadena.dev.modular_avatar.core.editor.ESOErrorWindow");

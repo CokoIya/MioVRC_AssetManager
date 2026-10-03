@@ -163,7 +163,7 @@ func fetchShopPage(c *http.Client, u string) ([]core.BoothHit, error) {
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("Booth 返回 %d", resp.StatusCode)
+		return nil, fmt.Errorf("Booth 返回错误（HTTP %d）", resp.StatusCode)
 	}
 	hits := booth.ParseBoothSearch(string(b))
 	shopCache.Store(u, cachedPage{time.Now(), hits})

@@ -26,16 +26,16 @@ func boothChanges(old, bi *core.BoothInfo) {
 	}
 	var notes []string
 	if old.Name != bi.Name {
-		notes = append(notes, "商品名改了")
+		notes = append(notes, "商品名称已更改")
 	}
 	if old.Price != bi.Price && old.Price != "" && bi.Price != "" {
 		notes = append(notes, fmt.Sprintf("价格 %s → %s", old.Price, bi.Price))
 	}
 	if descHash(old.Desc) != descHash(bi.Desc) {
-		notes = append(notes, "商品说明改了")
+		notes = append(notes, "商品说明已更改")
 	}
 	if len(old.Images) != len(bi.Images) {
-		notes = append(notes, "商品图片改了")
+		notes = append(notes, "商品图片已更改")
 	}
 	if len(notes) > 0 {
 		bi.Changed, bi.ChangeNote = time.Now().Unix(), strings.Join(notes, "，")

@@ -99,7 +99,7 @@ func (p *WinPane) Ensure(proxy string) (int, error) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	return 0, errors.New("内置浏览器没有打开调试端口")
+	return 0, errors.New("内置浏览器未开启调试端口")
 }
 
 // create runs on the window's thread.
@@ -119,7 +119,7 @@ func (p *WinPane) create(proxy string) {
 	h, _, cerr := procCreateWindowExW.Call(0, uintptr(unsafe.Pointer(cls)), 0, style, 0, 0, 200, 200,
 		uintptr(p.Wv.Window()), 0, hinst, 0)
 	if h == 0 {
-		p.err = fmt.Errorf("建不了页面窗口：%v", cerr)
+		p.err = fmt.Errorf("页面窗口创建失败：%v", cerr)
 		return
 	}
 	port, err := freePort()

@@ -123,7 +123,7 @@ func runBoothWindow(st *core.Store, prog *core.Task, quiet bool) bool {
 	}
 	browser, note := webpane.SyncBrowser()
 	if browser == "" {
-		prog.Set(0, 0, "没找到可用的浏览器（Chrome、Edge 或 Firefox）")
+		prog.Set(0, 0, "未找到可用的浏览器（Chrome、Edge 或 Firefox）")
 		return false
 	}
 	if note != "" {
@@ -155,7 +155,7 @@ func runBoothWindow(st *core.Store, prog *core.Task, quiet bool) bool {
 	}
 	if err != nil {
 		core.Logf("Booth 窗口启动失败: %v", err)
-		prog.Set(0, 0, "Booth 窗口打不开："+err.Error())
+		prog.Set(0, 0, "无法打开 Booth 窗口："+err.Error())
 		return false
 	}
 	closeWin := true
@@ -165,7 +165,7 @@ func runBoothWindow(st *core.Store, prog *core.Task, quiet bool) bool {
 			d.CloseBrowser()
 		}
 	}()
-	return boothLoop(st, prog, d, quiet, "请在弹出的 "+webpane.BrowserLabel(browser)+" 窗口里登录 Booth，登录后会自动开始读取", &closeWin)
+	return boothLoop(st, prog, d, quiet, "请在弹出的 "+webpane.BrowserLabel(browser)+" 窗口中登录 Booth，登录后自动同步已购", &closeWin)
 }
 
 // boothLoop waits until the page is a logged-in Booth library page, then reads the purchases (quiet:
@@ -188,20 +188,20 @@ func boothLoop(st *core.Store, prog *core.Task, d webpane.PageDriver, quiet bool
 			return false
 		}
 		if time.Now().After(deadline) {
-			prog.Set(0, 0, "等待超时，已取消")
+			prog.Set(0, 0, "等待超时，同步已取消")
 			return false
 		}
 		href, err := webpane.EvalString(d, "location.href", 6*time.Second)
 		if err != nil {
 			if d.Dead() || errors.Is(err, webpane.ErrCDPClosed) {
 				*closeWin = false
-				prog.Set(0, 0, "Booth 窗口被关掉了，同步已取消")
+				prog.Set(0, 0, "Booth 窗口已关闭，同步已取消")
 				return false
 			}
 			// the tab may have been replaced (login redirects can open a new one)
 			if rerr := d.Reconnect(); rerr != nil && d.Dead() {
 				*closeWin = false
-				prog.Set(0, 0, "Booth 窗口被关掉了，同步已取消")
+				prog.Set(0, 0, "Booth 窗口已关闭，同步已取消")
 				return false
 			}
 			time.Sleep(1500 * time.Millisecond)
@@ -222,7 +222,7 @@ func boothLoop(st *core.Store, prog *core.Task, d webpane.PageDriver, quiet bool
 		}
 		if !onAccounts || strings.Contains(u.Path, "sign_in") {
 			if !quiet && left != nil && left.userLeft() {
-				prog.Set(0, 0, "没有登录，同步已取消")
+				prog.Set(0, 0, "未登录，同步已取消")
 				return false
 			}
 			// back on booth.pm after logging in → go to the library page ourselves
@@ -258,7 +258,7 @@ func boothLoop(st *core.Store, prog *core.Task, d webpane.PageDriver, quiet bool
 				continue // page navigated while reading; start over
 			}
 			core.Logf("Booth 已购读取失败: %v", err)
-			prog.Set(0, 0, "读取失败："+msg)
+			prog.Set(0, 0, "同步失败："+msg)
 			return false
 		}
 		res = r
@@ -270,7 +270,7 @@ func boothLoop(st *core.Store, prog *core.Task, d webpane.PageDriver, quiet bool
 		if res.Debug != "" {
 			_ = os.WriteFile(filepath.Join(core.DataDir, "booth-debug.html"), []byte(res.Debug), 0644)
 		}
-		prog.Set(1, 1, "没有读到已购商品（如果买过，请把数据文件夹里的 booth-debug.html 发给作者）")
+		prog.Set(1, 1, "未获取到已购商品（如确有已购，请将数据文件夹中的 booth-debug.html 发送给作者）")
 		return false
 	}
 	_ = os.Remove(filepath.Join(core.DataDir, "booth-debug.html"))
@@ -279,9 +279,9 @@ func boothLoop(st *core.Store, prog *core.Task, d webpane.PageDriver, quiet bool
 	downloadPurchaseThumbs(st, prog)
 	_ = st.Save()
 	core.BumpRev()
-	msg := fmt.Sprintf("完成：%d 件已购", n)
+	msg := fmt.Sprintf("完成：已同步 %d 件 Booth 已购", n)
 	if res.OrderError != "" {
-		msg += "（订单页没读全：" + res.OrderError + "）"
+		msg += "（订单页未完整获取：" + res.OrderError + "）"
 	}
 	prog.Set(1, 1, msg)
 	core.Logf("Booth 已购同步完成：%d 件，%d 个订单", n, len(res.Orders))
@@ -308,13 +308,13 @@ func runScraper(d webpane.PageDriver, prog *core.Task) (*scrapeResult, error) {
 		_ = json.Unmarshal([]byte(raw), &p)
 		switch p.Stage {
 		case "library":
-			prog.Set(0, 0, fmt.Sprintf("读取已购 第 %d 页（%d 件）", p.Page, p.Items))
+			prog.Set(0, 0, fmt.Sprintf("正在获取已购列表，第 %d 页（%d 件）", p.Page, p.Items))
 		case "gifts":
-			prog.Set(0, 0, fmt.Sprintf("读取收到的礼物 第 %d 页（%d 件）", p.Page, p.Items))
+			prog.Set(0, 0, fmt.Sprintf("正在获取礼物列表，第 %d 页（%d 件）", p.Page, p.Items))
 		case "orders":
-			prog.Set(0, 0, fmt.Sprintf("读取订单列表 第 %d 页（%d 个订单）", p.Page, p.Orders))
+			prog.Set(0, 0, fmt.Sprintf("正在获取订单列表，第 %d 页（%d 个订单）", p.Page, p.Orders))
 		case "orderDetail":
-			prog.Set(p.OrderDone, p.OrdersTotal, "读取订单详情")
+			prog.Set(p.OrderDone, p.OrdersTotal, "正在获取订单详情")
 		}
 		if !p.Done {
 			continue
@@ -328,7 +328,7 @@ func runScraper(d webpane.PageDriver, prog *core.Task) (*scrapeResult, error) {
 		}
 		var r scrapeResult
 		if err := json.Unmarshal([]byte(out), &r); err != nil {
-			return nil, fmt.Errorf("结果解析失败：%v", err)
+			return nil, fmt.Errorf("无法解析同步结果：%v", err)
 		}
 		return &r, nil
 	}
@@ -430,7 +430,7 @@ func downloadPurchaseThumbs(st *core.Store, prog *core.Task) {
 	c := core.HTTPClient(st)
 	fails := 0
 	for i, p := range todo {
-		prog.Set(i, len(todo), "下载已购商品缩略图")
+		prog.Set(i, len(todo), "正在下载已购商品缩略图")
 		path, err := booth.DownloadTo(c, p.Thumb, "purchase_"+p.ID)
 		if err != nil {
 			fails++

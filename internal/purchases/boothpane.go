@@ -44,14 +44,14 @@ func runBoothPane(st *core.Store, prog *core.Task, quiet bool) bool {
 		prog.Set(0, 0, "正在打开 Booth 页面…")
 		if err := webpane.Pane.Open(start, "booth", true); err != nil {
 			core.Logf("Booth 页面打不开: %v", err)
-			prog.Set(0, 0, "Booth 页面打不开："+err.Error())
+			prog.Set(0, 0, "无法打开 Booth 页面："+err.Error())
 			return false
 		}
 	}
 	closeWin := false
-	msg := "请在软件里的 Booth 页面登录，登录后会自动开始读取"
+	msg := "请在软件内的 Booth 页面登录，登录后自动同步已购"
 	if webpane.PaneMode() == "window" {
-		msg = "请在打开的 Booth 窗口里登录，登录后会自动开始读取"
+		msg = "请在打开的 Booth 窗口中登录，登录后自动同步已购"
 	}
 	return boothLoop(st, prog, &webpane.PaneDriver{Start: time.Now()}, quiet, msg, &closeWin)
 }

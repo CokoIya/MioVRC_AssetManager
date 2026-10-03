@@ -202,7 +202,7 @@ func TestVPMResolve(t *testing.T) {
 	if _, err := idx.resolve(map[string]string{"com.vrchat.avatars": "^4.0.0"}); err == nil || !strings.Contains(err.Error(), "正式版本") {
 		t.Errorf("impossible range: %v", err)
 	}
-	if _, err := idx.resolve(map[string]string{"no.such": "*"}); err == nil || !strings.Contains(err.Error(), "仓库里没有") {
+	if _, err := idx.resolve(map[string]string{"no.such": "*"}); err == nil || !strings.Contains(err.Error(), "仓库中未找到") {
 		t.Errorf("unknown package: %v", err)
 	}
 	// the cached zip is used, a bad download is refused
@@ -313,7 +313,7 @@ func TestNewProject(t *testing.T) {
 	if json.Unmarshal(b, &vs) != nil || len(vs.Projects) != 2 || vs.Projects[0] != p || vs.Default != `D:\VRC` {
 		t.Errorf("VCC list: %s", b)
 	}
-	if len(j.Notes) == 0 || !strings.Contains(strings.Join(j.Notes, "|"), "官方头像模板") || !strings.Contains(strings.Join(j.Notes, "|"), "没有 Unity") {
+	if len(j.Notes) == 0 || !strings.Contains(strings.Join(j.Notes, "|"), "官方 Avatar 模板") || !strings.Contains(strings.Join(j.Notes, "|"), "未安装 Unity") {
 		t.Errorf("notes %v", j.Notes)
 	}
 	DismissNewProject()
@@ -321,7 +321,7 @@ func TestNewProject(t *testing.T) {
 		t.Error("not dismissed")
 	}
 	// the same folder again is refused, a template server that is gone gives the built-in settings
-	if err := StartNewProject(st, req); err == nil || !strings.Contains(err.Error(), "已经有东西") {
+	if err := StartNewProject(st, req); err == nil || !strings.Contains(err.Error(), "不为空") {
 		t.Errorf("existing: %v", err)
 	}
 	templateRaw = f.srv.URL + "/gone/"
@@ -360,7 +360,7 @@ func TestNewProject(t *testing.T) {
 	}
 	j = wait()
 	notes := strings.Join(j.Notes, "|")
-	if j.Stage != "done" || !strings.Contains(notes, "没装 nadena.dev.ndmf") || !strings.Contains(notes, "没装 nadena.dev.modular-avatar") || !strings.Contains(notes, "没装 com.anatawa12.avatar-optimizer") {
+	if j.Stage != "done" || !strings.Contains(notes, "未安装 nadena.dev.ndmf") || !strings.Contains(notes, "未安装 nadena.dev.modular-avatar") || !strings.Contains(notes, "未安装 com.anatawa12.avatar-optimizer") {
 		t.Errorf("optional failure: %s %v %v", j.Stage, j.Err, j.Notes)
 	}
 	if strings.Contains(strings.Join(j.Packages, "|"), "modular-avatar") || !strings.Contains(strings.Join(j.Packages, "|"), "jp.lilxyzw.liltoon") {

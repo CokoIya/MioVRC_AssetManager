@@ -28,6 +28,17 @@ func Changelog() []ChangeEntry {
 	return out
 }
 
+// NotesVersion: the entry that speaks for the running version. A version that has no entry of its own
+// (1.7.4, which changed nothing a player needs telling) goes by the newest one that is not newer than it (1.7.3).
+func NotesVersion() string {
+	for _, e := range Changelog() {
+		if !VersionNewer(e.Version, core.AppVersion) {
+			return e.Version
+		}
+	}
+	return ""
+}
+
 // WhatsNew: the versions since the notes were last shown, newest first (nil when there is nothing
 // new). A library without a mark comes from before 1.6, which had no notes. Caller holds st.mu.
 func WhatsNew(st *core.Store) []ChangeEntry {

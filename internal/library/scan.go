@@ -66,10 +66,10 @@ func RunFolderScan(st *core.Store, prog *core.Task) {
 
 	ctx := &scanCtx{settings: settings, overrides: ov, assets: map[string]*core.Asset{}, alt: map[string]string{}, now: time.Now().Unix()}
 	for i, root := range settings.Roots {
-		prog.Set(i, len(settings.Roots), "扫描 "+root)
+		prog.Set(i, len(settings.Roots), "正在扫描 "+root)
 		fi, err := os.Stat(root)
 		if err != nil || !fi.IsDir() {
-			ctx.warnings = append(ctx.warnings, "找不到素材文件夹："+root)
+			ctx.warnings = append(ctx.warnings, "未找到素材文件夹："+root)
 			continue
 		}
 		ctx.scanContainer(root, root, 0, nil)

@@ -69,7 +69,7 @@ func (b *bingSession) init() error {
 	resp.Body.Close()
 	ig, iid, tk := reBingIG.FindSubmatch(page), reBingIID.FindSubmatch(page), reBingToken.FindSubmatch(page)
 	if ig == nil || iid == nil || tk == nil {
-		return errors.New("Bing 翻译页面变了")
+		return errors.New("无法解析 Bing 翻译页面（网站可能已改版）")
 	}
 	b.ig, b.iid, b.key, b.token = string(ig[1]), string(iid[1]), string(tk[1]), string(tk[2])
 	b.until = time.Now().Add(25 * time.Minute)
@@ -104,7 +104,7 @@ func (b *bingSession) translate(text string) (string, error) {
 	}
 	if json.Unmarshal(body, &r) != nil || len(r) == 0 || len(r[0].Translations) == 0 {
 		b.ig = "" // token may have expired: fetch a new one next time
-		return "", fmt.Errorf("Bing 翻译没有返回结果（%d）", resp.StatusCode)
+		return "", fmt.Errorf("Bing 翻译未返回结果（%d）", resp.StatusCode)
 	}
 	return r[0].Translations[0].Text, nil
 }
@@ -121,7 +121,7 @@ func googleTranslate(c *http.Client, text string) (string, error) {
 	resp.Body.Close()
 	var r []any
 	if json.Unmarshal(body, &r) != nil || len(r) == 0 {
-		return "", fmt.Errorf("Google 翻译没有返回结果（%d）", resp.StatusCode)
+		return "", fmt.Errorf("Google 翻译未返回结果（%d）", resp.StatusCode)
 	}
 	segs, _ := r[0].([]any)
 	var sb strings.Builder

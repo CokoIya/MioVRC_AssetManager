@@ -28,11 +28,11 @@ func TestBridgeCall(t *testing.T) {
 		switch cmd {
 		case "busy":
 			if n++; n < 2 {
-				return nil, "Unity 正在编译或导入，等它忙完再试"
+				return nil, "Unity 正在编译或导入，请稍后重试"
 			}
 			return map[string]any{"n": n}, ""
 		case "bad":
-			return nil, "头像下找不到「X」"
+			return nil, "模型下未找到「X」"
 		case "slow":
 			time.Sleep(700 * time.Millisecond)
 		case "drop":
@@ -51,11 +51,11 @@ func TestBridgeCall(t *testing.T) {
 	if _, err = unity.BridgeCall(context.Background(), proj, "bad", map[string]any{}, 5*time.Second); err == nil || !asBridgeErr(err, &be) {
 		t.Errorf("refusal: %v", err)
 	}
-	if _, err = unity.BridgeCall(context.Background(), proj, "slow", map[string]any{}, 300*time.Millisecond); err == nil || !strings.Contains(err.Error(), "做了很久") {
+	if _, err = unity.BridgeCall(context.Background(), proj, "slow", map[string]any{}, 300*time.Millisecond); err == nil || !strings.Contains(err.Error(), "超时") {
 		t.Errorf("timeout: %v", err)
 	}
 	t0 := time.Now()
-	if _, err = unity.BridgeCall(context.Background(), proj, "drop", map[string]any{}, time.Minute); err == nil || !strings.Contains(err.Error(), "没有回应") || time.Since(t0) > 8*time.Second {
+	if _, err = unity.BridgeCall(context.Background(), proj, "drop", map[string]any{}, time.Minute); err == nil || !strings.Contains(err.Error(), "未响应") || time.Since(t0) > 8*time.Second {
 		t.Errorf("dropped request: %v after %v", err, time.Since(t0))
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -103,7 +103,7 @@ func TestAIKitInstall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(note, "没能打开 Unity") { // no editor on this machine
+	if !strings.Contains(note, "无法打开 Unity") { // no editor on this machine
 		t.Errorf("note %q", note)
 	}
 	k := unity.AIKitStatus(proj)

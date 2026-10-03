@@ -29,7 +29,7 @@
       const html = await r.text();
       return new DOMParser().parseFromString(html, "text/html");
     }
-    throw new Error("网络不稳定，读取失败：" + path);
+    throw new Error("网络不稳定，页面加载失败：" + path);
   }
 
   function idSet(root, re) {

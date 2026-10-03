@@ -33,17 +33,17 @@ type aiProviderInfo struct {
 
 var aiProviders = []aiProviderInfo{
 	{ID: "deepseek", Label: "DeepSeek", Base: "https://api.deepseek.com", Model: "deepseek-flash", Wire: "openai",
-		Note: "在 platform.deepseek.com 申请 API Key。模型：deepseek-flash（能看图）、deepseek-v4-pro（更强，看不了图，拍照时自动请 deepseek-flash 帮它看）。旧名字 deepseek-chat / deepseek-reasoner 已经停用。"},
+		Note: "在 platform.deepseek.com 申请 API Key。模型：deepseek-flash（支持识图）、deepseek-v4-pro（能力更强，不支持识图，截图时自动由 deepseek-flash 代为描述）。旧名称 deepseek-chat / deepseek-reasoner 已停用。"},
 	{ID: "qwen", Label: "通义千问", Base: "https://dashscope.aliyuncs.com/compatible-mode/v1", Model: "qwen-plus", Wire: "openai",
-		Note: "在阿里云百炼（bailian.console.aliyun.com）申请 API Key。控制台给的是带工作空间的地址（https://…maas.aliyuncs.com/compatible-mode/v1）的话，填那个。常用模型：qwen-plus、qwen-max、qwen3.8-max。"},
+		Note: "在阿里云百炼（bailian.console.aliyun.com）申请 API Key。控制台提供的是带工作空间的地址（https://…maas.aliyuncs.com/compatible-mode/v1）时，请填写该地址。常用模型：qwen-plus、qwen-max、qwen3.8-max。"},
 	{ID: "glm", Label: "智谱 GLM", Base: "https://open.bigmodel.cn/api/paas/v4", Model: "glm-5.3", Wire: "openai",
-		Note: "在智谱开放平台（bigmodel.cn）申请 API Key。常用模型：glm-5.3、glm-4.7；免费的有 glm-4.7-flash。看图用它的视觉模型（glm-4.6v-flash 免费）。"},
+		Note: "在智谱开放平台（bigmodel.cn）申请 API Key。常用模型：glm-5.3、glm-4.7；免费模型：glm-4.7-flash。识图使用其视觉模型（glm-4.6v-flash 免费）。"},
 	{ID: "kimi", Label: "Kimi", Base: "https://api.moonshot.cn/v1", Model: "kimi-k3", Wire: "openai",
-		Note: "在 Kimi 开放平台（platform.kimi.com）申请 API Key。常用模型：kimi-k3、kimi-k2.6，这两个自己能看图。"},
+		Note: "在 Kimi 开放平台（platform.kimi.com）申请 API Key。常用模型：kimi-k3、kimi-k2.6，均支持识图。"},
 	{ID: "openai", Label: "ChatGPT 兼容", Base: "https://api.openai.com/v1", Model: "", Wire: "openai",
-		Note: "OpenAI 官方，或任何兼容 OpenAI 接口的服务（中转站、本地的 Ollama / LM Studio 等）：填它给的接口地址和 Key。"},
+		Note: "OpenAI 官方，或任何兼容 OpenAI 接口的服务（中转站、本地的 Ollama / LM Studio 等）：填写该服务提供的接口地址和 Key。"},
 	{ID: "claude", Label: "Claude 兼容", Base: "https://api.anthropic.com", Model: "claude-sonnet-5-5", Wire: "claude",
-		Note: "Anthropic 官方，或兼容 Anthropic 接口的服务：填它给的接口地址和 Key。"},
+		Note: "Anthropic 官方，或兼容 Anthropic 接口的服务：填写该服务提供的接口地址和 Key。"},
 }
 
 // providerEyes: the model of each service that reads pictures. When the model doing the work cannot see and no
@@ -65,10 +65,10 @@ type visionPreset struct {
 }
 
 var visionPresets = []visionPreset{
-	{ID: "deepseek", Label: "DeepSeek", Wire: "openai", BaseURL: "https://api.deepseek.com", Model: "deepseek-flash", Note: "DeepSeek 自己的 deepseek-flash 能看图"},
-	{ID: "glm", Label: "智谱 GLM", Wire: "openai", BaseURL: "https://open.bigmodel.cn/api/paas/v4", Model: "glm-4.6v-flash", Note: "glm-4.6v-flash 免费；更强的有 glm-4.6v、glm-5v-turbo"},
-	{ID: "qwen", Label: "通义千问", Wire: "openai", BaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1", Model: "qwen-vl-plus", Note: "也可以用 qwen3.8-max 这类自己能看图的模型"},
-	{ID: "kimi", Label: "Kimi", Wire: "openai", BaseURL: "https://api.moonshot.cn/v1", Model: "kimi-k3", Note: "kimi-k3、kimi-k2.6 都能看图"},
+	{ID: "deepseek", Label: "DeepSeek", Wire: "openai", BaseURL: "https://api.deepseek.com", Model: "deepseek-flash", Note: "DeepSeek 的 deepseek-flash 支持识图"},
+	{ID: "glm", Label: "智谱 GLM", Wire: "openai", BaseURL: "https://open.bigmodel.cn/api/paas/v4", Model: "glm-4.6v-flash", Note: "glm-4.6v-flash 免费；能力更强的有 glm-4.6v、glm-5v-turbo"},
+	{ID: "qwen", Label: "通义千问", Wire: "openai", BaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1", Model: "qwen-vl-plus", Note: "也可使用 qwen3.8-max 等自身支持识图的模型"},
+	{ID: "kimi", Label: "Kimi", Wire: "openai", BaseURL: "https://api.moonshot.cn/v1", Model: "kimi-k3", Note: "kimi-k3、kimi-k2.6 均支持识图"},
 }
 
 func aiProvider(id string) *aiProviderInfo {
@@ -250,7 +250,7 @@ func aiView() AIView {
 // aiSave: the provider, its address and model; key == nil leaves the saved key alone, "" removes it.
 func aiSave(provider, base, model string, key *string, hierarchy *string) error {
 	if provider != "" && aiProvider(provider) == nil {
-		return errors.New("不认识的 AI 服务商：" + provider)
+		return errors.New("未知的 AI 服务商：" + provider)
 	}
 	aiMu.Lock()
 	defer aiMu.Unlock()
@@ -260,7 +260,7 @@ func aiSave(provider, base, model string, key *string, hierarchy *string) error 
 		if base != "" {
 			u, err := url.Parse(base)
 			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-				return errors.New("接口地址要以 http:// 或 https:// 开头，例如 https://api.deepseek.com")
+				return errors.New("接口地址须以 http:// 或 https:// 开头，例如 https://api.deepseek.com")
 			}
 		}
 		was := c.profile(provider).BaseURL
@@ -277,7 +277,7 @@ func aiSave(provider, base, model string, key *string, hierarchy *string) error 
 				keys[provider] = k
 			}
 			if err := saveAIKeysLocked(keys); err != nil {
-				return fmt.Errorf("API Key 没能保存：%v", err)
+				return fmt.Errorf("API Key 保存失败：%v", err)
 			}
 		}
 	}
@@ -386,10 +386,10 @@ func aiHTTP(st *core.Store, base string) *http.Client {
 		// the key goes to the address the player entered and nowhere else
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) > 0 && !strings.EqualFold(req.URL.Host, via[0].URL.Host) {
-				return errors.New("接口地址把请求转到了另一个网站（" + req.URL.Host + "），没有跟过去：填服务商给的最终地址")
+				return errors.New("接口地址将请求重定向至其他网站（" + req.URL.Host + "），请求已中止，请填写服务商提供的最终地址")
 			}
 			if len(via) >= 5 {
-				return errors.New("接口地址转来转去")
+				return errors.New("接口地址重定向次数过多")
 			}
 			return nil
 		}}
@@ -402,14 +402,14 @@ func sameService(a, b string) bool {
 	return err1 == nil && err2 == nil && ua.Host != "" && strings.EqualFold(ua.Host, ub.Host)
 }
 
-var errKeyForOtherHost = errors.New("接口地址换了：已保存的 API Key 是给原来那个地址的，请重新填写这个地址的 Key")
+var errKeyForOtherHost = errors.New("接口地址已更改：已保存的 API Key 仅用于原地址，请重新填写新地址的 Key")
 
 // newAIClient: the service as it is set up now.
 func newAIClient(st *core.Store) (*aiClient, error) {
 	c := loadAIConfig()
 	info := aiProvider(c.Provider)
 	if info == nil {
-		return nil, errors.New("还没有设置 AI 服务：先在「AI 服务」里选服务商、填 API Key")
+		return nil, errors.New("尚未配置 AI 服务，请在「AI 服务」中选择服务商并填写 API Key")
 	}
 	p := c.profile(c.Provider)
 	key := aiKey(c.Provider)
@@ -419,10 +419,10 @@ func newAIClient(st *core.Store) (*aiClient, error) {
 func aiClientWith(st *core.Store, info aiProviderInfo, base, model, key string) (*aiClient, error) {
 	base = normBase(info.Wire, base)
 	if base == "" {
-		return nil, errors.New("还没有填接口地址")
+		return nil, errors.New("未填写接口地址")
 	}
 	if key == "" && !isLocalHost(base) {
-		return nil, errors.New("还没有填 " + info.Label + " 的 API Key")
+		return nil, errors.New(info.Label + "：未填写 API Key")
 	}
 	return &aiClient{info: info, base: base, model: strings.TrimSpace(model), key: key, hc: aiHTTP(st, base)}, nil
 }
@@ -503,9 +503,9 @@ func (c *aiClient) do(ctx context.Context, method, path string, body any) ([]byt
 		}
 		var ne net.Error
 		if errors.As(err, &ne) && ne.Timeout() {
-			return nil, fmt.Errorf("%s 太久没有回应：稍后再试，或换一个模型", host)
+			return nil, fmt.Errorf("%s 响应超时，请稍后重试或更换模型", host)
 		}
-		return nil, fmt.Errorf("连不上 %s：检查接口地址和网络（需要代理的话在设置里填上）。%v", host, core.TrimErr(err))
+		return nil, fmt.Errorf("无法连接 %s，请检查接口地址和网络（如需代理，可在设置中填写）。%v", host, core.TrimErr(err))
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
@@ -549,23 +549,23 @@ func aiErrText(label string, status int, body []byte) string {
 	var what string
 	switch {
 	case status == 401 || status == 403:
-		what = "API Key 不对、已失效，或没有权限用这个模型"
+		what = "API Key 不正确或已失效，或无权使用该模型"
 	case status == 402 || strings.Contains(low, "insufficient") || strings.Contains(low, "balance") || strings.Contains(low, "quota"):
-		what = "账户余额或额度不够"
+		what = "账户余额或额度不足"
 	case status == 404:
-		what = "接口地址或模型名不对"
+		what = "接口地址或模型名称不正确"
 	case status == 429:
-		what = "请求太频繁，或额度用完了"
+		what = "请求过于频繁，或额度已用尽"
 	case status == 400 || status == 422:
-		what = "服务不接受这次请求（模型名不对，或这个模型不支持工具调用）"
+		what = "请求未被接受（模型名称不正确，或该模型不支持工具调用）"
 	case status >= 500:
-		what = "服务那边出错了，稍后再试"
+		what = "服务端出错，请稍后重试"
 	default:
 		what = "服务拒绝了请求"
 	}
 	msg := fmt.Sprintf("%s：%s（HTTP %d）", label, what, status)
 	if said != "" {
-		msg += "。原话：" + said
+		msg += "。服务返回：" + said
 	}
 	return msg
 }
@@ -590,7 +590,7 @@ func (c *aiClient) models(ctx context.Context) ([]string, error) {
 		} `json:"models"`
 	}
 	if err := json.Unmarshal(b, &r); err != nil {
-		return nil, errors.New("这个服务没有给出模型列表，直接填模型名就行")
+		return nil, errors.New("该服务未提供模型列表，请直接填写模型名称")
 	}
 	var out []string
 	for _, m := range r.Data {
@@ -608,7 +608,7 @@ func (c *aiClient) models(ctx context.Context) ([]string, error) {
 	out = core.UniqStrings(out)
 	sort.Strings(out)
 	if len(out) == 0 {
-		return nil, errors.New("这个服务没有给出模型列表，直接填模型名就行")
+		return nil, errors.New("该服务未提供模型列表，请直接填写模型名称")
 	}
 	return out, nil
 }
@@ -616,7 +616,7 @@ func (c *aiClient) models(ctx context.Context) ([]string, error) {
 // chat sends the conversation and returns the assistant's next turn: text, tool calls, or both.
 func (c *aiClient) chat(ctx context.Context, system string, turns []aiTurn, tools []aiTool) (aiTurn, error) {
 	if c.model == "" {
-		return aiTurn{}, errors.New("还没有选模型：在「AI 服务」里填模型名，或点「选择模型」挑一个")
+		return aiTurn{}, errors.New("未选择模型，请在「AI 服务」中填写模型名称，或点击「选择模型」选取")
 	}
 	if c.info.Wire == "claude" {
 		return c.chatClaude(ctx, system, turns, tools)
@@ -712,7 +712,7 @@ func (c *aiClient) chatOpenAI(ctx context.Context, system string, turns []aiTurn
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal(b, &r); err != nil || len(r.Choices) == 0 {
-		return aiTurn{}, errors.New(c.info.Label + " 的回答看不懂：这个地址可能不是 OpenAI 兼容接口")
+		return aiTurn{}, errors.New(c.info.Label + "：无法解析响应内容，该地址可能不是 OpenAI 兼容接口")
 	}
 	m := r.Choices[0].Message
 	out := aiTurn{Role: "assistant", think: m.Reasoning}
@@ -736,7 +736,7 @@ func (c *aiClient) chatOpenAI(ctx context.Context, system string, turns []aiTurn
 		out.Calls = append(out.Calls, aiCall{ID: id, Name: k.Function.Name, Args: json.RawMessage(k.Function.Arguments)})
 	}
 	if out.Text == "" && len(out.Calls) == 0 && r.Choices[0].FinishReason == "length" {
-		return aiTurn{}, errors.New("回答太长被截断了：换一个输出上限更大的模型，或把要求拆小一点")
+		return aiTurn{}, errors.New("回答过长被截断：请更换输出上限更高的模型，或拆分要求后重试")
 	}
 	return out, nil
 }
@@ -811,7 +811,7 @@ func (c *aiClient) chatClaude(ctx context.Context, system string, turns []aiTurn
 		Input json.RawMessage `json:"input"`
 	}
 	if err := json.Unmarshal(b, &r); err != nil || json.Unmarshal(r.Content, &blocks) != nil {
-		return aiTurn{}, errors.New(c.info.Label + " 的回答看不懂：这个地址可能不是 Anthropic 兼容接口")
+		return aiTurn{}, errors.New(c.info.Label + "：无法解析响应内容，该地址可能不是 Anthropic 兼容接口")
 	}
 	out := aiTurn{Role: "assistant", blocks: r.Content}
 	for _, bl := range blocks {
@@ -823,7 +823,7 @@ func (c *aiClient) chatClaude(ctx context.Context, system string, turns []aiTurn
 		}
 	}
 	if out.Text == "" && len(out.Calls) == 0 && r.StopReason == "max_tokens" {
-		return aiTurn{}, errors.New("回答太长被截断了：换一个输出上限更大的模型，或把要求拆小一点")
+		return aiTurn{}, errors.New("回答过长被截断：请更换输出上限更高的模型，或拆分要求后重试")
 	}
 	return out, nil
 }
@@ -863,5 +863,5 @@ func aiTest(ctx context.Context, c *aiClient) (string, error) {
 	if r := []rune(reply); len(r) > 40 {
 		reply = string(r[:40]) + "…"
 	}
-	return fmt.Sprintf("连接正常：%s 回答了「%s」（%.1f 秒）", c.model, reply, time.Since(t0).Seconds()), nil
+	return fmt.Sprintf("连接正常：%s 回复「%s」（%.1f 秒）", c.model, reply, time.Since(t0).Seconds()), nil
 }

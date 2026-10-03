@@ -184,10 +184,10 @@ func FetchBoothInfo(c *http.Client, id string, withCover bool) (*core.BoothInfo,
 	resp.Body.Close()
 	if resp.StatusCode == 404 {
 		bi.Gone = true
-		return bi, fmt.Errorf("Booth 上找不到这个商品（可能已下架）")
+		return bi, fmt.Errorf("Booth 上未找到该商品（可能已下架）")
 	}
 	if resp.StatusCode != 200 {
-		return bi, fmt.Errorf("Booth 返回 %d", resp.StatusCode)
+		return bi, fmt.Errorf("Booth 返回错误（HTTP %d）", resp.StatusCode)
 	}
 	it, jerr := parseBoothItem(body)
 	// the item page carries the long description blocks (and is the fallback when the JSON is unreadable)
@@ -364,7 +364,7 @@ func RunBoothFetch(st *core.Store, prog *core.Task, force bool, only []string) {
 	}
 	st.Mu.RUnlock()
 	if len(ids) == 0 {
-		prog.Set(1, 1, "没有需要抓取的 Booth 商品")
+		prog.Set(1, 1, "暂无需要获取的 Booth 商品信息")
 		return
 	}
 	c := core.HTTPClient(st)
@@ -395,7 +395,7 @@ func RunBoothFetch(st *core.Store, prog *core.Task, force bool, only []string) {
 		}
 		// give up early when the network is clearly unreachable
 		if fails >= 4 && fails == i+1 {
-			prog.Set(len(ids), len(ids), "连不上 Booth，请在设置里填代理")
+			prog.Set(len(ids), len(ids), "无法连接 Booth，请在设置中配置代理")
 			return
 		}
 		time.Sleep(700 * time.Millisecond)

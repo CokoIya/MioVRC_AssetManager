@@ -33,7 +33,7 @@ func PickFolder(title, initial string) (string, error) {
 	}
 	return "", ErrPickCancelled
 }
-func CreateDesktopShortcut() (string, error) { return "", errors.New("只支持 Windows") }
+func CreateDesktopShortcut() (string, error) { return "", errors.New("仅支持 Windows") }
 
 func Hidden(cmd *exec.Cmd) *exec.Cmd { return cmd }
 

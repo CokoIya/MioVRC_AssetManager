@@ -88,7 +88,7 @@ func waitAlive(ctx context.Context, p string) error {
 		return nil
 	}
 	if !core.StatOK(filepath.Join(p, "Packages", PipePkg, "package.json")) {
-		return errors.New("这个工程还没有装 AI 插件：先点「安装并打开」")
+		return errors.New("该工程尚未安装 AI 插件，请先点击「安装并打开 Unity」")
 	}
 	for until := time.Now().Add(60 * time.Second); ProjectRunning(p) && time.Now().Before(until); {
 		select {
@@ -101,9 +101,9 @@ func waitAlive(ctx context.Context, p string) error {
 		}
 	}
 	if !ProjectRunning(p) {
-		return errors.New("Unity 没有开着这个工程：先打开它")
+		return errors.New("该工程尚未在 Unity 中打开，请先打开工程")
 	}
-	return errors.New("Unity 开着，但插件还没有运行：切到 Unity 窗口等它编译完（右下角转圈结束），有红色报错的话先解决")
+	return errors.New("Unity 已打开，但插件尚未运行。请切换到 Unity 窗口等待编译完成（右下角加载图标消失），如有红色报错需先解决")
 }
 
 // BridgeCall asks the pipeline package to do one thing and waits for its answer. wait is how long the step
@@ -122,7 +122,7 @@ func BridgeCall(ctx context.Context, p, cmd string, args any, wait time.Duration
 		b, _ := json.Marshal(map[string]any{"id": id, "cmd": cmd, "args": args})
 		req, tmp := filepath.Join(dir, "req_"+id+".json"), filepath.Join(dir, "w_"+id+".tmp")
 		if err := os.WriteFile(tmp, b, 0644); err != nil {
-			return nil, fmt.Errorf("写不了工程的 UserSettings 文件夹：%v", err)
+			return nil, fmt.Errorf("无法写入工程的 UserSettings 文件夹：%v", err)
 		}
 		if err := os.Rename(tmp, req); err != nil {
 			_ = os.Remove(tmp)
@@ -140,7 +140,7 @@ func BridgeCall(ctx context.Context, p, cmd string, args any, wait time.Duration
 			Result json.RawMessage `json:"result"`
 		}
 		if json.Unmarshal(bytes.TrimPrefix(raw, []byte("\xef\xbb\xbf")), &r) != nil {
-			return nil, errors.New("Unity 的回答读不懂")
+			return nil, errors.New("无法解析 Unity 的响应")
 		}
 		if r.OK {
 			return r.Result, nil
@@ -166,7 +166,7 @@ const bridgePickup = 110 * time.Second
 // works on it, res_<id> is the answer.
 func waitAnswer(ctx context.Context, dir, id string, wait time.Duration) ([]byte, error) {
 	req, run, res := filepath.Join(dir, "req_"+id+".json"), filepath.Join(dir, "run_"+id+".json"), filepath.Join(dir, "res_"+id+".json")
-	stuck := errors.New("Unity 没有回应：它可能正在编译、导入，或者弹了对话框在等你点。切到 Unity 看一下再试")
+	stuck := errors.New("Unity 未响应，可能正在编译、导入，或有对话框等待操作。请切换到 Unity 处理后重试")
 	sent := time.Now()
 	var gone, taken time.Time
 	for {
@@ -181,7 +181,7 @@ func waitAnswer(ctx context.Context, dir, id string, wait time.Duration) ([]byte
 				taken = now
 			}
 			if now.Sub(taken) > wait {
-				return nil, errors.New("Unity 这一步做了很久还没有做完：切到 Unity 看看它在忙什么")
+				return nil, errors.New("Unity 执行该步骤超时，请切换到 Unity 查看当前状态")
 			}
 		case core.StatOK(req):
 			if now.Sub(sent) > bridgePickup {
@@ -301,23 +301,23 @@ func AIKitStatus(p string) AIKit {
 	}
 	switch {
 	case !k.Pipeline:
-		k.Hint = "还没有给这个工程装 AI 插件"
+		k.Hint = "该工程尚未安装 AI 插件"
 	case !k.Running && k.Unity == "":
-		k.Hint = "Unity 还没有开着这个工程：从 Unity Hub 或 VCC 打开它"
+		k.Hint = "该工程尚未在 Unity 中打开，请从 Unity Hub 或 VCC 打开"
 	case !k.Running && !k.Editor:
-		k.Hint = fmt.Sprintf("这台电脑上没找到 Unity %s：从 Unity Hub 或 VCC 打开这个工程", k.Unity)
+		k.Hint = fmt.Sprintf("本机未安装 Unity %s，请从 Unity Hub 或 VCC 打开该工程", k.Unity)
 	case !k.Running:
-		k.Hint = "Unity 还没有开着这个工程"
+		k.Hint = "该工程尚未在 Unity 中打开"
 	case !k.Alive:
-		k.Hint = "Unity 正在启动或编译：切到 Unity 窗口，等右下角转圈结束。一直连不上的话，看 Console 里有没有红色报错"
+		k.Hint = "Unity 正在启动或编译，请切换到 Unity 窗口等待完成（右下角加载图标消失）。如长时间无法连接，请检查 Console 中是否有红色报错"
 	case !k.SDK:
-		k.Hint = "这个工程没有 VRChat SDK（Avatars）：先用 VCC / ALCOM 装上"
+		k.Hint = "该工程未安装 VRChat SDK（Avatars），请先通过 VCC / ALCOM 安装"
 	case k.MA == "":
-		k.Hint = "这个工程没有 Modular Avatar：先用 VCC / ALCOM 装上，穿戴和菜单都靠它"
+		k.Hint = "该工程未安装 Modular Avatar（装配和菜单必需），请先通过 VCC / ALCOM 安装"
 	case k.Compiling:
-		k.Hint = "Unity 正在编译或导入，等它忙完"
+		k.Hint = "Unity 正在编译或导入，请等待完成"
 	case k.Playing:
-		k.Hint = "Unity 在 Play 模式里：先退出 Play，再让 AI 改场景"
+		k.Hint = "Unity 处于 Play 模式，请先退出 Play 模式，再由 AI 修改场景"
 	}
 	return k
 }
@@ -456,7 +456,7 @@ func writeSkillsPackage(tmp string) error {
 			return err
 		}
 	}
-	return os.WriteFile(filepath.Join(tmp, KitMarker), []byte("MioVRCA 放进来的 UnitySkills "+SkillsVersion+"（MIT，github.com/Besty0728/Unity-Skills）。在软件里点「移除 AI 插件」会删掉这个文件夹。\n"), 0644)
+	return os.WriteFile(filepath.Join(tmp, KitMarker), []byte("由 MioVRCA 安装的 UnitySkills "+SkillsVersion+"（MIT，github.com/Besty0728/Unity-Skills）。在软件的「流水线」页点击「移除」将移除此文件夹。\n"), 0644)
 }
 
 // InstallAIKit puts both packages into the project (a UnitySkills the project already has is left alone),
@@ -464,19 +464,19 @@ func writeSkillsPackage(tmp string) error {
 func InstallAIKit(p string) (note string, err error) {
 	dir := filepath.Join(p, "Packages", PipePkg)
 	if name, _, author := pkgVersion(dir); core.StatOK(dir) && !(name == PipePkg && author == "MioVRC") {
-		return "", errors.New("工程的 Packages 里已经有一个 " + PipePkg + "，不是本软件放的，没有动它")
+		return "", errors.New("工程的 Packages 中已存在 " + PipePkg + "，但不是由本软件安装，未作改动")
 	}
 	if err := putPackage(p, PipePkg, writeEmbeddedPackage(PipePkg)); err != nil {
-		return "", fmt.Errorf("没能放进流水线插件：%v（Unity 正占用文件的话，关掉 Unity 再试）", err)
+		return "", fmt.Errorf("流水线插件安装失败：%v（文件可能被 Unity 占用，请关闭 Unity 后重试）", err)
 	}
 	kind, ver := skillsInProject(p)
 	switch {
 	case kind == "own":
-		note = "工程里已经有 UnitySkills " + ver + "，用它自己的"
+		note = "工程已自带 UnitySkills " + ver + "，沿用现有版本"
 	case kind == "ours" && ver == SkillsVersion:
 	default:
 		if err := putPackage(p, SkillsPkg, writeSkillsPackage); err != nil {
-			return "", fmt.Errorf("没能放进 UnitySkills：%v（Unity 正占用文件的话，关掉 Unity 再试）", err)
+			return "", fmt.Errorf("UnitySkills 安装失败：%v（文件可能被 Unity 占用，请关闭 Unity 后重试）", err)
 		}
 	}
 	if err := os.MkdirAll(BridgeDir(p), 0755); err == nil {
@@ -490,14 +490,14 @@ func InstallAIKit(p string) (note string, err error) {
 				defer cancel()
 				_, _ = BridgeCall(ctx, p, "refresh", map[string]any{}, 15*time.Second)
 			}()
-			return joinNote(note, "Unity 开着：它会自己重新编译，稍等就连上"), nil
+			return joinNote(note, "Unity 已打开，将自动重新编译，稍后自动连接"), nil
 		}
-		return joinNote(note, "Unity 开着：切到 Unity 窗口，它会导入插件并编译，完成后这里自动连上"), nil
+		return joinNote(note, "Unity 已打开，请切换到 Unity 窗口，待插件导入并编译完成后将自动连接"), nil
 	}
 	if err := OpenInUnity(p); err != nil {
-		return joinNote(note, "插件装好了，但没能打开 Unity："+err.Error()), nil
+		return joinNote(note, "插件已安装，但无法打开 Unity："+err.Error()), nil
 	}
-	return joinNote(note, "正在打开 Unity。第一次要导入插件并编译，一两分钟后这里自动连上"), nil
+	return joinNote(note, "正在打开 Unity。首次打开需导入插件并编译，约一至两分钟后自动连接"), nil
 }
 
 func joinNote(a, b string) string {
@@ -512,16 +512,16 @@ func RemoveAIKit(p string) error {
 	dir := filepath.Join(p, "Packages", PipePkg)
 	if core.StatOK(dir) {
 		if name, _, author := pkgVersion(dir); !(name == PipePkg && author == "MioVRC") {
-			return errors.New("工程里的 " + PipePkg + " 不是本软件放的，没有动它")
+			return errors.New("工程中的 " + PipePkg + " 不是由本软件安装，未作改动")
 		}
 		if err := os.RemoveAll(dir); err != nil {
-			return fmt.Errorf("没能删掉流水线插件：%v（关掉 Unity 再试）", err)
+			return fmt.Errorf("流水线插件移除失败：%v（请关闭 Unity 后重试）", err)
 		}
 	}
 	sk := filepath.Join(p, "Packages", SkillsPkg)
 	if core.StatOK(filepath.Join(sk, KitMarker)) {
 		if err := os.RemoveAll(sk); err != nil {
-			return fmt.Errorf("没能删掉 UnitySkills：%v（关掉 Unity 再试）", err)
+			return fmt.Errorf("UnitySkills 移除失败：%v（请关闭 Unity 后重试）", err)
 		}
 	}
 	_ = os.RemoveAll(BridgeDir(p))
@@ -547,9 +547,9 @@ func SkillsRequest(ctx context.Context, p, method, path string, body any) ([]byt
 	port := SkillsPort(p)
 	if port == 0 {
 		if kind, _ := skillsInProject(p); kind == "" {
-			return nil, 0, errors.New("这个工程没有装 UnitySkills：先点「安装并打开」")
+			return nil, 0, errors.New("该工程未安装 UnitySkills，请先点击「安装并打开 Unity」")
 		}
-		return nil, 0, errors.New("UnitySkills 的服务没有运行：在 Unity 里打开 Window > UnitySkills，点 Start Server")
+		return nil, 0, errors.New("UnitySkills 服务未启动，请在 Unity 中打开 Window > UnitySkills 并点击 Start Server")
 	}
 	var rd io.Reader
 	if body != nil {
@@ -568,7 +568,7 @@ func SkillsRequest(ctx context.Context, p, method, path string, body any) ([]byt
 		if ctx.Err() != nil {
 			return nil, 0, errors.New("已停止")
 		}
-		return nil, 0, errors.New("连不上 Unity 里的 UnitySkills（它可能正在重新编译）：等几秒再试")
+		return nil, 0, errors.New("无法连接 Unity 中的 UnitySkills（可能正在重新编译），请稍后重试")
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 24<<20)) // a screenshot can come back inside the answer
@@ -645,7 +645,7 @@ func SkillsCall(ctx context.Context, p, name string, args map[string]any) (strin
 // SkillsCallRaw: the answer whole, as UnitySkills sent it.
 func SkillsCallRaw(ctx context.Context, p, name string, args map[string]any) ([]byte, bool, error) {
 	if !validSkillName(name) {
-		return nil, false, errors.New("skill 名字不对：" + name)
+		return nil, false, errors.New("skill 名称无效：" + name)
 	}
 	if args == nil {
 		args = map[string]any{}

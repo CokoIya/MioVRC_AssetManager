@@ -55,12 +55,12 @@ type vpmPlugin struct {
 }
 
 var basePlugins = []vpmPlugin{
-	{Pkg: "com.vrchat.avatars", Label: "VRChat SDK（Avatars）", Note: "上传头像必需", Default: true, Fixed: true},
-	{Pkg: "nadena.dev.modular-avatar", Label: "Modular Avatar", Note: "穿戴、菜单都靠它（会一起装 NDMF）", Default: true},
-	{Pkg: "jp.lilxyzw.liltoon", Label: "lilToon", Note: "绝大多数素体和衣服用的着色器", Default: true},
+	{Pkg: "com.vrchat.avatars", Label: "VRChat SDK（Avatars）", Note: "上传模型必需", Default: true, Fixed: true},
+	{Pkg: "nadena.dev.modular-avatar", Label: "Modular Avatar", Note: "装配和菜单必需（将同时安装 NDMF）", Default: true},
+	{Pkg: "jp.lilxyzw.liltoon", Label: "lilToon", Note: "绝大多数素体和衣服使用的着色器", Default: true},
 	{Pkg: "com.anatawa12.avatar-optimizer", Label: "Avatar Optimizer（AAO）", Note: "上传时自动优化", Default: true},
-	{Pkg: "vrchat.blackstartx.gesture-manager", Label: "Gesture Manager", Note: "在 Unity 里试菜单和手势", Default: true},
-	{Pkg: "com.vrcfury.vrcfury", Label: "VRCFury", Note: "很多道具和插件需要", Default: true},
+	{Pkg: "vrchat.blackstartx.gesture-manager", Label: "Gesture Manager", Note: "在 Unity 中测试菜单和手势", Default: true},
+	{Pkg: "com.vrcfury.vrcfury", Label: "VRCFury", Note: "许多道具和插件需要", Default: true},
 	{Pkg: "lyuma.av3emulator", Label: "Av3Emulator", Note: "更完整的本地模拟（可选）", Default: false},
 }
 
@@ -92,6 +92,7 @@ type vpmIndex struct {
 	pkgs  map[string]map[string]vpmVersion
 	repos []string // where the listings came from, for the report
 	stale []string // repositories that could only be read from an old cache
+	down  []string // repositories that could not be read at all (others answered)
 }
 
 func vccDir() string {
@@ -190,7 +191,7 @@ func parseListing(b []byte) (*vpmListing, error) {
 		return nil, err
 	}
 	if l.Packages == nil {
-		return nil, errors.New("不是 VPM 仓库列表")
+		return nil, errors.New("不是有效的 VPM 仓库列表")
 	}
 	return &l, nil
 }
@@ -231,7 +232,7 @@ func loadIndex(ctx context.Context, st *core.Store, progress func(string)) (*vpm
 	var failed []string
 	for _, r := range vpmRepos() {
 		if progress != nil {
-			progress("读取仓库 " + r.Name)
+			progress("正在读取仓库 " + r.Name)
 		}
 		ownFile := filepath.Join(own, safeFileName(r.ID+".json"))
 		var l *vpmListing
@@ -286,10 +287,10 @@ func loadIndex(ctx context.Context, st *core.Store, progress func(string)) (*vpm
 		}
 	}
 	if len(idx.pkgs) == 0 {
-		return nil, errors.New("一个插件仓库都读不到：" + strings.Join(failed, "；") + "。检查网络（需要代理的话在设置里填上），或者先在 ALCOM / VCC 里刷新一次仓库")
+		return nil, errors.New("无法读取任何插件仓库：" + strings.Join(failed, "；") + "。请检查网络（如需代理，可在设置中填写），或先在 ALCOM / VCC 中刷新仓库")
 	}
 	if len(failed) > 0 {
-		idx.stale = append(idx.stale, "读不到："+strings.Join(failed, "；"))
+		idx.down = failed
 	}
 	return idx, nil
 }
@@ -340,13 +341,13 @@ func (idx *vpmIndex) resolve(wanted map[string]string) (map[string]vpmVersion, e
 			return picked, nil
 		}
 	}
-	return nil, errors.New("插件之间的版本要求转不出结果")
+	return nil, errors.New("无法解析插件之间的版本依赖")
 }
 
 func (idx *vpmIndex) best(name string, ranges []string) (vpmVersion, error) {
 	vers := idx.pkgs[name]
 	if len(vers) == 0 {
-		return vpmVersion{}, errors.New("仓库里没有 " + name)
+		return vpmVersion{}, errors.New("仓库中未找到 " + name)
 	}
 	var parsed []semver.VerRange
 	for _, r := range ranges {
@@ -383,7 +384,7 @@ func (idx *vpmIndex) best(name string, ranges []string) (vpmVersion, error) {
 		if len(have) > 6 {
 			have = have[len(have)-6:]
 		}
-		return vpmVersion{}, fmt.Errorf("%s 没有同时满足 %s 的正式版本（仓库里有 %s）", name, strings.Join(ranges, " 和 "), strings.Join(have, "、"))
+		return vpmVersion{}, fmt.Errorf("%s 没有同时满足 %s 的正式版本（仓库中现有 %s）", name, strings.Join(ranges, " 和 "), strings.Join(have, "、"))
 	}
 	return *best, nil
 }
@@ -427,20 +428,20 @@ func fetchZip(ctx context.Context, st *core.Store, v vpmVersion, progress func(s
 		return p, nil
 	}
 	if progress != nil {
-		progress("下载 " + v.Name + " " + v.Version)
+		progress("正在下载 " + v.Name + " " + v.Version)
 	}
 	b, err := vpmGet(ctx, st, v.URL, 10*time.Minute)
 	if err != nil {
-		return "", fmt.Errorf("下载 %s %s 失败：%v", v.Name, v.Version, core.TrimErr(err))
+		return "", fmt.Errorf("%s %s 下载失败：%v", v.Name, v.Version, core.TrimErr(err))
 	}
 	if v.SHA != "" {
 		sum := sha256.Sum256(b)
 		if hex.EncodeToString(sum[:]) != strings.ToLower(v.SHA) {
-			return "", fmt.Errorf("%s %s 下载下来的文件校验不对（可能被代理改了，或者仓库信息过期）", v.Name, v.Version)
+			return "", fmt.Errorf("%s %s 文件校验失败（可能被代理篡改，或仓库信息已过期）", v.Name, v.Version)
 		}
 	}
 	if _, err := zip.NewReader(bytes.NewReader(b), int64(len(b))); err != nil {
-		return "", fmt.Errorf("%s %s 下载下来的不是 zip", v.Name, v.Version)
+		return "", fmt.Errorf("%s %s 下载的文件不是有效的 zip", v.Name, v.Version)
 	}
 	dir := filepath.Join(core.DataDir, "vpm")
 	_ = os.MkdirAll(dir, 0755)
@@ -475,7 +476,7 @@ func extractPackage(zipPath, project, name string) error {
 			}
 		}
 		if prefix == "" {
-			return errors.New(name + " 的压缩包里没有 package.json")
+			return errors.New(name + " 的压缩包中缺少 package.json")
 		}
 	}
 	return putPackage(project, name, func(tmp string) error {

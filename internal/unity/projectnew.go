@@ -177,30 +177,30 @@ func StartNewProject(st *core.Store, req NewProjectReq) error {
 	name := strings.TrimSpace(req.Name)
 	switch {
 	case name == "":
-		return errors.New("给工程起个名字")
+		return errors.New("请输入工程名称")
 	case reProjName.MatchString(name) || name == "." || name == "..":
-		return errors.New("名字里不能有 \\ / : * ? \" < > |")
+		return errors.New("工程名称不能包含 \\ / : * ? \" < > |")
 	case strings.HasSuffix(name, ".") || strings.HasSuffix(name, " "):
-		return errors.New("名字不能以点或空格结尾")
+		return errors.New("工程名称不能以点或空格结尾")
 	}
 	parent := filepath.Clean(strings.Trim(strings.TrimSpace(req.Parent), `"`))
 	if parent == "" || parent == "." {
-		return errors.New("选一个放工程的文件夹")
+		return errors.New("请选择工程保存位置")
 	}
 	if fi, err := os.Stat(parent); err != nil || !fi.IsDir() {
-		return errors.New("放工程的文件夹不存在：" + parent)
+		return errors.New("保存位置不存在：" + parent)
 	}
 	path := filepath.Join(parent, name)
 	if ents, err := os.ReadDir(path); err == nil && len(ents) > 0 {
-		return errors.New("这个文件夹已经有东西了：" + path)
+		return errors.New("目标文件夹不为空：" + path)
 	}
 	if req.Base != "" {
 		if a := assetByKey(st, req.Base); a == nil || a.Category != "素体" {
-			return errors.New("选的素体不在素材库里")
+			return errors.New("所选素体不在素材库中")
 		}
 	}
 	if impBusy() {
-		return errors.New("正在导入另一个素材，等它完成")
+		return errors.New("另一个素材正在导入，请等待导入完成")
 	}
 	npMu.Lock()
 	if npJob != nil && npJob.Stage != "done" && npJob.Stage != "failed" {
@@ -208,7 +208,7 @@ func StartNewProject(st *core.Store, req NewProjectReq) error {
 		return errors.New("正在创建另一个工程")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	npJob = &NewProjectJob{ID: time.Now().UnixNano(), Stage: "prepare", Msg: "准备", Path: path, Name: name, At: time.Now().Unix(), cancel: cancel}
+	npJob = &NewProjectJob{ID: time.Now().UnixNano(), Stage: "prepare", Msg: "正在准备", Path: path, Name: name, At: time.Now().Unix(), cancel: cancel}
 	npMu.Unlock()
 	core.BumpRev()
 	go core.RunTask(TaskNP, func() {
@@ -264,17 +264,20 @@ func runNewProject(ctx context.Context, st *core.Store, req NewProjectReq, path 
 	// 1. the folders
 	for _, d := range []string{"Assets", "Packages", "ProjectSettings"} {
 		if err := os.MkdirAll(filepath.Join(path, d), 0755); err != nil {
-			return fmt.Errorf("建不了工程文件夹：%v", err)
+			return fmt.Errorf("无法创建工程文件夹：%v", err)
 		}
 	}
 	// 2. which packages
-	stage("repos", "读取插件仓库", 0, 0)
+	stage("repos", "正在读取插件仓库", 0, 0)
 	idx, err := loadIndex(ctx, st, func(m string) { stage("repos", m, 0, 0) })
 	if err != nil {
 		return err
 	}
 	for _, s := range idx.stale {
-		note("仓库信息用的是本机缓存：" + s)
+		note("仓库信息使用本机缓存：" + s)
+	}
+	if len(idx.down) > 0 {
+		note("部分插件仓库无法读取：" + strings.Join(idx.down, "；"))
 	}
 	wanted := map[string]string{vpmResolverPkg: "*"}
 	for _, p := range basePlugins {
@@ -315,7 +318,7 @@ func runNewProject(ctx context.Context, st *core.Store, req NewProjectReq, path 
 		v := picked[n]
 		for d := range v.Deps {
 			if why, bad := failed[d]; bad {
-				failed[n] = "它依赖的 " + d + " 没装上（" + why + "）"
+				failed[n] = "依赖的 " + d + " 未安装（" + why + "）"
 				break
 			}
 		}
@@ -323,10 +326,10 @@ func runNewProject(ctx context.Context, st *core.Store, req NewProjectReq, path 
 			if required[n] {
 				return errors.New(n + "：" + why)
 			}
-			note("没装 " + n + "：" + why + "。可以之后在 ALCOM / VCC 里装")
+			note("未安装 " + n + "：" + why + "。可稍后在 ALCOM / VCC 中安装")
 			continue
 		}
-		stage("packages", "放入 "+n+" "+v.Version, i, len(names))
+		stage("packages", "正在安装 "+n+" "+v.Version, i, len(names))
 		zp, err := fetchZip(ctx, st, v, func(m string) { stage("packages", m, i, len(names)) })
 		if err == nil {
 			if e := extractPackage(zp, path, n); e != nil {
@@ -338,7 +341,7 @@ func runNewProject(ctx context.Context, st *core.Store, req NewProjectReq, path 
 				return err
 			}
 			failed[n] = err.Error()
-			note("没装 " + n + " " + v.Version + "：" + err.Error() + "。可以之后在 ALCOM / VCC 里装")
+			note("未安装 " + n + " " + v.Version + "：" + err.Error() + "。可稍后在 ALCOM / VCC 中安装")
 			continue
 		}
 		setNP(func(j *NewProjectJob) { j.Packages = append(j.Packages, n+" "+v.Version) })
@@ -351,7 +354,7 @@ func runNewProject(ctx context.Context, st *core.Store, req NewProjectReq, path 
 		return err
 	}
 	// 4. the project's own files
-	stage("settings", "写工程设置", len(names), len(names))
+	stage("settings", "正在写入工程设置", len(names), len(names))
 	how, err := writeProjectSettings(ctx, st, path, req.Name)
 	if err != nil {
 		return err
@@ -364,22 +367,22 @@ func runNewProject(ctx context.Context, st *core.Store, req NewProjectReq, path 
 	// 5. known to this program and to ALCOM / VCC
 	registerProject(st, path)
 	if err := addToVCCList(path); err == nil {
-		note("已加进 ALCOM / VCC 的工程列表")
+		note("已加入 ALCOM / VCC 的工程列表")
 	}
 	// 6. the base body
 	if req.Base != "" {
-		stage("base", "导入素体", 0, 0)
+		stage("base", "正在导入素体", 0, 0)
 		a := assetByKey(st, req.Base)
 		if a == nil {
-			return errors.New("素体不在素材库里了")
+			return errors.New("素体已不在素材库中")
 		}
 		if err := StartImport(st, ImportReq{Key: a.Key, Project: path, Recycle: false}); err != nil {
-			return errors.New("导入素体没能开始：" + err.Error())
+			return errors.New("无法开始导入素体：" + err.Error())
 		}
 		for {
 			j := ImportSnapshot()
 			if j == nil {
-				return errors.New("导入素体中断了")
+				return errors.New("素体导入已中断")
 			}
 			if j.Stage == "failed" {
 				return errors.New("导入素体失败：" + j.Err)
@@ -398,7 +401,7 @@ func runNewProject(ctx context.Context, st *core.Store, req NewProjectReq, path 
 	}
 	// 7. the AI plugins and Unity
 	if req.AIKit {
-		stage("kit", "装 AI 插件并打开 Unity", 0, 0)
+		stage("kit", "正在安装 AI 插件并打开 Unity", 0, 0)
 		if n, err := InstallAIKit(path); err != nil {
 			note("AI 插件：" + err.Error())
 		} else {
@@ -406,10 +409,10 @@ func runNewProject(ctx context.Context, st *core.Store, req NewProjectReq, path 
 		}
 	}
 	if unityEditors()[vrcUnity] == "" {
-		note("这台电脑上没有 Unity " + vrcUnity + "：在 Unity Hub 里装上这个版本再打开工程")
+		note("本机未安装 Unity " + vrcUnity + "，请通过 Unity Hub 安装该版本后再打开工程")
 	}
-	stage("done", "工程建好了", 1, 1)
-	TaskNP.Set(1, 1, "工程建好了："+req.Name)
+	stage("done", "工程创建完成", 1, 1)
+	TaskNP.Set(1, 1, "工程创建完成："+req.Name)
 	core.Logf("新工程 %s：%d 个包", path, len(names))
 	return nil
 }
@@ -544,7 +547,7 @@ func writeProjectSettings(ctx context.Context, st *core.Store, project, name str
 				}
 			}
 			if n > 0 && core.StatOK(filepath.Join(dir, "ProjectSettings.asset")) {
-				how = "工程设置来自 VCC 的头像模板"
+				how = "工程设置来自 VCC 的 Avatar 模板"
 			}
 		}
 	}
@@ -568,14 +571,14 @@ func writeProjectSettings(ctx context.Context, st *core.Store, project, name str
 			}
 		}
 		if got > 0 && core.StatOK(filepath.Join(dir, "ProjectSettings.asset")) {
-			how = "工程设置来自 VRChat 官方头像模板"
+			how = "工程设置来自 VRChat 官方 Avatar 模板"
 		}
 	}
 	if how == "" {
 		if err := os.WriteFile(filepath.Join(dir, "ProjectSettings.asset"), []byte(minimalProjectSettings(name)), 0644); err != nil {
 			return "", err
 		}
-		how = "拿不到 VRChat 的模板，工程设置用了最少的一份（线性颜色空间等）；VRChat SDK 打开时会补齐其余"
+		how = "VRChat 官方模板不可用，已使用最小工程设置（线性颜色空间等），其余设置将在 VRChat SDK 打开时补齐"
 	}
 	// the product name is the project's
 	if b, err := os.ReadFile(filepath.Join(dir, "ProjectSettings.asset")); err == nil {

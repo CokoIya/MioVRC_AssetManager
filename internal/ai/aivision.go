@@ -83,12 +83,12 @@ func visionKey(c AIConfig, keys map[string]string) string {
 func normImage(data []byte, max int, note string) (aiImage, error) {
 	src, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
-		return aiImage{}, errors.New("截图读不出来：" + err.Error())
+		return aiImage{}, errors.New("无法读取截图：" + err.Error())
 	}
 	b := src.Bounds()
 	w, h := b.Dx(), b.Dy()
 	if w <= 0 || h <= 0 {
-		return aiImage{}, errors.New("截图是空的")
+		return aiImage{}, errors.New("截图为空")
 	}
 	if w > max || h > max {
 		nw, nh := max, h*max/w
@@ -251,13 +251,13 @@ func visionClient(st *core.Store) (*aiClient, error) {
 
 func visionClientWith(st *core.Store, v AIVision, key string) (*aiClient, error) {
 	if strings.TrimSpace(v.BaseURL) == "" || strings.TrimSpace(v.Model) == "" {
-		return nil, errors.New("还没有设置看图模型：填它的接口地址和模型名")
+		return nil, errors.New("尚未配置视觉模型，请填写其接口地址和模型名称")
 	}
 	wire := v.Wire
 	if wire != "claude" {
 		wire = "openai"
 	}
-	info := aiProviderInfo{ID: "vision", Label: "看图模型", Wire: wire, Base: v.BaseURL}
+	info := aiProviderInfo{ID: "vision", Label: "视觉模型", Wire: wire, Base: v.BaseURL}
 	return aiClientWith(st, info, v.BaseURL, v.Model, key)
 }
 
@@ -291,7 +291,7 @@ func describeImages(ctx context.Context, vc *aiClient, imgs []aiImage, question 
 		return "", err
 	}
 	if strings.TrimSpace(out.Text) == "" {
-		return "", errors.New("看图模型什么也没说")
+		return "", errors.New("视觉模型未返回内容")
 	}
 	return strings.TrimSpace(out.Text), nil
 }
@@ -316,32 +316,32 @@ func (s *aiSession) present(ctx context.Context, imgs []aiImage, question string
 	}
 	switch v.Mode {
 	case "off":
-		return "（玩家关掉了看图。截图已经显示给玩家，" + unseen + "请玩家自己看截图。）", nil, "只给你看（看图已关闭）"
+		return "（玩家关掉了识图。截图已经显示给玩家，" + unseen + "请玩家自己看截图。）", nil, "仅显示在记录中（识图已关闭）"
 	case "main":
-		return "截图附在后面，按上面 views 的顺序。", imgs, "AI 直接看图"
+		return "截图附在后面，按上面 views 的顺序。", imgs, "由当前 AI 模型直接识别"
 	case "other":
 	default:
 		if mainSees(ctx, main) {
-			return "截图附在后面，按上面 views 的顺序。", imgs, "AI 直接看图"
+			return "截图附在后面，按上面 views 的顺序。", imgs, "由当前 AI 模型直接识别"
 		}
 	}
 	eye, eyeKey, own, ok := eyeFor(cfg, keys)
 	if !ok {
-		return "（你现在用的模型（" + main.model + "）看不了图，玩家也没有设置看图模型。截图已经显示给玩家，" + unseen +
-			"告诉玩家：截图在上面的记录里，请他自己看一下；想让你也能检查画面，可以在「AI 服务」设置的「看图」里填一个能看图的模型。）", nil, "只给你看（这个模型看不了图，还没有设置看图模型）"
+		return "（你现在用的模型（" + main.model + "）看不了图，玩家也没有设置视觉模型。截图已经显示给玩家，" + unseen +
+			"告诉玩家：截图在上面的记录里，请他自己看一下；想让你也能检查画面，可以在「AI 服务」设置的「识图」里填一个能看图的模型。）", nil, "仅显示在记录中（当前 AI 模型不支持识图，且未配置视觉模型）"
 	}
 	vc, err := visionClientWith(st, eye, eyeKey)
 	if err == nil {
 		var desc string
 		if desc, err = describeImages(ctx, vc, imgs, question); err == nil {
-			return "你自己看不了图。下面是看图模型（" + vc.model + "）对这些截图的描述；它只描述画面，可能看漏或看错，拿不准的地方请玩家自己看截图确认：\n" + desc, nil, "由看图模型（" + vc.model + "）描述给 AI"
+			return "你自己看不了图。下面是视觉模型（" + vc.model + "）对这些截图的描述；它只描述画面，可能看漏或看错，拿不准的地方请玩家自己看截图确认：\n" + desc, nil, "由视觉模型（" + vc.model + "）代为描述"
 		}
 	}
 	if own {
-		return "（请同一家的看图模型 " + eye.Model + " 来看图，但它没有回答：" + err.Error() + "。截图已经显示给玩家，" + unseen +
-			"请玩家自己看截图；也可以在「AI 服务」的「看图」里另设一个看图模型。）", nil, "只给你看（" + eye.Model + " 没有回答）"
+		return "（请同一家的视觉模型 " + eye.Model + " 来看图，但它没有回答：" + err.Error() + "。截图已经显示给玩家，" + unseen +
+			"请玩家自己看截图；也可以在「AI 服务」的「识图」里另设一个视觉模型。）", nil, "仅显示在记录中（" + eye.Model + " 未返回结果）"
 	}
-	return "（看图模型没有回答：" + err.Error() + "。截图已经显示给玩家，" + unseen + "请玩家自己看截图。）", nil, "只给你看（看图模型没有回答）"
+	return "（视觉模型没有回答：" + err.Error() + "。截图已经显示给玩家，" + unseen + "请玩家自己看截图。）", nil, "仅显示在记录中（视觉模型未返回结果）"
 }
 
 // looksNow: who looks at pictures as things are set up now.
@@ -374,7 +374,7 @@ func aiSaveVision(v AIVision, key *string) error {
 	switch v.Mode {
 	case "", "main", "other", "off":
 	default:
-		return errors.New("不认识的看图方式：" + v.Mode)
+		return errors.New("未知的识图方式：" + v.Mode)
 	}
 	if v.Wire != "claude" {
 		v.Wire = "openai"
@@ -383,7 +383,7 @@ func aiSaveVision(v AIVision, key *string) error {
 	if v.BaseURL != "" {
 		u, err := url.Parse(v.BaseURL)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return errors.New("看图模型的接口地址要以 http:// 或 https:// 开头")
+			return errors.New("视觉模型的接口地址须以 http:// 或 https:// 开头")
 		}
 	}
 	aiMu.Lock()
@@ -391,7 +391,7 @@ func aiSaveVision(v AIVision, key *string) error {
 	c := loadAIConfigLocked()
 	keys := loadAIKeysLocked()
 	if key == nil && keys[visionKeyID] != "" && v.BaseURL != "" && !sameService(c.Vision.BaseURL, v.BaseURL) {
-		return errors.New("看图模型的接口地址换了：已保存的 Key 是给原来那个地址的，请重新填写这个地址的 Key")
+		return errors.New("视觉模型的接口地址已更改：已保存的 Key 仅用于原地址，请重新填写新地址的 Key")
 	}
 	if key != nil {
 		if k := strings.TrimSpace(*key); k == "" {
@@ -400,7 +400,7 @@ func aiSaveVision(v AIVision, key *string) error {
 			keys[visionKeyID] = k
 		}
 		if err := saveAIKeysLocked(keys); err != nil {
-			return fmt.Errorf("看图模型的 Key 没能保存：%v", err)
+			return fmt.Errorf("视觉模型的 Key 保存失败：%v", err)
 		}
 	}
 	c.Vision = v
@@ -511,7 +511,7 @@ func takeShots(ctx context.Context, project string, args map[string]any) ([]aiIm
 	raw, err := unity.BridgeCall(ctx, project, "snapshot", args, 2*time.Minute)
 	if err != nil {
 		if strings.Contains(err.Error(), "不认识的操作") {
-			err = errors.New("这个工程里的 AI 插件是旧版，还不会拍照：在流水线页点「更新」把插件换成新版，等 Unity 编译完再试")
+			err = errors.New("该工程的 AI 插件为旧版，不支持截图：请在流水线页点击「更新」，待 Unity 编译完成后重试")
 		}
 		return nil, o, err
 	}
@@ -534,7 +534,7 @@ func takeShots(ctx context.Context, project string, args map[string]any) ([]aiIm
 		}
 	}
 	if len(imgs) == 0 {
-		return nil, o, errors.New("没有拍到图")
+		return nil, o, errors.New("未获取到截图")
 	}
 	return imgs, o, nil
 }
@@ -558,7 +558,7 @@ func (s *aiSession) look(ctx context.Context, a map[string]any) (content, short 
 	text, attach, how := s.present(ctx, imgs, argStr(a, "question"))
 	s.setOut(attach)
 	j, _ := json.Marshal(map[string]any{"avatar": o.Avatar, "views": views, "visible": o.Visible, "hidden": o.Hidden, "playing": o.Playing, "note": o.Note})
-	short = fmt.Sprintf("拍了 %d 张（%s）", len(imgs), strings.Join(views, "、"))
+	short = fmt.Sprintf("已截图 %d 张（%s）", len(imgs), strings.Join(views, "、"))
 	if how != "" {
 		short += "，" + how
 	}

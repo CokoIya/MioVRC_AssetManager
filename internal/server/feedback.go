@@ -82,15 +82,15 @@ func (e fbInputError) Error() string { return string(e) }
 func SendFeedback(st *core.Store, kind, text, contact string, withInfo bool) (string, error) {
 	text, contact = strings.TrimSpace(text), strings.TrimSpace(contact)
 	if len([]rune(text)) < 4 {
-		return "", fbInputError("内容太短")
+		return "", fbInputError("内容过短，请补充说明")
 	}
 	if len([]rune(text)) > 5000 {
-		return "", fbInputError("内容太长了（最多 5000 字）")
+		return "", fbInputError("内容过长（最多 5000 字）")
 	}
 	feedbackMu.Lock()
 	if time.Since(lastFeedback) < 30*time.Second {
 		feedbackMu.Unlock()
-		return "", fbInputError("发送太频繁，半分钟后再试")
+		return "", fbInputError("发送过于频繁，请 30 秒后重试")
 	}
 	feedbackMu.Unlock()
 	if kind == "" {
@@ -144,13 +144,13 @@ func SendFeedback(st *core.Store, kind, text, contact string, withInfo bool) (st
 			// the address has not confirmed FormSubmit yet; this message may not be passed on
 			markFeedbackSent()
 			core.Logf("反馈已提交，等待邮箱激活：%s", r.Message)
-			return "已提交，但作者邮箱还没开通接收，可能收不到。", nil
+			return "已提交，但作者邮箱尚未开通接收，可能无法送达。", nil
 		}
 		core.Logf("反馈发送失败：%d %s", resp.StatusCode, core.Truncate(string(rb), 200))
 		if r.Message != "" {
 			return "", fmt.Errorf("发送失败（%s）", r.Message)
 		}
-		return "", fmt.Errorf("发送失败（%d）", resp.StatusCode)
+		return "", fmt.Errorf("发送失败（HTTP %d）", resp.StatusCode)
 	}
 	markFeedbackSent()
 	core.Logf("反馈已发送")

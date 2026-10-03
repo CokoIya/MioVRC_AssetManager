@@ -66,7 +66,7 @@ func RunAutoMatch(st *core.Store, prog *core.Task) {
 			m.Err = err.Error()
 			fails++
 			if fails >= 3 && fails == i+1 {
-				prog.Set(len(jobs), len(jobs), "连不上 Booth，请在设置里填代理")
+				prog.Set(len(jobs), len(jobs), "无法连接 Booth，请在设置中配置代理")
 				return
 			}
 		} else {

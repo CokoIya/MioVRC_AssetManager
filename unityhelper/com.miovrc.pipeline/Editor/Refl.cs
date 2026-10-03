@@ -36,7 +36,7 @@ namespace MioVRCA.Pipeline
         public static Type Need(string fullName, string what)
         {
             Type t = Find(fullName);
-            if (t == null) throw new PipelineException("工程里没有装 " + what + "，先用 VCC / ALCOM 装上");
+            if (t == null) throw new PipelineException("工程未安装 " + what + "，请先通过 VCC / ALCOM 安装");
             return t;
         }
 
@@ -90,7 +90,7 @@ namespace MioVRCA.Pipeline
             string p = t.name;
             Transform c = t.parent;
             while (c != null && c != root) { p = c.name + "/" + p; c = c.parent; }
-            if (c == null) throw new PipelineException("「" + t.name + "」不在「" + root.name + "」下面");
+            if (c == null) throw new PipelineException("「" + t.name + "」不在「" + root.name + "」之下");
             return p;
         }
 
@@ -100,27 +100,27 @@ namespace MioVRCA.Pipeline
             List<Component> all = Avatars();
             if (all.Count == 0)
             {
-                if (DescriptorType == null) throw new PipelineException("工程里没有装 VRChat SDK（Avatars）");
-                throw new PipelineException("打开的场景里没有头像（带 VRC Avatar Descriptor 的物体）。先在 Unity 里打开放着头像的场景");
+                if (DescriptorType == null) throw new PipelineException("工程未安装 VRChat SDK（Avatars）");
+                throw new PipelineException("当前场景中没有模型（带 VRC Avatar Descriptor 的物体）。请先在 Unity 中打开包含模型的场景");
             }
             if (!string.IsNullOrEmpty(name))
             {
                 foreach (Component c in all) if (ScenePath(c.transform) == name) return c;
                 foreach (Component c in all) if (c.gameObject.name == name) return c;
-                throw new PipelineException("场景里找不到头像「" + name + "」");
+                throw new PipelineException("场景中未找到模型「" + name + "」");
             }
             var active = all.FindAll(c => c.gameObject.activeInHierarchy);
             if (active.Count == 1) return active[0];
             if (active.Count == 0 && all.Count == 1) return all[0];
             var names = new List<string>();
             foreach (Component c in active.Count > 0 ? active : all) names.Add(c.gameObject.name);
-            throw new PipelineException("场景里有 " + names.Count + " 个头像（" + string.Join("、", names.ToArray()) + "），要说明用哪一个");
+            throw new PipelineException("场景中有 " + names.Count + " 个模型（" + string.Join("、", names.ToArray()) + "），需指定使用哪一个");
         }
 
         // an object under the avatar, by its path below the avatar ("Outfit/Jacket") or, when that is unique, its name
         public static Transform FindUnder(Transform avatar, string path)
         {
-            if (string.IsNullOrEmpty(path)) throw new PipelineException("没有写物体的路径");
+            if (string.IsNullOrEmpty(path)) throw new PipelineException("未指定物体路径");
             string p = path.Replace('\\', '/').Trim('/');
             if (p.StartsWith(avatar.name + "/")) { Transform viaRoot = avatar.Find(p.Substring(avatar.name.Length + 1)); if (viaRoot != null) return viaRoot; }
             Transform t = avatar.Find(p);
@@ -132,8 +132,8 @@ namespace MioVRCA.Pipeline
                 if (c != avatar && c.name == p) { hit = c; n++; }
             }
             if (n == 1) return hit;
-            if (n > 1) throw new PipelineException("头像下有 " + n + " 个叫「" + p + "」的物体，要写完整路径");
-            throw new PipelineException("头像下找不到「" + path + "」");
+            if (n > 1) throw new PipelineException("模型下有 " + n + " 个名为「" + p + "」的物体，需填写完整路径");
+            throw new PipelineException("模型下未找到「" + path + "」");
         }
 
         public static string PrefabSource(GameObject go)
@@ -180,7 +180,7 @@ namespace MioVRCA.Pipeline
         {
             SerializedProperty p = so.FindProperty(path);
             if (p == null)
-                throw new PipelineException("这个版本的 " + so.targetObject.GetType().Name + " 没有「" + path + "」字段，Modular Avatar 可能太旧（需要 1.12 以上）");
+                throw new PipelineException("当前版本的 " + so.targetObject.GetType().Name + " 没有「" + path + "」字段，Modular Avatar 版本可能过旧（需要 1.12 以上）");
             return p;
         }
 
@@ -188,7 +188,7 @@ namespace MioVRCA.Pipeline
         {
             SerializedProperty p = Prop(so, path);
             int i = Array.IndexOf(p.enumNames, name);
-            if (i < 0) throw new PipelineException(path + " 没有「" + name + "」这个选项");
+            if (i < 0) throw new PipelineException(path + " 没有「" + name + "」选项");
             p.enumValueIndex = i;
         }
 

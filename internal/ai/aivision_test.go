@@ -265,7 +265,7 @@ func testLookMain(t *testing.T, provider string) {
 	r := newVisionRig(t, provider, true, lookScript(1))
 	steps := r.run(t, "看看穿得怎么样")
 	ls := lookStep(steps)
-	if ls == nil || !ls.OK || len(ls.Imgs) != 2 || !strings.Contains(ls.Out, "正面、背面") || !strings.Contains(ls.Out, "AI 直接看图") {
+	if ls == nil || !ls.OK || len(ls.Imgs) != 2 || !strings.Contains(ls.Out, "正面、背面") || !strings.Contains(ls.Out, "由当前 AI 模型直接识别") {
 		t.Fatalf("look step %+v", ls)
 	}
 	// the window's pictures: saved, no larger than 1024, served by name only
@@ -351,7 +351,7 @@ func TestLookBlind(t *testing.T) {
 	}
 	steps := r.run(t, "看看")
 	ls := lookStep(steps)
-	if ls == nil || !ls.OK || len(ls.Imgs) != 2 || !strings.Contains(ls.Out, "只给你看") {
+	if ls == nil || !ls.OK || len(ls.Imgs) != 2 || !strings.Contains(ls.Out, "仅显示在记录中") {
 		t.Fatalf("look step %+v", ls)
 	}
 	r.llm.mu.Lock()
@@ -360,7 +360,7 @@ func TestLookBlind(t *testing.T) {
 	}
 	b, _ := json.Marshal(r.llm.seen[2])
 	r.llm.mu.Unlock()
-	if !strings.Contains(string(b), "看不了图") || !strings.Contains(string(b), "不要描述画面") || !strings.Contains(string(b), "看图模型") {
+	if !strings.Contains(string(b), "看不了图") || !strings.Contains(string(b), "不要描述画面") || !strings.Contains(string(b), "视觉模型") {
 		t.Errorf("the AI was not told: %.500s", b)
 	}
 	if loadAIConfig().Sees[seesKey(r.sess.client)] != "no" || aiView().Looks != "none" {
@@ -377,7 +377,7 @@ func TestLookOwnEye(t *testing.T) {
 		t.Errorf("view before: looks %s eye %q own %v", v.Looks, v.EyeModel, v.EyeOwn)
 	}
 	ls := lookStep(r.run(t, "看看"))
-	if ls == nil || !ls.OK || len(ls.Imgs) != 2 || !strings.Contains(ls.Out, "由看图模型（deepseek-flash）描述给 AI") {
+	if ls == nil || !ls.OK || len(ls.Imgs) != 2 || !strings.Contains(ls.Out, "由视觉模型（deepseek-flash）代为描述") {
 		t.Fatalf("look step %+v", ls)
 	}
 	r.llm.mu.Lock()
@@ -404,7 +404,7 @@ func TestLookOwnEye(t *testing.T) {
 	r.llm.mu.Lock()
 	r.llm.seen, r.llm.pictures, r.llm.describes = nil, nil, nil
 	r.llm.mu.Unlock()
-	if ls = lookStep(r.run(t, "再看看")); ls == nil || !strings.Contains(ls.Out, "AI 直接看图") {
+	if ls = lookStep(r.run(t, "再看看")); ls == nil || !strings.Contains(ls.Out, "由当前 AI 模型直接识别") {
 		t.Fatalf("look step %+v", ls)
 	}
 	// a provider without a vision model of its own, or without a key: no eye
@@ -456,7 +456,7 @@ func TestLookDescribed(t *testing.T) {
 	}
 	steps := r.run(t, "看看")
 	ls := lookStep(steps)
-	if ls == nil || !ls.OK || !strings.Contains(ls.Out, "由看图模型（glm-4v-flash）描述给 AI") {
+	if ls == nil || !ls.OK || !strings.Contains(ls.Out, "由视觉模型（glm-4v-flash）代为描述") {
 		t.Fatalf("look step %+v", ls)
 	}
 	eye.mu.Lock()
@@ -476,7 +476,7 @@ func TestLookDescribed(t *testing.T) {
 		}
 	}
 	b, _ := json.Marshal(r.llm.seen[1])
-	if fmt.Sprint(r.llm.pictures) != "[0 0]" || !strings.Contains(string(b), "左肩有一小块身体穿出来") || !strings.Contains(string(b), "看图模型（glm-4v-flash）") {
+	if fmt.Sprint(r.llm.pictures) != "[0 0]" || !strings.Contains(string(b), "左肩有一小块身体穿出来") || !strings.Contains(string(b), "视觉模型（glm-4v-flash）") {
 		t.Errorf("pictures %v; answer %.500s", r.llm.pictures, b)
 	}
 	r.llm.mu.Unlock()
@@ -494,7 +494,7 @@ func TestLookDescribed(t *testing.T) {
 	r.llm.seen, r.llm.pictures = nil, nil
 	r.llm.mu.Unlock()
 	steps = r.run(t, "再看看")
-	if ls = lookStep(steps); ls == nil || !strings.Contains(ls.Out, "看图模型没有回答") {
+	if ls = lookStep(steps); ls == nil || !strings.Contains(ls.Out, "视觉模型未返回结果") {
 		t.Fatalf("look step %+v", ls)
 	}
 	// off: nothing is sent anywhere
@@ -505,7 +505,7 @@ func TestLookDescribed(t *testing.T) {
 	r.llm.mu.Lock()
 	r.llm.seen, r.llm.pictures = nil, nil
 	r.llm.mu.Unlock()
-	if ls = lookStep(r.run(t, "再看看")); ls == nil || !strings.Contains(ls.Out, "看图已关闭") || len(ls.Imgs) != 2 || aiView().Looks != "off" {
+	if ls = lookStep(r.run(t, "再看看")); ls == nil || !strings.Contains(ls.Out, "识图已关闭") || len(ls.Imgs) != 2 || aiView().Looks != "off" {
 		t.Fatalf("look step %+v", ls)
 	}
 }
@@ -618,7 +618,7 @@ func TestSkillScreenshot(t *testing.T) {
 		if s.Kind == "ask" {
 			t.Errorf("asked before a screenshot: %s", s.Text)
 		}
-		if s.Tool == "unity_skill" && len(s.Imgs) == 1 && s.OK && strings.Contains(s.Out, "AI 直接看图") {
+		if s.Tool == "unity_skill" && len(s.Imgs) == 1 && s.OK && strings.Contains(s.Out, "由当前 AI 模型直接识别") {
 			shots++
 		}
 	}

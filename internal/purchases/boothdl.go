@@ -198,7 +198,7 @@ var (
 	dlJobs       []*DLJob
 	dlRunning    bool
 	dlCancel     atomic.Bool
-	TaskDownload = &core.Task{Name: "download", Label: "下载 Booth 已购"}
+	TaskDownload = &core.Task{Name: "download", Label: "下载已购文件"}
 )
 
 func DLSnapshot() []DLJob {
@@ -255,10 +255,10 @@ func QueueDownloads(st *core.Store, item string, ids []string) (int, error) {
 	}
 	st.Mu.RUnlock()
 	if p == nil {
-		return 0, errors.New("没有这件已购商品，先同步 Booth 已购")
+		return 0, errors.New("未找到该已购商品，请先同步 Booth 已购")
 	}
 	if len(add) == 0 {
-		return 0, errors.New("这件商品没有可下载的文件")
+		return 0, errors.New("该商品没有可下载的文件")
 	}
 	return enqueueDownloads(st, add), nil
 }
@@ -390,7 +390,7 @@ func dlWorker(st *core.Store) {
 			err := downloadJob(st, j)
 			if errors.Is(err, errNeedLogin) && !triedLogin {
 				triedLogin = true
-				TaskDownload.Set(pos, total, "正在确认 Booth 登录…")
+				TaskDownload.Set(pos, total, "正在确认 Booth 登录状态…")
 				if EnsureBoothLogin(st) {
 					err = downloadJob(st, j)
 				}
@@ -400,7 +400,7 @@ func dlWorker(st *core.Store) {
 				got++
 			case errors.Is(err, errGumLogin):
 				setJob(j, func(j *DLJob) {
-					j.Status, j.Err = "failed", "要重新登录 Gumroad：在左边「Gumroad 已购」点「登录」，再点下载"
+					j.Status, j.Err = "failed", "Gumroad 登录已失效，请在左侧「Gumroad 已购」点击「登录」后重新下载"
 				})
 				dropPendingImport(j.Item)
 			case errors.Is(err, errNeedLogin):
@@ -412,7 +412,7 @@ func dlWorker(st *core.Store) {
 				}
 				dlRunning = false
 				dlMu.Unlock()
-				TaskDownload.Set(0, 0, "需要登录 Booth 才能下载")
+				TaskDownload.Set(0, 0, "下载前需登录 Booth")
 				core.Logf("下载需要登录 Booth")
 				core.BumpRev()
 				return
@@ -428,7 +428,7 @@ func dlWorker(st *core.Store) {
 			}
 		}
 		if got > 0 {
-			TaskDownload.Set(1, 1, fmt.Sprintf("完成：下载了 %d 个文件", got))
+			TaskDownload.Set(1, 1, fmt.Sprintf("完成：已下载 %d 个文件", got))
 		} else {
 			TaskDownload.Set(0, 0, "")
 		}
@@ -484,7 +484,7 @@ func resolveDownload(st *core.Store, id string) (string, string, error) {
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := c.Do(req)
 	if err != nil {
-		return "", "", fmt.Errorf("连不上 Booth（%s）", core.FriendlyNetErr(err))
+		return "", "", fmt.Errorf("无法连接 Booth（%s）", core.FriendlyNetErr(err))
 	}
 	resp.Body.Close()
 	refreshSession(resp)
@@ -492,7 +492,7 @@ func resolveDownload(st *core.Store, id string) (string, string, error) {
 	case resp.StatusCode >= 300 && resp.StatusCode < 400:
 		loc, err := resp.Location()
 		if err != nil {
-			return "", "", errors.New("Booth 没有给出下载地址")
+			return "", "", errors.New("Booth 未返回下载地址")
 		}
 		lp := strings.ToLower(loc.Path)
 		if strings.Contains(lp, "sign_in") || strings.Contains(lp, "login") || strings.Contains(loc.Host, "accounts.") {
@@ -503,11 +503,11 @@ func resolveDownload(st *core.Store, id string) (string, string, error) {
 	case resp.StatusCode == 401 || resp.StatusCode == 403:
 		return "", "", errNeedLogin
 	case resp.StatusCode == 404:
-		return "", "", errors.New("Booth 上找不到这个文件（可能已删除）")
+		return "", "", errors.New("Booth 上未找到该文件（可能已删除）")
 	case resp.StatusCode == 200:
 		return "", "", errNeedLogin // a page instead of a file: the login page
 	}
-	return "", "", fmt.Errorf("Booth 返回 %d", resp.StatusCode)
+	return "", "", fmt.Errorf("Booth 返回错误（HTTP %d）", resp.StatusCode)
 }
 
 func downloadJob(st *core.Store, j *DLJob) error {
@@ -536,7 +536,7 @@ func downloadJob(st *core.Store, j *DLJob) error {
 	name = core.SafeName(name, 120)
 	folder := itemFolder(dir, j.Item, itemName)
 	if err := os.MkdirAll(folder, 0755); err != nil {
-		return fmt.Errorf("建不了文件夹：%v", err)
+		return fmt.Errorf("无法创建文件夹：%v", err)
 	}
 	PinDownloadDir(st, dir)
 	setJob(j, func(j *DLJob) { j.Name = name })
@@ -654,7 +654,7 @@ func fetchOnce(st *core.Store, u, dst string, j *DLJob) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("下载失败（%d）", resp.StatusCode)
+		return fmt.Errorf("下载失败（HTTP %d）", resp.StatusCode)
 	}
 	// a connection that goes silent mid-file would otherwise hang forever
 	idle := time.AfterFunc(90*time.Second, func() { resp.Body.Close() })

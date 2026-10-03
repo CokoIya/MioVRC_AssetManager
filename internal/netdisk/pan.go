@@ -108,9 +108,9 @@ type PanRaw struct {
 func PanErrno(n int) string {
 	switch n {
 	case -9, -12:
-		return "提取码不对"
+		return "提取码错误"
 	case -62, -63:
-		return "百度要求输入验证码，过一会儿再试"
+		return "百度要求输入验证码，请稍后重试"
 	case 105, -7, 2, 115, 116, 117, 145:
 		return "分享已失效或被取消"
 	}
@@ -176,7 +176,7 @@ func fetchPanWeb(st *core.Store, surl, pwd string, debug *strings.Builder) (*cor
 			Randsk string `json:"randsk"`
 		}
 		if json.Unmarshal([]byte(strings.TrimSpace(string(b))), &v) != nil {
-			return nil, errors.New("百度网盘没有正常响应，稍后再试")
+			return nil, errors.New("百度网盘响应异常，请稍后重试")
 		}
 		if v.Errno != 0 {
 			if v.Errno == -9 || v.Errno == -12 {
@@ -206,14 +206,14 @@ func fetchPanWeb(st *core.Store, surl, pwd string, debug *strings.Builder) (*cor
 		switch {
 		case resp != nil && strings.Contains(resp.Request.URL.Path, "/share/init"):
 			if pwd == "" {
-				return nil, panDefinite("这个分享需要提取码")
+				return nil, panDefinite("该分享需要提取码")
 			}
-			return nil, errors.New("提取码验证没通过")
+			return nil, errors.New("提取码验证未通过")
 		case strings.Contains(page, "分享的文件已经被删除") || strings.Contains(page, "分享的文件已经被取消") ||
 			strings.Contains(page, "链接已过期") || strings.Contains(page, "分享已过期") || strings.Contains(page, "此链接分享内容可能因为"):
 			return nil, panDefinite("分享已失效或被取消")
 		}
-		return nil, errors.New("网页里没读到分享内容")
+		return nil, errors.New("无法从网页读取分享内容")
 	}
 	out := &core.PanListing{Surl: surl, Fetched: time.Now().Unix()}
 	p.ref = shareURL
@@ -257,7 +257,7 @@ func fetchPanWx(st *core.Store, surl, pwd string, debug *strings.Builder) (*core
 		}
 		if json.Unmarshal(b, &r) != nil {
 			fmt.Fprintf(debug, "wxlist(%s): %s\n", short, core.Truncate(string(b), 300))
-			return nil, false, 0, errors.New("百度网盘没有正常响应")
+			return nil, false, 0, errors.New("百度网盘响应异常")
 		}
 		if r.Errno != 0 {
 			fmt.Fprintf(debug, "wxlist(%s): %s\n", short, core.Truncate(string(b), 300))
@@ -411,7 +411,7 @@ func sortPan(fs []*core.PanFile) {
 func FriendlyPanErr(err error) error {
 	s := err.Error()
 	if strings.Contains(s, "timeout") || strings.Contains(s, "deadline") || strings.Contains(s, "refused") || strings.Contains(s, "no such host") {
-		return errors.New("连不上百度网盘，检查一下网络")
+		return errors.New("无法连接百度网盘，请检查网络")
 	}
 	return err
 }
@@ -419,7 +419,7 @@ func FriendlyPanErr(err error) error {
 // ---------- background refresh ----------
 
 var (
-	TaskPan   = &core.Task{Name: "pan", Label: "读取网盘分享"}
+	TaskPan   = &core.Task{Name: "pan", Label: "获取网盘分享"}
 	PanMu     sync.Mutex
 	PanQueue  []string // asset keys
 	PanActive bool

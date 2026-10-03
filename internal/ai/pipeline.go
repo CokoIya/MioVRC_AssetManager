@@ -102,7 +102,7 @@ func assetLabel(a aiAsset, fallback string) string {
 func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []aiAsset, hierarchy string) error {
 	p := s.project
 	if len(assets) == 0 {
-		return errors.New("还没有勾选要装的素材")
+		return errors.New("未勾选要装配的素材")
 	}
 	step := func(tool, title string, f func() (string, error)) error {
 		s.add(AIStep{Kind: "tool", Tool: tool, Text: title, Busy: true})
@@ -139,19 +139,19 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 		return act, nil
 	}
 	var avs []avatarInfo
-	if err := step("inspect_avatar", "查看头像和现有菜单", func() (string, error) {
+	if err := step("inspect_avatar", "查看模型和现有菜单", func() (string, error) {
 		var err error
 		if avs, err = inspect(); err != nil {
 			return "", err
 		}
 		if len(avs) == 0 {
-			return "场景里还没有头像", nil
+			return "场景中暂无模型", nil
 		}
 		names := []string{}
 		for _, a := range avs {
 			names = append(names, a.Name)
 		}
-		return "头像「" + strings.Join(names, "」「") + "」", nil
+		return "模型「" + strings.Join(names, "」「") + "」", nil
 	}); err != nil {
 		return err
 	}
@@ -198,7 +198,7 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 				return "", err
 			}
 			if len(missing) > 0 {
-				return "", errors.New("工程里没有这个文件夹：" + strings.Join(missing, "、"))
+				return "", errors.New("未找到文件夹：" + strings.Join(missing, "、"))
 			}
 			var whole []prefabInfo
 			for _, x := range list {
@@ -211,7 +211,7 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 				whole = append(whole, x)
 			}
 			if len(whole) == 0 {
-				return "", errors.New("「" + b.Folder + "」里没有整只头像的 prefab（带 VRC Avatar Descriptor 的）；换一个素体，或者先在 Unity 里打开放着头像的场景")
+				return "", errors.New("「" + b.Folder + "」中没有完整模型的 prefab（需带 VRC Avatar Descriptor），请更换素体，或先在 Unity 中打开包含模型的场景")
 			}
 			// the plain PC version first: not a Quest/lite/face-tracking variant, then the fewest words in its name
 			sort.SliceStable(whole, func(i, j int) bool {
@@ -233,13 +233,13 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 			body = whole[0]
 			out := "素体 prefab「" + body.Name + "」"
 			if len(whole) > 1 {
-				out += fmt.Sprintf("（共 %d 个整只头像的 prefab，用了它）", len(whole))
+				out += fmt.Sprintf("（共 %d 个完整模型的 prefab，已选用此项）", len(whole))
 			}
 			return out, nil
 		}); err != nil {
 			return err
 		}
-		if err := step("place_avatar", "把素体「"+strings.TrimSuffix(body.Name, ".prefab")+"」放进新场景", func() (string, error) {
+		if err := step("place_avatar", "将素体「"+strings.TrimSuffix(body.Name, ".prefab")+"」放入新场景", func() (string, error) {
 			raw, err := unity.BridgeCall(ctx, p, "place_avatar", map[string]any{"prefab": body.Path}, 3*time.Minute)
 			if err != nil {
 				return "", err
@@ -248,24 +248,24 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 				Scene string `json:"scene"`
 			}
 			_ = json.Unmarshal(raw, &o)
-			notes = append(notes, "新建了场景 "+o.Scene+"，素体「"+body.Name+"」已放进去并保存")
+			notes = append(notes, "已新建场景 "+o.Scene+"，素体「"+body.Name+"」已放入并保存")
 			if avs, err = inspect(); err != nil {
 				return "", err
 			}
 			if len(avs) == 0 {
-				return "", errors.New("素体放进场景了，但 Unity 没有报告头像；看看 Console 有没有报错")
+				return "", errors.New("素体已放入场景，但 Unity 未检测到模型，请查看 Console 是否有报错")
 			}
 			return "新场景 " + o.Scene, nil
 		}); err != nil {
 			return err
 		}
 	case len(bases) > 0:
-		notes = append(notes, "场景里已经有头像「"+avs[0].Name+"」，素体「"+assetLabel(bases[0], baseName(bases[0].Folder))+"」没有重新放置（要换素体的话，先在 Unity 里新建场景）")
+		notes = append(notes, "场景中已有模型「"+avs[0].Name+"」，素体「"+assetLabel(bases[0], baseName(bases[0].Folder))+"」未重新放置（如需更换素体，请先在 Unity 中新建场景）")
 	}
 	var av avatarInfo
 	switch len(avs) {
 	case 0:
-		return errors.New("打开的场景里没有头像：勾上一个素体让流水线把它放进场景，或者先在 Unity 里打开放着头像的场景")
+		return errors.New("当前场景中没有模型：请勾选一个素体由流水线放入场景，或先在 Unity 中打开包含模型的场景")
 	case 1:
 		av = avs[0]
 	default:
@@ -273,7 +273,7 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 		for _, a := range avs {
 			names = append(names, a.Name)
 		}
-		return errors.New("场景里有 " + fmt.Sprint(len(avs)) + " 个头像（" + strings.Join(names, "、") + "）：先在 Unity 里只留一个显示的，或者用 AI 模式并说明用哪个")
+		return errors.New("场景中有 " + fmt.Sprint(len(avs)) + " 个模型（" + strings.Join(names, "、") + "）：请在 Unity 中仅保留一个处于显示状态，或取消勾选「不使用 AI」并说明要处理哪一个")
 	}
 	aliases := baseAliases(st, av)
 
@@ -285,7 +285,7 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 		}
 	}
 	if len(wear) == 0 {
-		s.add(AIStep{Kind: "say", Text: strings.Join(append(notes, "没有勾选要装的衣服、头发、配饰或道具，流水线到此为止"), "。")})
+		s.add(AIStep{Kind: "say", Text: strings.Join(append(notes, "未勾选要装配的衣服、头发、配饰或道具，流水线已结束。"), "。")})
 		return nil
 	}
 	var list []prefabInfo
@@ -302,13 +302,13 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 		}
 		if len(list) == 0 {
 			if len(missing) > 0 {
-				return "", errors.New("工程里没有这个文件夹：" + strings.Join(missing, "、"))
+				return "", errors.New("未找到文件夹：" + strings.Join(missing, "、"))
 			}
-			return "", errors.New("这些文件夹里没有 prefab")
+			return "", errors.New("所选文件夹中没有 prefab")
 		}
 		out := fmt.Sprintf("%d 个 prefab", len(list))
 		if len(missing) > 0 {
-			out += "；没找到文件夹 " + strings.Join(missing, "、")
+			out += "；未找到文件夹 " + strings.Join(missing, "、")
 		}
 		return out, nil
 	}); err != nil {
@@ -345,7 +345,7 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 		menuRoot = hairRoot
 	}
 
-	verbs := map[string]string{"衣服": "穿上", "头发": "戴上", "配饰": "戴上", "道具": "装上"}
+	verbs := map[string]string{"衣服": "装配", "头发": "装配", "配饰": "装配", "道具": "装配"}
 	dress := func(kind, label, prefab string, active bool) (object string, meshes []string, err error) {
 		err = step("dress", verbs[kind]+"「"+label+"」", func() (string, error) {
 			raw, err := unity.BridgeCall(ctx, p, "dress", map[string]any{"avatar": av.Path, "prefab": prefab, "active": active}, 3*time.Minute)
@@ -372,7 +372,7 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 			}
 			out := fmt.Sprintf("%d 个网格", len(meshes))
 			if r.Existing {
-				out = "已经在头像上，" + out
+				out = "已在模型上，" + out
 			}
 			if len(r.Warnings) > 0 {
 				warns = append(warns, r.Warnings...)
@@ -394,12 +394,12 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 			}
 			sub := prefabsOf(a)
 			if len(sub) == 0 {
-				warns = append(warns, "「"+a.Folder+"」里没有 prefab，跳过")
+				warns = append(warns, "「"+a.Folder+"」中没有 prefab，已跳过")
 				continue
 			}
 			outfits, skipped := pickOutfits(sub, aliases)
 			if len(outfits) == 0 {
-				warns = append(warns, "「"+a.Folder+"」里没有能穿戴的 prefab（都是整只模型），跳过")
+				warns = append(warns, "「"+a.Folder+"」中没有可装配的 prefab（均为完整模型），已跳过")
 				continue
 			}
 			if len(outfits) > 6 {
@@ -409,7 +409,7 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 				outfits = outfits[:6]
 			}
 			if len(skipped) > 0 {
-				notes = append(notes, "「"+assetLabel(a, baseName(a.Folder))+"」里没有穿："+strings.Join(skipped, "、"))
+				notes = append(notes, "「"+assetLabel(a, baseName(a.Folder))+"」中未装配："+strings.Join(skipped, "、"))
 			}
 			for i, o := range outfits {
 				label := o.label
@@ -492,7 +492,7 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 					}
 					done = append(done, label)
 					if len(o.colours) > 0 {
-						notes = append(notes, "「"+label+"」还有别的配色（"+strings.Join(names[1:], "、")+"），配饰开关只用了第一个")
+						notes = append(notes, "「"+label+"」另有其他配色（"+strings.Join(names[1:], "、")+"），配饰开关仅使用第一个")
 					}
 					items = append(items, map[string]any{"kind": "toggle", "path": base, "label": label, "objects": []string{object}, "default": true})
 				case "道具":
@@ -505,7 +505,7 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 					}
 					done = append(done, label)
 					if len(o.colours) > 0 {
-						notes = append(notes, "「"+label+"」还有别的配色（"+strings.Join(names[1:], "、")+"），道具开关只用了第一个")
+						notes = append(notes, "「"+label+"」另有其他配色（"+strings.Join(names[1:], "、")+"），道具开关仅使用第一个")
 					}
 					if perAsset {
 						items = append(items, map[string]any{"kind": "toggle", "path": append(append([]string{}, base...), label), "label": "显示", "objects": []string{object}, "default": false})
@@ -517,7 +517,7 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 		}
 	}
 	if len(items) == 0 {
-		return errors.New("没有装上任何素材：" + strings.Join(warns, "；"))
+		return errors.New("未装配任何素材：" + strings.Join(warns, "；"))
 	}
 	var summary string
 	if err := step("build_menu", fmt.Sprintf("生成菜单（%d 项）", len(items)), func() (string, error) {
@@ -541,18 +541,18 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 		summary = r.Root
 		out := fmt.Sprintf("新建 %d 项，图标 %d 张", len(r.Created), r.Icons)
 		if len(r.Created) == 0 {
-			out = "菜单已是最新，没有新建的项"
+			out = "菜单已是最新，无新建项"
 		}
 		return out, nil
 	}); err != nil {
 		return err
 	}
-	text := "已装上：" + strings.Join(done, "、") + "。菜单在头像下面的「" + summary + "」里，按「" + hierarchy + "」排。"
+	text := "已装配：" + strings.Join(done, "、") + "。菜单位于模型下的「" + summary + "」，按「" + hierarchy + "」排列。"
 	if root != "" {
-		text += "头像原来就有衣服菜单，新衣服加进了它里面（参数 " + param + "）。"
+		text += "模型已有衣服菜单，新衣服已加入其中（参数 " + param + "）。"
 	}
 	if hairRoot != "" {
-		text += "头发也加进了原有的头发菜单（参数 " + hairParam + "）。"
+		text += "头发已加入原有的头发菜单（参数 " + hairParam + "）。"
 	}
 	if len(notes) > 0 {
 		text += "\n" + strings.Join(core.UniqStrings(notes), "；") + "。"
@@ -562,18 +562,18 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 	}
 	// a look at the result, for the player (an older plugin that cannot photograph is no reason to fail)
 	shots := 0
-	s.add(AIStep{Kind: "tool", Tool: "look", Text: "给头像拍照", Busy: true})
+	s.add(AIStep{Kind: "tool", Tool: "look", Text: "为模型截图", Busy: true})
 	if imgs, _, err := takeShots(ctx, p, map[string]any{"avatar": av.Path, "views": []string{"front", "back"}}); err != nil {
 		s.finishStep(false, err.Error())
 	} else {
 		shots = len(imgs)
 		s.showImgs(saveShots(imgs))
-		s.finishStep(true, "正面和背面：点图片可以放大。这是场景里现在显示着的样子，菜单开关的效果要在 Play 模式里看")
+		s.finishStep(true, "正面和背面，点击图片可放大。截图为场景当前显示的状态，菜单开关的效果需在 Play 模式中查看")
 	}
 	if shots > 0 {
-		text += "\n上面有头像现在的正面和背面截图，先看一眼有没有明显穿模、错位或整块洋红色（材质丢失）。"
+		text += "\n上方为模型当前的正面和背面截图，请检查是否有明显穿模、错位或整块洋红色（材质丢失）。"
 	}
-	text += "\n部件是按网格名字里的词分的组，分得不对的地方可以让 AI 重新整理，或者在 Unity 里自己调。菜单效果要在 Play 模式里用 Gesture Manager 点一遍；满意就按 Ctrl+S 保存场景，不满意按 Ctrl+Z。"
+	text += "\n部件按网格名称中的关键词分组，分组有误时可让 AI 重新整理，或在 Unity 中手动调整。菜单效果需在 Play 模式中用 Gesture Manager 逐项测试；确认无误后按 Ctrl+S 保存场景，如需回退按 Ctrl+Z。"
 	s.add(AIStep{Kind: "say", Text: text})
 	return nil
 }

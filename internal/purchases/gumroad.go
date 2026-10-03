@@ -24,10 +24,10 @@ import (
 
 func gumroadLoginURL() string { return core.GumroadBase() + "/login?next=%2Flibrary" }
 
-var errGumLogin = errors.New("Gumroad 还没登录，或者登录已经失效")
+var errGumLogin = errors.New("Gumroad 尚未登录或登录已失效")
 
 // errGumBlocked: the site's protection (Cloudflare) answered the program with a "prove you are a browser" page.
-var errGumBlocked = errors.New("Gumroad 的防护页（Cloudflare）拦住了程序的请求，现在读不了已购。过一会儿再试；一直这样的话，请在「反馈和建议」里告诉作者")
+var errGumBlocked = errors.New("Gumroad 的防护页（Cloudflare）拦截了请求，暂时无法获取已购，请稍后重试；如持续出现，可通过「反馈与建议」告知作者")
 
 // gumChallenged: the answer is the protection's challenge page, not Gumroad's own.
 func gumChallenged(resp *http.Response, body []byte) bool {
@@ -143,7 +143,7 @@ func (g *gumClient) get(u string, inertia bool) (*http.Response, error) {
 	}
 	resp, err := g.hc.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("连不上 Gumroad（%s）", core.FriendlyNetErr(err))
+		return nil, fmt.Errorf("无法连接 Gumroad（%s）", core.FriendlyNetErr(err))
 	}
 	g.absorb(resp)
 	return resp, nil
@@ -172,7 +172,7 @@ func (g *gumClient) page(u string) (string, json.RawMessage, error) {
 	for hop := 0; hop < 6; hop++ {
 		pu, err := url.Parse(u)
 		if err != nil || !gumSameSite(pu) {
-			return "", nil, errors.New("Gumroad 把页面转到了别的网站：" + u)
+			return "", nil, errors.New("Gumroad 页面被重定向到其他网站：" + u)
 		}
 		resp, err := g.get(u, true)
 		if err != nil {
@@ -196,11 +196,11 @@ func (g *gumClient) page(u string) (string, json.RawMessage, error) {
 		case resp.StatusCode == 401 || resp.StatusCode == 403:
 			return "", nil, errGumLogin
 		case resp.StatusCode == 404:
-			return "", nil, errors.New("Gumroad 上找不到这个页面（404）")
+			return "", nil, errors.New("Gumroad 上未找到该页面（404）")
 		case resp.StatusCode == 429:
-			return "", nil, errors.New("Gumroad 说请求太频繁，过一会儿再同步")
+			return "", nil, errors.New("Gumroad 请求过于频繁，请稍后重试")
 		case resp.StatusCode != 200:
-			return "", nil, fmt.Errorf("Gumroad 返回 %d", resp.StatusCode)
+			return "", nil, fmt.Errorf("Gumroad 返回错误（HTTP %d）", resp.StatusCode)
 		}
 		if next != "" {
 			if nu, err := url.Parse(next); err == nil && strings.Contains(nu.Path, "/login") {
@@ -220,18 +220,18 @@ func (g *gumClient) page(u string) (string, json.RawMessage, error) {
 			} else if m := reDataPageScript.FindSubmatch(body); m != nil {
 				raw = m[1]
 			} else {
-				return "", nil, errors.New("Gumroad 的页面看不懂（网站可能改版了）")
+				return "", nil, errors.New("无法解析 Gumroad 页面（网站可能已改版）")
 			}
 		}
 		if json.Unmarshal(raw, &p) != nil || p.Component == "" {
-			return "", nil, errors.New("Gumroad 的页面看不懂（网站可能改版了）")
+			return "", nil, errors.New("无法解析 Gumroad 页面（网站可能已改版）")
 		}
 		if strings.HasPrefix(p.Component, "Logins/") || strings.HasPrefix(p.Component, "TwoFactorAuthentication/") {
 			return "", nil, errGumLogin
 		}
 		return p.Component, p.Props, nil
 	}
-	return "", nil, errors.New("Gumroad 的页面转来转去")
+	return "", nil, errors.New("Gumroad 页面重定向次数过多")
 }
 
 type gumCard struct {
@@ -296,11 +296,11 @@ func (g *gumClient) library(page int, archived bool) (*gumLibraryProps, error) {
 		return nil, err
 	}
 	if comp != "Library/Index" {
-		return nil, errors.New("Gumroad 给的不是已购页面（" + comp + "）")
+		return nil, errors.New("Gumroad 返回的不是已购页面（" + comp + "）")
 	}
 	var p gumLibraryProps
 	if err := json.Unmarshal(props, &p); err != nil {
-		return nil, errors.New("Gumroad 的已购页面看不懂（网站可能改版了）")
+		return nil, errors.New("无法解析 Gumroad 已购页面（网站可能已改版）")
 	}
 	return &p, nil
 }
@@ -321,17 +321,17 @@ func (g *gumClient) files(downloadURL string) (files []gumFile, d *gumDownloadPr
 	switch comp {
 	case "UrlRedirects/DownloadPage":
 	case "UrlRedirects/ConfirmPage":
-		return nil, nil, "Gumroad 要先确认购买邮箱才给看：在 Gumroad 的已购页面里打开一次这件商品", nil
+		return nil, nil, "Gumroad 要求先确认购买邮箱，请在 Gumroad 已购页面中打开一次该商品", nil
 	case "UrlRedirects/Expired", "UrlRedirects/RentalExpired":
 		return nil, nil, "访问已过期", nil
 	case "UrlRedirects/MembershipInactive":
-		return nil, nil, "会员订阅已停，不能下载", nil
+		return nil, nil, "会员订阅已停止，无法下载", nil
 	default:
-		return nil, nil, "读不了下载页（" + comp + "）", nil
+		return nil, nil, "无法读取下载页（" + comp + "）", nil
 	}
 	d = &gumDownloadProps{}
 	if err := json.Unmarshal(props, d); err != nil {
-		return nil, nil, "", errors.New("Gumroad 的下载页面看不懂（网站可能改版了）")
+		return nil, nil, "", errors.New("无法解析 Gumroad 下载页面（网站可能已改版）")
 	}
 	seen := map[string]int{}
 	var walk func(items []gumItem)
@@ -536,11 +536,11 @@ func gumID(purchaseID string) string {
 func RunGumroadSync(st *core.Store, prog *core.Task) bool {
 	s := LoadGumSession()
 	if s == nil {
-		prog.Set(0, 0, "还没有登录 Gumroad")
+		prog.Set(0, 0, "尚未登录 Gumroad")
 		return false
 	}
 	g := newGumClient(st, s)
-	prog.Set(0, 0, "读取 Gumroad 已购…")
+	prog.Set(0, 0, "正在获取 Gumroad 已购…")
 	var cards []gumCard
 	for _, archived := range []bool{false, true} {
 		for page := 1; page <= 400; page++ {
@@ -552,12 +552,12 @@ func RunGumroadSync(st *core.Store, prog *core.Task) bool {
 			if errors.Is(err, errGumLogin) {
 				forgetGumSession()
 				core.BumpRev()
-				prog.Set(0, 0, "Gumroad 的登录失效了，请重新登录")
+				prog.Set(0, 0, "Gumroad 登录已失效，请重新登录")
 				return false
 			}
 			if err != nil {
 				core.Logf("Gumroad 已购读取失败：%v", err)
-				prog.Set(0, 0, "读取失败："+err.Error())
+				prog.Set(0, 0, "同步失败："+err.Error())
 				return false
 			}
 			if page == 1 && !archived {
@@ -567,7 +567,7 @@ func RunGumroadSync(st *core.Store, prog *core.Task) bool {
 				}
 			}
 			cards = append(cards, lib.Results...)
-			prog.Set(0, 0, fmt.Sprintf("读取 Gumroad 已购 第 %d 页（%d 件）", page, len(cards)))
+			prog.Set(0, 0, fmt.Sprintf("正在获取 Gumroad 已购，第 %d 页（%d 件）", page, len(cards)))
 			if len(lib.Results) == 0 || page >= lib.Pagination.Pages {
 				break
 			}
@@ -617,7 +617,7 @@ func RunGumroadSync(st *core.Store, prog *core.Task) bool {
 			break
 		}
 		p := next[id]
-		prog.Set(i, len(fresh), "读取下载页："+p.Name)
+		prog.Set(i, len(fresh), "正在获取下载页："+p.Name)
 		files, d, note, err := g.files(urls[id])
 		if errors.Is(err, errGumLogin) {
 			break
@@ -673,7 +673,7 @@ func RunGumroadSync(st *core.Store, prog *core.Task) bool {
 	st.Mu.Unlock()
 	_ = st.Save()
 	core.BumpRev()
-	prog.Set(1, 1, fmt.Sprintf("完成：%d 件 Gumroad 已购", len(next)))
+	prog.Set(1, 1, fmt.Sprintf("完成：已同步 %d 件 Gumroad 已购", len(next)))
 	core.Logf("Gumroad 已购同步完成：%d 件，其中 %d 件是新读的", len(next), len(fresh))
 	return true
 }
@@ -727,12 +727,12 @@ func resolveGumWith(st *core.Store, s *gumSession, id string) (string, string, e
 	p := gumDownloadPath(st, id)
 	st.Mu.RUnlock()
 	if p == "" {
-		return "", "", errors.New("没有这个文件的下载地址：重新同步一次 Gumroad 已购")
+		return "", "", errors.New("未找到该文件的下载地址，请重新同步 Gumroad 已购")
 	}
 	base, _ := url.Parse(core.GumroadBase())
 	u, err := base.Parse(p)
 	if err != nil || !gumSameSite(u) {
-		return "", "", errors.New("下载地址不对")
+		return "", "", errors.New("下载地址无效")
 	}
 	g := newGumClient(st, s)
 	for hop := 0; hop < 4; hop++ {
@@ -751,7 +751,7 @@ func resolveGumWith(st *core.Store, s *gumSession, id string) (string, string, e
 		case resp.StatusCode >= 300 && resp.StatusCode < 400:
 			loc, err := resp.Location()
 			if err != nil {
-				return "", "", errors.New("Gumroad 没有给出下载地址")
+				return "", "", errors.New("Gumroad 未返回下载地址")
 			}
 			if !gumSameSite(loc) { // the file itself, on the storage
 				name, _ := url.PathUnescape(filepath.Base(loc.Path))
@@ -765,18 +765,18 @@ func resolveGumWith(st *core.Store, s *gumSession, id string) (string, string, e
 			case strings.Contains(lp, "/login"):
 				return "", "", errGumLogin
 			case strings.HasPrefix(lp, "/d/"), strings.Contains(lp, "/confirm"), strings.Contains(lp, "/expired"), strings.Contains(lp, "check_purchaser"):
-				return "", "", errors.New("Gumroad 暂时不给下载这个文件（正在准备、已过期或需要确认邮箱）：到 Gumroad 的已购页面里看一下")
+				return "", "", errors.New("该文件暂时无法从 Gumroad 下载（正在准备、已过期或需要确认邮箱），请前往 Gumroad 已购页面查看")
 			}
 			u = loc
 		case resp.StatusCode == 401 || resp.StatusCode == 403:
 			return "", "", errGumLogin
 		case resp.StatusCode == 404:
-			return "", "", errors.New("Gumroad 上找不到这个文件（可能已删除）")
+			return "", "", errors.New("Gumroad 上未找到该文件（可能已删除）")
 		default:
-			return "", "", fmt.Errorf("Gumroad 返回 %d", resp.StatusCode)
+			return "", "", fmt.Errorf("Gumroad 返回错误（HTTP %d）", resp.StatusCode)
 		}
 	}
-	return "", "", errors.New("Gumroad 的下载地址转来转去")
+	return "", "", errors.New("Gumroad 下载地址重定向次数过多")
 }
 
 var reDispositionName = regexp.MustCompile(`filename\*?=(?:UTF-8'')?"?([^";]+)`)

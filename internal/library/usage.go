@@ -331,13 +331,13 @@ func RunUsageScan(st *core.Store, prog *core.Task) {
 
 	cache := loadGuidCache()
 	projects := findProjects(roots)
-	prog.Set(0, len(projects)+len(assets), "索引 Unity 工程")
+	prog.Set(0, len(projects)+len(assets), "正在索引 Unity 工程")
 	guidProj := map[string]uint64{}
 	libGuids := map[string]bool{}
 	projFold := make([]map[string]uint16, len(projects))
 	projDirs := make([][]string, len(projects))
 	for i, p := range projects {
-		prog.Set(i, len(projects)+len(assets), "索引工程 "+p.Name)
+		prog.Set(i, len(projects)+len(assets), "正在索引工程 "+p.Name)
 		set, pkg, fold, dirs := projectGUIDs(p.Path)
 		projFold[i], projDirs[i] = fold, dirs
 		for g := range pkg {
@@ -378,7 +378,7 @@ func RunUsageScan(st *core.Store, prog *core.Task) {
 				assetGuids[i] = keys(set)
 				dmu.Lock()
 				done++
-				prog.Set(len(projects)+done, len(projects)+len(assets), "分析素材 "+a.Name)
+				prog.Set(len(projects)+done, len(projects)+len(assets), "正在分析素材 "+a.Name)
 				dmu.Unlock()
 			}
 		}()

@@ -109,7 +109,7 @@ func readPackageItems(pkg string) (map[string]*pkgItem, error) {
 			break
 		}
 		if err != nil {
-			return nil, errors.New("unitypackage 读不完整（文件可能损坏）")
+			return nil, errors.New("unitypackage 读取不完整（文件可能已损坏）")
 		}
 		g, part := pkgEntry(h.Name)
 		if g == "" {
@@ -215,7 +215,7 @@ func importUnityPackage(pkg string, idx *projIndex) (importStats, error) {
 		}
 		full := filepath.Join(idx.root, filepath.FromSlash(rel))
 		if err := os.MkdirAll(full, 0755); err != nil {
-			return stats, fmt.Errorf("建不了文件夹 %s：%v", rel, err)
+			return stats, fmt.Errorf("无法创建文件夹 %s：%v", rel, err)
 		}
 		if g := idx.byPath[strings.ToLower(rel)]; g == "" || g == it.guid {
 			if err := writeMeta(full, it); err != nil {
@@ -254,7 +254,7 @@ func importUnityPackage(pkg string, idx *projIndex) (importStats, error) {
 			break
 		}
 		if err != nil {
-			return stats, errors.New("unitypackage 读不完整（文件可能损坏）")
+			return stats, errors.New("unitypackage 读取不完整（文件可能已损坏）")
 		}
 		g, part := pkgEntry(h.Name)
 		if part != "asset" || dest[g] == "" {
@@ -263,13 +263,13 @@ func importUnityPackage(pkg string, idx *projIndex) (importStats, error) {
 		rel := dest[g]
 		full := filepath.Join(idx.root, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
-			return stats, fmt.Errorf("建不了文件夹：%v", err)
+			return stats, fmt.Errorf("无法创建文件夹：%v", err)
 		}
 		_, existed := os.Stat(full)
 		tmp := full + ".mioimport~" // Unity skips names ending in "~" while it is being written
 		w, err := os.Create(tmp)
 		if err != nil {
-			return stats, fmt.Errorf("写不了 %s：%v", rel, err)
+			return stats, fmt.Errorf("无法写入 %s：%v", rel, err)
 		}
 		_, cerr := io.Copy(w, tr)
 		if err := w.Close(); cerr == nil {
@@ -277,11 +277,11 @@ func importUnityPackage(pkg string, idx *projIndex) (importStats, error) {
 		}
 		if cerr != nil {
 			_ = os.Remove(tmp)
-			return stats, fmt.Errorf("写不了 %s：%v", rel, cerr)
+			return stats, fmt.Errorf("无法写入 %s：%v", rel, cerr)
 		}
 		if err := os.Rename(tmp, full); err != nil { // replaces the old file in one step
 			_ = os.Remove(tmp)
-			return stats, fmt.Errorf("写不了 %s：%v（Unity 可能正占用这个文件）", rel, err)
+			return stats, fmt.Errorf("无法写入 %s：%v（文件可能被 Unity 占用）", rel, err)
 		}
 		if err := writeMeta(full, items[g]); err != nil {
 			return stats, err
@@ -337,7 +337,7 @@ type ImportJob struct {
 var (
 	impMu      sync.Mutex
 	impJob     *ImportJob
-	TaskImport = &core.Task{Name: "import", Label: "导入 Unity 工程"}
+	TaskImport = &core.Task{Name: "import", Label: "导入到 Unity 工程"}
 )
 
 func ImportSnapshot() *ImportJob {
@@ -389,10 +389,10 @@ func importPlaces(st *core.Store, key string) (places []string, bases []string, 
 		}
 	}
 	if a == nil {
-		return nil, nil, errors.New("找不到这个素材")
+		return nil, nil, errors.New("未找到该素材")
 	}
 	if a.Virtual || (a.PanOnly && len(a.Locations) == 0) {
-		return nil, nil, errors.New("这个素材还没下载到本地")
+		return nil, nil, errors.New("该素材尚未下载到本地")
 	}
 	add := func(v *library.AssetView) {
 		for _, l := range v.Locations {
@@ -510,7 +510,7 @@ func choosePackages(st *core.Store, pkgs []string, projBases, assetBases []strin
 // StartImport begins the import in the background.
 func StartImport(st *core.Store, req ImportReq) error {
 	if !core.IsUnityProject(req.Project) {
-		return errors.New("这不是 Unity 工程（找不到 Assets 和 ProjectSettings 文件夹）")
+		return errors.New("该文件夹不是 Unity 工程（未找到 Assets 和 ProjectSettings 文件夹）")
 	}
 	places, bases := req.Paths, []string(nil)
 	switch {
@@ -529,7 +529,7 @@ func StartImport(st *core.Store, req ImportReq) error {
 		st.Mu.RUnlock()
 	}
 	if len(places) == 0 {
-		return errors.New("没有可以导入的文件")
+		return errors.New("没有可导入的文件")
 	}
 	impMu.Lock()
 	if impJob != nil && impJob.Stage != "done" && impJob.Stage != "failed" {
@@ -567,7 +567,7 @@ func StartImportWhenFree(st *core.Store, req ImportReq) {
 	}()
 }
 
-var errImportBusy = errors.New("正在导入另一个素材，等它完成再试")
+var errImportBusy = errors.New("另一个素材正在导入，请等待导入完成后重试")
 
 // ChooseImport: the player's pick when several base bodies were possible (nil = cancel).
 func ChooseImport(paths []string) bool {
@@ -639,18 +639,18 @@ func runImport(st *core.Store, assetBases []string) {
 	}
 	pkgs := findPackages(look)
 	if len(pkgs) == 0 {
-		msg := "没有找到 unitypackage"
+		msg := "未找到 unitypackage"
 		pwdNeeded := false
 		for _, e := range res.Failed {
 			pwdNeeded = pwdNeeded || e == archive.ErrArcPwd.Error()
 		}
 		switch {
 		case pwdNeeded && pwd == "":
-			msg = "压缩包有密码：在「解压密码」里填上密码，再点「一键导入」"
+			msg = "压缩包已加密，请在「解压密码」中填写密码后点击「一键导入」"
 		case pwdNeeded:
-			msg = "解压密码不对：换一个密码再试（密码一般在商品说明、卖家消息或压缩包旁边的文字文件里）"
+			msg = "解压密码错误，请更换密码后重试（密码通常位于商品说明、卖家消息或压缩包旁的文本文件中）"
 		case len(failed) > 0:
-			msg += "（有压缩包没解压开：" + failed[0] + "）"
+			msg += "（有压缩包解压失败：" + failed[0] + "）"
 		}
 		fail(msg)
 		return
@@ -702,7 +702,7 @@ func runImport(st *core.Store, assetBases []string) {
 	setImp(func(j *ImportJob) {
 		j.Stage, j.Msg, j.Imported, j.Files, j.Tops, j.Done, j.Total = "done", msg, done, files, tops, len(pick), len(pick)
 	})
-	TaskImport.Set(1, 1, msg+"到 "+filepath.Base(j.Project))
+	TaskImport.Set(1, 1, msg+"，目标工程："+filepath.Base(j.Project))
 	AfterImport(j.Project, j.Key, tops) // the pipeline page starts from what was just imported
 	// the library sees the unpacked folders, and the project now uses the asset
 	library.StartPipeline(st, true, true, false, false, nil)

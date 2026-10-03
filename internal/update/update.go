@@ -29,7 +29,7 @@ const UpdateRepo = "CokoIya/MioVRC_AssetManager"
 
 var (
 	reVerNum     = regexp.MustCompile(`[0-9]+(?:\.[0-9]+)+`)
-	TaskUpdate   = &core.Task{Name: "update", Label: "更新"}
+	TaskUpdate   = &core.Task{Name: "update", Label: "软件更新"}
 	updateBusy   atomic.Bool
 	UpdateDoneCh = make(chan struct{}, 1) // tells main() to quit once the new exe is started
 )
@@ -106,7 +106,7 @@ func fetchLatestRelease(st *core.Store) (*core.UpdateInfo, error) {
 	return nil, err
 }
 
-var errNoRelease = errors.New("GitHub 上还没有发布版本")
+var errNoRelease = errors.New("GitHub 上暂无发布版本")
 
 // fetchLatestSite: /releases/latest redirects to the newest release's page, which gives the tag; the files are
 // where the releases of this program always put them.
@@ -118,13 +118,13 @@ func fetchLatestSite(st *core.Store) (*core.UpdateInfo, error) {
 	req.Header.Set("User-Agent", core.AppID+"/"+core.AppVersion)
 	resp, err := c.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("连不上 GitHub（%s）", core.FriendlyNetErr(err))
+		return nil, fmt.Errorf("无法连接 GitHub（%s）", core.FriendlyNetErr(err))
 	}
 	resp.Body.Close()
 	loc := resp.Header.Get("Location")
 	i := strings.LastIndex(loc, "/releases/tag/")
 	if resp.StatusCode < 300 || resp.StatusCode > 399 || i < 0 {
-		return nil, fmt.Errorf("GitHub 的发布页返回 %d", resp.StatusCode)
+		return nil, fmt.Errorf("GitHub 发布页返回错误（HTTP %d）", resp.StatusCode)
 	}
 	tag := loc[i+len("/releases/tag/"):]
 	if t, err := url.PathUnescape(tag); err == nil {
@@ -132,7 +132,7 @@ func fetchLatestSite(st *core.Store) (*core.UpdateInfo, error) {
 	}
 	info := &core.UpdateInfo{Tag: tag, Version: reVerNum.FindString(tag), URL: base + "/tag/" + url.PathEscape(tag)}
 	if info.Version == "" {
-		return nil, errors.New("发布版本的标签里没有版本号（例如 v1.4.0）")
+		return nil, errors.New("发布版本的标签中缺少版本号（例如 v1.4.0）")
 	}
 	head := updateClient(st, 25*time.Second)
 	probe := func(name string) *core.UpdateAsset {
@@ -182,7 +182,7 @@ func fetchLatestAPI(st *core.Store) (*core.UpdateInfo, error) {
 	req.Header.Set("User-Agent", core.AppID+"/"+core.AppVersion)
 	resp, err := updateClient(st, 25*time.Second).Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("连不上 GitHub（%s）", core.FriendlyNetErr(err))
+		return nil, fmt.Errorf("无法连接 GitHub（%s）", core.FriendlyNetErr(err))
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
@@ -191,9 +191,9 @@ func fetchLatestAPI(st *core.Store) (*core.UpdateInfo, error) {
 	case 404:
 		return nil, errNoRelease
 	case 403, 429:
-		return nil, errors.New("GitHub 暂时限制了访问次数，过一会儿再试")
+		return nil, errors.New("GitHub 暂时限制了访问次数，请稍后重试")
 	default:
-		return nil, fmt.Errorf("GitHub 返回 %d", resp.StatusCode)
+		return nil, fmt.Errorf("GitHub 返回错误（HTTP %d）", resp.StatusCode)
 	}
 	var r struct {
 		Tag       string `json:"tag_name"`
@@ -209,7 +209,7 @@ func fetchLatestAPI(st *core.Store) (*core.UpdateInfo, error) {
 		} `json:"assets"`
 	}
 	if err := json.Unmarshal(body, &r); err != nil {
-		return nil, errors.New("GitHub 的回复看不懂")
+		return nil, errors.New("无法解析 GitHub 的响应")
 	}
 	info := &core.UpdateInfo{Tag: r.Tag, Name: r.Name, Notes: strings.TrimSpace(r.Body), URL: r.HTMLURL, Published: r.Published}
 	if v := reVerNum.FindString(r.Tag); v != "" {
@@ -245,7 +245,7 @@ func fetchLatestAPI(st *core.Store) (*core.UpdateInfo, error) {
 		}
 	}
 	if info.Version == "" {
-		return nil, errors.New("发布版本的标签里没有版本号（例如 v1.4.0）")
+		return nil, errors.New("发布版本的标签中缺少版本号（例如 v1.4.0）")
 	}
 	return info, nil
 }
@@ -285,7 +285,7 @@ func download(st *core.Store, a *core.UpdateAsset, dst string, prog *core.Task) 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("下载失败（%d）", resp.StatusCode)
+		return fmt.Errorf("下载失败（HTTP %d）", resp.StatusCode)
 	}
 	total := a.Size
 	if total <= 0 {
@@ -326,7 +326,7 @@ func download(st *core.Store, a *core.UpdateAsset, dst string, prog *core.Task) 
 		return fmt.Errorf("下载不完整（%d / %d 字节）", got, a.Size)
 	}
 	if d, ok := strings.CutPrefix(strings.ToLower(a.Digest), "sha256:"); ok && d != hex.EncodeToString(h.Sum(nil)) {
-		return errors.New("下载的文件校验不通过，可能被改动过，已停止更新")
+		return errors.New("下载的文件校验未通过，可能已被篡改，已停止更新")
 	}
 	return nil
 }
@@ -335,7 +335,7 @@ func download(st *core.Store, a *core.UpdateAsset, dst string, prog *core.Task) 
 func exeFromZip(zipPath, dst, want string) error {
 	zr, err := zip.OpenReader(zipPath)
 	if err != nil {
-		return errors.New("更新包打不开")
+		return errors.New("无法打开更新包")
 	}
 	defer zr.Close()
 	var pick *zip.File
@@ -347,7 +347,7 @@ func exeFromZip(zipPath, dst, want string) error {
 		}
 	}
 	if pick == nil {
-		return errors.New("更新包里没有程序文件")
+		return errors.New("更新包中未找到程序文件")
 	}
 	rc, err := pick.Open()
 	if err != nil {
@@ -372,7 +372,7 @@ func exeFromZip(zipPath, dst, want string) error {
 			f.Close()
 		}
 		if string(b) != "MZ" {
-			return errors.New("更新包里的程序文件不对")
+			return errors.New("更新包中的程序文件无效")
 		}
 	}
 	_ = os.Chmod(dst, 0755)
@@ -383,14 +383,14 @@ func exeFromZip(zipPath, dst, want string) error {
 // quit (updateDoneCh) after the new one has been started.
 func ApplyUpdate(st *core.Store) error {
 	if !updateBusy.CompareAndSwap(false, true) {
-		return errors.New("正在更新中")
+		return errors.New("正在更新")
 	}
 	st.Mu.RLock()
 	info := st.Update
 	st.Mu.RUnlock()
 	if info == nil || !VersionNewer(info.Version, core.AppVersion) {
 		updateBusy.Store(false)
-		return errors.New("已经是最新版本")
+		return errors.New("已是最新版本")
 	}
 	exe, err := os.Executable()
 	if err == nil {
@@ -398,16 +398,16 @@ func ApplyUpdate(st *core.Store) error {
 	}
 	if err != nil || exe == "" {
 		updateBusy.Store(false)
-		return errors.New("找不到程序自己的位置")
+		return errors.New("无法确定程序所在路径")
 	}
 	dir := filepath.Dir(exe)
 	inPlace := info.Zip != nil && core.DirWritable(dir)
 	if !inPlace && info.Setup == nil {
 		updateBusy.Store(false)
 		if info.Zip != nil {
-			return errors.New("程序所在文件夹不能写入，请到发布页手动下载")
+			return errors.New("程序所在文件夹无法写入，请前往发布页手动下载")
 		}
-		return errors.New("这个版本没有可下载的安装包，请到发布页手动下载")
+		return errors.New("该版本暂无可下载的安装包，请前往发布页手动下载")
 	}
 	go core.RunTask(TaskUpdate, func() {
 		defer updateBusy.Store(false)
@@ -449,7 +449,7 @@ func ApplyUpdate(st *core.Store) error {
 			TaskUpdate.Set(1, 1, "已更新，正在重启")
 			if err := restartSelf(exe); err != nil {
 				// the new exe is in place; it will be used next time
-				fail(fmt.Errorf("已更新，但没能自动重启，请手动重新打开（%v）", err))
+				fail(fmt.Errorf("已更新，但自动重启失败，请手动重新打开软件（%v）", err))
 				return
 			}
 		} else {
@@ -460,7 +460,7 @@ func ApplyUpdate(st *core.Store) error {
 			}
 			TaskUpdate.Set(1, 1, "正在打开安装程序")
 			if err := exec.Command(sp).Start(); err != nil {
-				fail(fmt.Errorf("打不开安装程序（%v）", err))
+				fail(fmt.Errorf("无法打开安装程序（%v）", err))
 				return
 			}
 		}

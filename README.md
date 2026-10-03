@@ -29,7 +29,7 @@ Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth �
 - 更新提示：网盘分享每天、Booth 商品页每周检查一次变化
 - 中文名：素材名下面显示中文翻译，可以手动改
 - 检查更新：从本仓库的 Releases 下载并替换，更新后显示这一版的更新内容
-- 反馈和建议：经 [FormSubmit](https://formsubmit.co) 发到作者邮箱
+- 反馈与建议：经 [FormSubmit](https://formsubmit.co) 发到作者邮箱
 
 ## 安装
 
@@ -60,10 +60,10 @@ Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth �
 - `booth-session.dat`：下载 Booth 已购用的登录信息（用 Windows DPAPI 加密，只有本机本用户能解开）
 - `gumroad-session.dat`：读取和下载 Gumroad 已购用的登录信息（同样用 DPAPI 加密）；在设置里退出 Gumroad 会删除它
 - `baidu-session.dat`：下载百度网盘分享用的登录信息（只有网盘需要的几个 Cookie，同样用 DPAPI 加密）；在设置里退出百度网盘会删除它
-- `ai.json`：流水线的 AI 设置（服务商、接口地址、模型、菜单层级、看图方式和看图模型、每个模型能不能看图、每个工程导入过的素材位置），不含 Key
+- `ai.json`：流水线的 AI 设置（服务商、接口地址、模型、菜单层级、识图方式和视觉模型、每个模型是否支持识图、每个工程导入过的素材位置），不含 Key
 - `shots/`：AI 拍的头像截图（验收记录里显示的那些，只留最近 100 张）
 - `vpm/`：创建基础工程时下载的插件 zip 和仓库列表缓存
-- `ai-key.dat`：各 AI 服务商和看图模型的 API Key（用 DPAPI 加密，只有本机本用户能解开；不会回传给界面，界面只知道有没有保存和末四位）
+- `ai-key.dat`：各 AI 服务商和视觉模型的 API Key（用 DPAPI 加密，只有本机本用户能解开；不会回传给界面，界面只知道有没有保存和末四位）
 - `library.log`：运行日志
 
 流水线放进 Unity 工程的东西（点「移除」会删掉）：`Packages/com.miovrc.pipeline`、`Packages/com.besty.unity-skills`（工程自己已经有 UnitySkills 时不放也不删）、`UserSettings/MioVRCA/bridge`（软件和 Unity 之间传话用的文件）、`UserSettings/MioVRCA/shots`（拍照时的临时图片，软件读走就删）。生成的菜单图标在工程的 `Assets/MioVRCA/<头像名>/Icons`。
@@ -97,7 +97,7 @@ x86_64-w64-mingw32-windres --preprocessor=cat -c 65001 -O coff -i app.rc -o rsrc
 软件从本仓库的 Releases 检查更新（只看最新的正式版）：
 
 1. 改版本号：`internal/core/version.go` 的 `AppVersion`、`cmd/miovrca/app.rc`、`cmd/miovrca/app.manifest`、`packaging/installer.nsi`，重新生成 `rsrc_windows_amd64.syso`（命令见上）。
-2. 在 `CHANGELOG.md` 最上面写这一版的更新内容。它会编译进程序，更新后第一次打开时显示，也显示在「更新公告」里。
+2. 在 `CHANGELOG.md` 最上面写这一版的更新内容。它会编译进程序，更新后第一次打开时显示，也显示在「更新日志」里。不需要告诉玩家的版本可以不写新条目（1.7.4 就沿用 1.7.3 的）：从 1.7.3 升上来的不再弹出，从更早版本升上来的看到的是 1.7.3 的条目。
 3. `sh packaging/build.sh`，在 `dist/` 里得到 `MioVRC_AssetManager-setup-x.y.z.exe` 和 `MioVRC_AssetManager-portable-x.y.z.zip`。
 4. 新建 Release，标签写成 `v1.6.0` 这样的格式，上传这两个文件。Release 的说明会显示在软件的更新窗口里。
    - 软件下载便携版 zip，取出 exe 替换自己后重启；只有安装版时会下载并打开安装程序。

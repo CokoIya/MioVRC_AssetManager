@@ -23,9 +23,9 @@ namespace MioVRCA.Pipeline
             Transform root = avatar.transform;
             List<string> views = J.Strs(args, "views");
             if (views.Count == 0) views.Add("front");
-            if (views.Count > 4) throw new PipelineException("一次最多拍 4 个角度");
+            if (views.Count > 4) throw new PipelineException("单次最多截取 4 个角度");
             foreach (string v in views)
-                if (Array.IndexOf(Views, v) < 0) throw new PipelineException("不认识的角度「" + v + "」，可以用：" + string.Join("、", Views));
+                if (Array.IndexOf(Views, v) < 0) throw new PipelineException("不支持的角度「" + v + "」，可用：" + string.Join("、", Views));
             int size = Mathf.Clamp((int)J.Num(args, "size", 768), 256, 1280);
             string targetPath = J.Str(args, "target").Trim();
             Transform target = targetPath != "" ? Refl.FindUnder(root, targetPath) : null;
@@ -53,9 +53,9 @@ namespace MioVRCA.Pipeline
                     if (t != root && t.gameObject.activeSelf) { t.gameObject.SetActive(false); slept.Add(t.gameObject); }
 
                 Bounds? whole = BoundsOf(root, root);
-                if (!whole.HasValue) throw new PipelineException("头像「" + root.name + "」上没有显示着的网格，拍不出东西");
+                if (!whole.HasValue) throw new PipelineException("模型「" + root.name + "」上没有可见的网格，无法截图");
                 Bounds? focus = target != null ? BoundsOf(target, root) : null;
-                if (target != null && !focus.HasValue) throw new PipelineException("「" + targetPath + "」上没有显示着的网格");
+                if (target != null && !focus.HasValue) throw new PipelineException("「" + targetPath + "」上没有可见的网格");
 
                 // only the avatar is in the picture, without what an upload strips (EditorOnly: placement helpers and the like)
                 foreach (Renderer r in UnityEngine.Object.FindObjectsOfType<Renderer>())

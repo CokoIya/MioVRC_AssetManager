@@ -31,7 +31,7 @@ func zipEntryName(f *zip.File) string {
 func extractZip(zipPath, parent string) (string, error) {
 	zr, err := zip.OpenReader(zipPath)
 	if err != nil {
-		return "", fmt.Errorf("打不开压缩包：%v", err)
+		return "", fmt.Errorf("无法打开压缩包：%v", err)
 	}
 	defer zr.Close()
 	type ent struct {
@@ -54,7 +54,7 @@ func extractZip(zipPath, parent string) (string, error) {
 		ents = append(ents, ent{f, rel})
 	}
 	if len(ents) == 0 {
-		return "", errors.New("压缩包是空的")
+		return "", errors.New("压缩包为空")
 	}
 	var target, strip string
 	if len(tops) == 1 && nested {

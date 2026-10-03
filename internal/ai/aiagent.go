@@ -102,7 +102,7 @@ func (s *aiSession) confirm(ctx context.Context, text string) bool {
 	for i := len(s.steps) - 1; i >= 0; i-- {
 		if s.steps[i].Kind == "ask" && s.steps[i].Busy {
 			s.steps[i].Busy, s.steps[i].OK = false, ok
-			s.steps[i].Out = map[bool]string{true: "你同意了", false: "没有执行"}[ok]
+			s.steps[i].Out = map[bool]string{true: "已允许", false: "未执行"}[ok]
 			break
 		}
 	}
@@ -173,7 +173,7 @@ func skillsManifest(ctx context.Context, p string) map[string]skillInfo {
 // UnitySkills gives no risk notes for.
 func consentReason(m map[string]skillInfo, name string) string {
 	if m == nil {
-		return "读不到 UnitySkills 的操作清单，没法判断它安不安全"
+		return "无法读取 UnitySkills 的操作清单，不能判断该操作是否安全"
 	}
 	k, ok := m[name]
 	if !ok {
@@ -186,30 +186,30 @@ func consentReason(m map[string]skillInfo, name string) string {
 	for _, op := range k.Operation {
 		switch op {
 		case "Delete":
-			why = append(why, "会删除东西")
+			why = append(why, "会删除内容")
 		case "Execute":
 			why = append(why, "会执行编辑器命令")
 		}
 	}
 	if k.MutatesAssets {
-		why = append(why, "会改动工程里的文件，Ctrl+Z 撤销不了")
+		why = append(why, "会修改工程中的文件，无法通过 Ctrl+Z 撤销")
 	}
 	if k.MayPlay {
 		why = append(why, "会进入或退出 Play 模式")
 	}
 	if k.MayReload {
-		why = append(why, "会让 Unity 重新编译")
+		why = append(why, "会触发 Unity 重新编译")
 	}
 	switch {
 	case k.Risk == "": // an older UnitySkills without risk notes
 		if riskySkill(name) || len(k.Operation) == 0 {
-			why = append(why, "这个版本的 UnitySkills 没有说明它的风险")
+			why = append(why, "当前版本的 UnitySkills 未提供该操作的风险说明")
 		}
 	case k.Risk != "low":
-		why = append(why, "UnitySkills 标的风险等级是 "+k.Risk)
+		why = append(why, "UnitySkills 标注的风险等级为 "+k.Risk)
 	}
 	if len(why) == 0 && riskySkill(name) {
-		why = append(why, "从名字看可能删除、保存或覆盖东西")
+		why = append(why, "从名称判断，可能删除、保存或覆盖内容")
 	}
 	return strings.Join(core.UniqStrings(why), "；")
 }
@@ -316,7 +316,7 @@ const aiPromptText = `你是「MioVRCA」里的 AI 改模助手，帮玩家在 U
 - 拍照是为了确认结果，不用每一步都拍；同一处最多拍两三次。
 - 编辑模式下拍到的是场景里现在显示着的东西，菜单开关的效果没有算进去。头像上同时放着几件互斥的衣服或头发时，用 hide 把别的临时藏起来再看这一件；默认隐藏的衣服、道具用 show 临时显示。show / hide 只在拍照时生效，不改场景。
 - 正面图里，头像的左手在画面右边。
-- 只说你确实看到的东西（截图，或看图模型的描述）。结果里写着你没有看到画面时，不要描述画面，也不要说「看起来没问题」：如实告诉玩家这次你看不了图，请他自己看记录里的截图，并转告结果里说的设置办法。
+- 只说你确实看到的东西（截图，或视觉模型的描述）。结果里写着你没有看到画面时，不要描述画面，也不要说「看起来没问题」：如实告诉玩家这次你看不了图，请他自己看记录里的截图，并转告结果里说的设置办法。
 - 看出问题（穿模、错位、材质丢失）时，告诉玩家是哪一件、在什么位置；工具能修的再修，修不了的不要硬改。骨骼物理和菜单开关的动态效果截图里看不出来，仍然要玩家在 Play 模式里确认。
 - 要看的是 Game 视图或 Scene 视图本身（而不是头像）时，可以用 UnitySkills 的 scene_screenshot、camera_sceneview_screenshot、camera_screenshot，它们的图同样会交给你看；它们会在工程的 Assets/Screenshots 里留下图片文件，所以看头像优先用 look。
 
@@ -418,13 +418,13 @@ func baseName(p string) string { return path.Base(strings.ReplaceAll(p, `\`, "/"
 func toolTitle(name string, a map[string]any) string {
 	switch name {
 	case "inspect_avatar":
-		return "查看头像和现有菜单"
+		return "查看模型和现有菜单"
 	case "inspect_object":
-		return "查看「" + argStr(a, "path") + "」里的网格"
+		return "查看「" + argStr(a, "path") + "」中的网格"
 	case "list_prefabs":
 		return "查找 prefab：" + strings.Join(argStrs(a, "folders"), "、")
 	case "dress":
-		return "穿上「" + strings.TrimSuffix(baseName(argStr(a, "prefab")), ".prefab") + "」"
+		return "装配「" + strings.TrimSuffix(baseName(argStr(a, "prefab")), ".prefab") + "」"
 	case "build_menu":
 		n := 0
 		if l, ok := a["items"].([]any); ok {
@@ -432,11 +432,11 @@ func toolTitle(name string, a map[string]any) string {
 		}
 		return fmt.Sprintf("生成菜单（%d 项）", n)
 	case "place_avatar":
-		return "把素体「" + strings.TrimSuffix(baseName(argStr(a, "prefab")), ".prefab") + "」放进新场景"
+		return "将素体「" + strings.TrimSuffix(baseName(argStr(a, "prefab")), ".prefab") + "」放入新场景"
 	case "look":
-		t := "看一眼头像"
+		t := "截图检查模型"
 		if x := argStr(a, "target"); x != "" {
-			t = "看一眼「" + baseName(x) + "」"
+			t = "截图检查「" + baseName(x) + "」"
 		}
 		return t
 	case "undo":
@@ -471,9 +471,9 @@ func (s *aiSession) runTool(ctx context.Context, name string, a map[string]any) 
 			} `json:"avatars"`
 		}
 		_ = json.Unmarshal(raw, &o)
-		short = fmt.Sprintf("场景里有 %d 个头像", len(o.Avatars))
+		short = fmt.Sprintf("场景中有 %d 个模型", len(o.Avatars))
 		if len(o.Avatars) == 1 {
-			short = fmt.Sprintf("头像「%s」，下面有 %d 个物体", o.Avatars[0].Name, len(o.Avatars[0].Children))
+			short = fmt.Sprintf("模型「%s」，含 %d 个子物体", o.Avatars[0].Name, len(o.Avatars[0].Children))
 		}
 		return string(unity.Clip(core.CompactJSON(raw), 40000)), short, true
 	case "inspect_object":
@@ -513,7 +513,7 @@ func (s *aiSession) runTool(ctx context.Context, name string, a map[string]any) 
 		}
 		short = fmt.Sprintf("%d 个 prefab", len(o.Prefabs))
 		if len(o.NotFound) > 0 {
-			short += "；没找到文件夹 " + strings.Join(o.NotFound, "、")
+			short += "；未找到文件夹 " + strings.Join(o.NotFound, "、")
 		}
 		return string(unity.Clip(core.CompactJSON(raw), 40000)), short, true
 	case "dress":
@@ -538,7 +538,7 @@ func (s *aiSession) runTool(ctx context.Context, name string, a map[string]any) 
 		if !o.Existing {
 			s.changed()
 		}
-		short = fmt.Sprintf("「%s」%s，%d 个网格", o.Outfit.Object, map[bool]string{true: "已经在头像上", false: "已穿上"}[o.Existing], len(o.Outfit.Meshes))
+		short = fmt.Sprintf("「%s」%s，%d 个网格", o.Outfit.Object, map[bool]string{true: "已在模型上", false: "已装配"}[o.Existing], len(o.Outfit.Meshes))
 		if len(o.Warnings) > 0 {
 			short += "。注意：" + strings.Join(o.Warnings, "；")
 		}
@@ -561,7 +561,7 @@ func (s *aiSession) runTool(ctx context.Context, name string, a map[string]any) 
 		s.changed()
 		short = fmt.Sprintf("新建 %d 项，图标 %d 张", len(created), int(icons))
 		if len(created) == 0 {
-			short = "菜单已是最新，没有新建的项"
+			short = "菜单已是最新，无新建项"
 		}
 		for _, w := range warns {
 			short += "。注意：" + fmt.Sprint(w)
@@ -579,7 +579,7 @@ func (s *aiSession) runTool(ctx context.Context, name string, a map[string]any) 
 		}
 		_ = json.Unmarshal(raw, &o)
 		// a saved new scene: nothing to take back with Ctrl+Z, so the count of changes stays
-		return string(raw), "新场景 " + o.Scene + "，头像「" + o.Avatar + "」", true
+		return string(raw), "新场景 " + o.Scene + "，模型「" + o.Avatar + "」", true
 	case "look":
 		return s.look(ctx, a)
 	case "undo":
@@ -618,12 +618,12 @@ func (s *aiSession) runTool(ctx context.Context, name string, a map[string]any) 
 			if r := []rune(string(j)); len(r) > 300 {
 				j = []byte(string(r[:300]) + "…")
 			}
-			q := "AI 想在 Unity 里执行「" + skill + "」"
+			q := "AI 请求在 Unity 中执行「" + skill + "」"
 			if len(args) > 0 {
 				q += "：" + string(j)
 			}
 			if !s.confirm(ctx, q+"\n"+why+"。") {
-				return "玩家没有同意执行这个操作。不要换别的办法去做同一件事；先问玩家想怎么办。", "你没有同意，没有执行", false
+				return "玩家没有同意执行这个操作。不要换别的办法去做同一件事；先问玩家想怎么办。", "未获允许，未执行", false
 			}
 		}
 		raw, good, err := unity.SkillsCallRaw(ctx, p, skill, args)
@@ -650,12 +650,12 @@ func (s *aiSession) runTool(ctx context.Context, name string, a map[string]any) 
 			return out + "\n" + text, fmt.Sprintf("截图 %d 张，%s", len(imgs), how), true
 		}
 		if shot {
-			return out + "\n（没有拿到截图的图片数据。）", "没有拿到截图", true
+			return out + "\n（没有拿到截图的图片数据。）", "未获取到截图", true
 		}
 		s.changed()
 		return out, "", true
 	}
-	return fail(errors.New("没有这个工具：" + name))
+	return fail(errors.New("未知工具：" + name))
 }
 
 func (s *aiSession) changed() {
@@ -721,9 +721,9 @@ func tidyAssets(req *aiRunReq) {
 
 func pipelineTask(assets []aiAsset, hierarchy, extra string) string {
 	var b strings.Builder
-	b.WriteString("把我选好的素材装到头像上，并生成菜单开关。\n")
+	b.WriteString("将所选素材装配到模型上，并生成菜单开关。\n")
 	if len(assets) > 0 {
-		b.WriteString("素材清单（类别：工程里的文件夹或 prefab）：\n")
+		b.WriteString("素材清单（类别：工程中的文件夹或 prefab）：\n")
 		for _, k := range pipelineKinds {
 			for _, a := range assets {
 				if a.Kind != k {
@@ -734,13 +734,13 @@ func pipelineTask(assets []aiAsset, hierarchy, extra string) string {
 					line += "（" + a.Name + "）"
 				}
 				if k == "素体" {
-					line += " —— 场景里没有头像时先把它放进场景"
+					line += "；场景中没有模型时先将其放入场景"
 				}
 				b.WriteString(line + "\n")
 			}
 		}
 	} else {
-		b.WriteString("我没有指明素材：先问我素材在工程的哪个文件夹、是什么类别。\n")
+		b.WriteString("未指定素材：请先询问素材位于工程的哪个文件夹、属于什么类别。\n")
 	}
 	b.WriteString("菜单层级：" + hierarchy + "\n")
 	if strings.TrimSpace(extra) != "" {
@@ -754,7 +754,7 @@ func startAIRun(st *core.Store, req aiRunReq) error {
 	s.mu.Lock()
 	if s.busy {
 		s.mu.Unlock()
-		return errors.New("上一个请求还在进行：等它做完，或者先点「停止」")
+		return errors.New("上一个请求仍在进行，请等待其完成，或先点击「停止」")
 	}
 	hierarchy := strings.TrimSpace(req.Hierarchy)
 	if hierarchy == "" {
@@ -767,7 +767,7 @@ func startAIRun(st *core.Store, req aiRunReq) error {
 	}
 	if text == "" {
 		s.mu.Unlock()
-		return errors.New("还没有写要做什么")
+		return errors.New("未填写要执行的内容")
 	}
 	var client *aiClient
 	if !(req.Mode == "dress" && req.NoAI) {
@@ -790,7 +790,7 @@ func startAIRun(st *core.Store, req aiRunReq) error {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				s.add(AIStep{Kind: "error", Text: fmt.Sprint("出错了：", r)})
+				s.add(AIStep{Kind: "error", Text: fmt.Sprint("程序内部错误：", r)})
 			}
 			cancel()
 			s.mu.Lock()
@@ -799,7 +799,7 @@ func startAIRun(st *core.Store, req aiRunReq) error {
 		}()
 		var err error
 		if req.Mode == "dress" { // what was just imported is on disk; Unity reads it in now
-			s.add(AIStep{Kind: "tool", Tool: "refresh", Text: "让 Unity 读入新导入的文件", Busy: true})
+			s.add(AIStep{Kind: "tool", Tool: "refresh", Text: "刷新 Unity 资源以加载新导入的文件", Busy: true})
 			if _, err = unity.BridgeCall(ctx, s.project, "refresh", map[string]any{}, 10*time.Minute); err == nil {
 				s.finishStep(true, "")
 			}
@@ -840,7 +840,7 @@ func (s *aiSession) converse(ctx context.Context, c *aiClient, text, hierarchy s
 			}
 		}
 		if size > 600000 {
-			return errors.New("这段对话太长了：点「新对话」重新开始（已经做的改动还在 Unity 里）")
+			return errors.New("对话过长，请点击「新对话」重新开始（已完成的改动仍保留在 Unity 中）")
 		}
 		out, err := c.chat(ctx, system, turns, aiTools)
 		var he *aiHTTPError
@@ -851,7 +851,7 @@ func (s *aiSession) converse(ctx context.Context, c *aiClient, text, hierarchy s
 			s.mu.Unlock()
 			if out, err = c.chat(ctx, system, turns, aiTools); err == nil { // it was the pictures: remembered
 				rememberSees(seesKey(c), false)
-				s.add(AIStep{Kind: "error", Text: "这个模型不接受图片，截图没有送到 AI 那里（截图仍然显示在上面）。想让 AI 看图，在「AI 服务」的「看图」里另设一个看图模型。"})
+				s.add(AIStep{Kind: "error", Text: "当前 AI 模型不接受图片，截图未发送给 AI（截图仍显示在上方记录中）。如需 AI 检查画面，请在「AI 服务」的「识图」中配置视觉模型。"})
 			}
 		}
 		if err != nil {
@@ -866,7 +866,7 @@ func (s *aiSession) converse(ctx context.Context, c *aiClient, text, hierarchy s
 		}
 		said = true
 		if strings.TrimSpace(out.Text) == "" && len(out.Calls) == 0 { // nothing at all: not a turn a service takes back
-			out.Text, out.blocks = "（AI 没有再说什么）", nil
+			out.Text, out.blocks = "（AI 未返回内容）", nil
 		}
 		s.mu.Lock()
 		s.turns = append(s.turns, out)
@@ -886,7 +886,7 @@ func (s *aiSession) converse(ctx context.Context, c *aiClient, text, hierarchy s
 			var args map[string]any
 			if len(k.Args) > 0 && json.Unmarshal(k.Args, &args) != nil {
 				res.Results = append(res.Results, aiResult{ID: k.ID, Name: k.Name, Content: "错误：参数不是合法的 JSON，重新写一次", IsErr: true})
-				s.add(AIStep{Kind: "tool", Tool: k.Name, Text: toolTitle(k.Name, nil), Out: "AI 给的参数格式不对，让它重写"})
+				s.add(AIStep{Kind: "tool", Tool: k.Name, Text: toolTitle(k.Name, nil), Out: "AI 提供的参数格式有误，已要求重新生成"})
 				continue
 			}
 			if args == nil {
@@ -904,7 +904,7 @@ func (s *aiSession) converse(ctx context.Context, c *aiClient, text, hierarchy s
 			return errors.New("已停止")
 		}
 	}
-	return fmt.Errorf("AI 连续做了 %d 步还没有做完，先停在这里：看看 Unity 里的结果，再告诉它接着做什么", aiMaxRounds)
+	return fmt.Errorf("AI 已连续执行 %d 步仍未完成，已暂停：请检查 Unity 中的结果，再告知 AI 后续操作", aiMaxRounds)
 }
 
 // mendTurns: a conversation must not end on an assistant turn whose calls were never answered.
@@ -1230,7 +1230,7 @@ func pickOutfits(list []prefabInfo, aliases []string) (out []quickOutfit, skippe
 	var cands []prefabInfo
 	for _, p := range list {
 		if p.WholeAvatar {
-			skipped = append(skipped, p.Name+"（整只模型）")
+			skipped = append(skipped, p.Name+"（完整模型）")
 			continue
 		}
 		if p.Renderers == 0 {
@@ -1323,7 +1323,7 @@ func RegisterAI(st *core.Store, post func(string, func(http.ResponseWriter, map[
 	project := func(w http.ResponseWriter, b map[string]json.RawMessage) (string, bool) {
 		p, ok := unity.KnownProject(st, str(b, "project"))
 		if !ok {
-			fail(w, errors.New("不在工程列表里"))
+			fail(w, errors.New("该工程不在工程列表中"))
 		}
 		return p, ok
 	}
@@ -1331,7 +1331,7 @@ func RegisterAI(st *core.Store, post func(string, func(http.ResponseWriter, map[
 	formClient := func(b map[string]json.RawMessage) (*aiClient, error) {
 		info := aiProvider(str(b, "provider"))
 		if info == nil {
-			return nil, errors.New("先选一个 AI 服务商")
+			return nil, errors.New("请先选择 AI 服务商")
 		}
 		c := loadAIConfig()
 		c.Profiles[info.ID] = &AIProfile{BaseURL: strings.TrimSpace(str(b, "baseUrl")), Model: strings.TrimSpace(str(b, "model"))}
@@ -1370,7 +1370,7 @@ func RegisterAI(st *core.Store, post func(string, func(http.ResponseWriter, map[
 			var v AIVision
 			var vkey *string
 			if json.Unmarshal(raw, &v) != nil {
-				fail(w, errors.New("看图设置的格式不对"))
+				fail(w, errors.New("识图设置格式有误"))
 				return
 			}
 			if kr, ok := b["visionKey"]; ok {
@@ -1419,7 +1419,7 @@ func RegisterAI(st *core.Store, post func(string, func(http.ResponseWriter, map[
 			return
 		}
 		if c.model == "" {
-			fail(w, errors.New("还没有填模型名"))
+			fail(w, errors.New("未填写模型名称"))
 			return
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
@@ -1433,15 +1433,15 @@ func RegisterAI(st *core.Store, post func(string, func(http.ResponseWriter, map[
 		if who != "other" {
 			rememberSees(seesKey(c), sees)
 		}
-		note := fmt.Sprintf("%s 看得到图片：它读出了测试图里的数字（%.1f 秒）", c.model, time.Since(t0).Seconds())
+		note := fmt.Sprintf("%s 支持识图：已正确读出测试图中的数字（%.1f 秒）", c.model, time.Since(t0).Seconds())
 		switch {
 		case refused:
-			note = c.model + " 不接受图片：服务拒绝了带图片的请求"
-			if i := strings.Index(reply, "原话："); i >= 0 {
+			note = c.model + " 不接受图片：带图片的请求被服务拒绝"
+			if i := strings.Index(reply, "服务返回："); i >= 0 {
 				note += "。" + reply[i:]
 			}
 		case !sees:
-			note = c.model + " 看不到图片：它回答的是「" + reply + "」"
+			note = c.model + " 不支持识图：其回复为「" + reply + "」"
 		}
 		core.WriteJSON(w, map[string]any{"ok": true, "sees": sees, "note": note, "ai": aiView()})
 	})
@@ -1484,7 +1484,7 @@ func RegisterAI(st *core.Store, post func(string, func(http.ResponseWriter, map[
 		_ = json.Unmarshal(b["on"], &on)
 		if !on {
 			if busy, _, _ := aiSessionFor(p).snapshot(); busy {
-				fail(w, errors.New("AI 还在这个工程里干活：先停止再移除"))
+				fail(w, errors.New("AI 正在该工程中执行操作，请先停止再移除"))
 				return
 			}
 			if err := unity.RemoveAIKit(p); err != nil {
@@ -1558,7 +1558,7 @@ func RegisterAI(st *core.Store, post func(string, func(http.ResponseWriter, map[
 		}
 		s := aiSessionFor(p)
 		if busy, _, _ := s.snapshot(); busy {
-			fail(w, errors.New("AI 还在干活：等它做完，或者先点「停止」"))
+			fail(w, errors.New("AI 正在执行操作，请等待其完成，或先点击「停止」"))
 			return
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)

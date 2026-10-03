@@ -103,11 +103,11 @@ func TestAIErrText(t *testing.T) {
 		body   string
 		want   []string
 	}{
-		{401, `{"error":{"message":"Incorrect API key provided","type":"invalid_request_error"}}`, []string{"API Key 不对", "Incorrect API key"}},
+		{401, `{"error":{"message":"Incorrect API key provided","type":"invalid_request_error"}}`, []string{"API Key 不正确", "Incorrect API key"}},
 		{402, `{"error":{"message":"Insufficient Balance"}}`, []string{"余额"}},
-		{404, `{"error":{"type":"not_found_error","message":"model: nope"}}`, []string{"模型名不对", "model: nope"}},
-		{429, `{"error":"rate limited"}`, []string{"太频繁", "rate limited"}},
-		{502, `<html>bad gateway</html>`, []string{"稍后再试"}},
+		{404, `{"error":{"type":"not_found_error","message":"model: nope"}}`, []string{"模型名称不正确", "model: nope"}},
+		{429, `{"error":"rate limited"}`, []string{"过于频繁", "rate limited"}},
+		{502, `<html>bad gateway</html>`, []string{"稍后重试"}},
 	} {
 		got := aiErrText("X", c.status, []byte(c.body))
 		for _, w := range c.want {
@@ -177,7 +177,7 @@ func TestPickOutfits(t *testing.T) {
 	if out[0].label != "SailorSet" {
 		t.Errorf("label %q", out[0].label)
 	}
-	if len(skipped) != 1 || !strings.Contains(skipped[0], "整只模型") {
+	if len(skipped) != 1 || !strings.Contains(skipped[0], "完整模型") {
 		t.Errorf("skipped %v", skipped)
 	}
 	// no base body known: both bodies' versions are outfits of their own
@@ -288,7 +288,7 @@ func TestQuickDress(t *testing.T) {
 	}
 	steps := waitRun(t, aiSessionFor(proj))
 	last := steps[len(steps)-1]
-	if last.Kind != "say" || !strings.Contains(last.Text, "已装上") {
+	if last.Kind != "say" || !strings.Contains(last.Text, "已装配") {
 		t.Fatalf("steps %+v", steps)
 	}
 	u.mu.Lock()
@@ -357,7 +357,7 @@ func TestQuickPipelineKinds(t *testing.T) {
 	}
 	steps := waitRun(t, aiSessionFor(proj))
 	last := steps[len(steps)-1]
-	if last.Kind != "say" || !strings.Contains(last.Text, "已装上") {
+	if last.Kind != "say" || !strings.Contains(last.Text, "已装配") {
 		t.Fatalf("steps %+v", steps)
 	}
 	if !strings.Contains(steps[0].Text, "- 素体：Assets/IKUSIA/kaguya（辉夜）") || !strings.Contains(steps[0].Text, "- 道具：Assets/_道具/Bat（球棒）") {
@@ -424,7 +424,7 @@ func TestQuickPipelineBaseSkipped(t *testing.T) {
 	}
 	steps := waitRun(t, aiSessionFor(proj))
 	last := steps[len(steps)-1]
-	if last.Kind != "say" || !strings.Contains(last.Text, "没有重新放置") {
+	if last.Kind != "say" || !strings.Contains(last.Text, "未重新放置") {
 		t.Fatalf("steps %+v", steps)
 	}
 	u.mu.Lock()
@@ -437,7 +437,7 @@ func TestQuickPipelineBaseSkipped(t *testing.T) {
 		t.Fatal(err)
 	}
 	steps = waitRun(t, aiSessionFor(proj))
-	if last := steps[len(steps)-1]; last.Kind != "say" || !strings.Contains(last.Text, "到此为止") {
+	if last := steps[len(steps)-1]; last.Kind != "say" || !strings.Contains(last.Text, "流水线已结束") {
 		t.Errorf("base only: %+v", last)
 	}
 }
@@ -696,7 +696,7 @@ func TestAIServiceErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := aiTest(context.Background(), c); err == nil || !strings.Contains(err.Error(), "模型名不对") || !strings.Contains(err.Error(), "bad-model") {
+	if _, err := aiTest(context.Background(), c); err == nil || !strings.Contains(err.Error(), "模型名称不正确") || !strings.Contains(err.Error(), "bad-model") {
 		t.Errorf("bad model: %v", err)
 	}
 	_ = aiSave("openai", srv.URL, "ok-model", nil, nil)
@@ -737,7 +737,7 @@ func TestAIServiceErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, _ = newAIClient(st)
-	if _, err := aiTest(context.Background(), c); err == nil || !strings.Contains(err.Error(), "连不上") {
+	if _, err := aiTest(context.Background(), c); err == nil || !strings.Contains(err.Error(), "无法连接") {
 		t.Errorf("unreachable: %v", err)
 	}
 }

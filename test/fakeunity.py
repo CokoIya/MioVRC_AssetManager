@@ -17,7 +17,7 @@ def prefabs(folders=None):
         low = [f.lower().rstrip('/') for f in folders]
         out = [x for x in out if any(x["path"].lower() == f or x["path"].lower().startswith(f + '/') for f in low)]
     return out
-BRIDGE = os.environ.get("FAKE_BRIDGE", "1.2.0")
+BRIDGE = os.environ.get("FAKE_BRIDGE", "1.2.1")
 def doll(path, view, dressed):
     # a paper doll, so the pictures in the log look like something
     from PIL import Image, ImageDraw
@@ -74,7 +74,7 @@ def answer(cmd, a):
     if cmd == "dress":
         time.sleep(0.5)
         name = os.path.basename(a["prefab"]).replace(".prefab", "").strip()
-        if "full" in name: return None, "「Kaguya_full」是带素体的整只模型，不是单独的衣服；换一个只有衣服的 prefab"
+        if "full" in name: return None, "「Kaguya_full」是包含素体的完整模型，不是单独的衣服，请改用仅含衣服的 prefab"
         ex = name in state["dressed"]
         if not ex: state["dressed"].append(name)
         state.setdefault("prefabOf", {})[name] = a["prefab"]
@@ -86,9 +86,9 @@ def answer(cmd, a):
         time.sleep(0.6)
         for it in a.get("items", []):
             for o in it.get("objects", []):
-                if "NOPE" in o: return None, "头像下找不到「%s」" % o
+                if "NOPE" in o: return None, "模型下未找到「%s」" % o
         open(os.path.join(proj, 'last_menu.json'), 'w', encoding='utf-8').write(json.dumps(a, ensure_ascii=False))
-        return {"created": ["Avatar Menu"] + ["Avatar Menu/" + "/".join(it["path"] + [it["label"]]) for it in a["items"]], "warnings": ["「衣服」里有 9 项，超过一页 8 项"] if len(a["items"]) > 12 else [], "icons": len(a["items"]), "root": a.get("root") or "Avatar Menu", "parameter": a.get("parameter") or "Clothtoggle", "menu": {}}, ""
+        return {"created": ["Avatar Menu"] + ["Avatar Menu/" + "/".join(it["path"] + [it["label"]]) for it in a["items"]], "warnings": ["「衣服」中有 9 项，超过每页 8 项的上限，游戏中将自动出现「More」翻页，可再分一层"] if len(a["items"]) > 12 else [], "icons": len(a["items"]), "root": a.get("root") or "Avatar Menu", "parameter": a.get("parameter") or "Clothtoggle", "menu": {}}, ""
     if cmd == "undo": return {"undone": "MioVRCA 生成菜单"}, ""
     if cmd == "snapshot" and BRIDGE >= "1.2.0":
         time.sleep(0.4)

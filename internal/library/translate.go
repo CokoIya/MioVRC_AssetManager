@@ -56,7 +56,7 @@ func RunTranslate(st *core.Store, prog *core.Task, sources []string) {
 			j++
 		}
 		batch := todo[i:j]
-		prog.Set(i, len(todo), "翻译名称")
+		prog.Set(i, len(todo), "正在翻译…")
 		out, err := translate.TranslateText(st, strings.Join(batch, "\n"))
 		lines := strings.Split(strings.TrimSpace(out), "\n")
 		if err == nil && len(lines) != len(batch) {
@@ -76,7 +76,7 @@ func RunTranslate(st *core.Store, prog *core.Task, sources []string) {
 			fails++
 			core.Logf("翻译失败: %v", err)
 			if fails >= 3 {
-				prog.Set(len(todo), len(todo), "翻译服务连不上，稍后再试")
+				prog.Set(len(todo), len(todo), "无法连接翻译服务，请稍后重试")
 				return
 			}
 			time.Sleep(2 * time.Second)

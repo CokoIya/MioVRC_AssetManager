@@ -153,7 +153,7 @@ func parseCmpSet(s string) ([]verCmp, error) {
 		lo, _, ok1 := parseVersionish(m[1])
 		hi, wild, ok2 := parseVersionish(m[2])
 		if !ok1 || !ok2 {
-			return nil, errors.New("看不懂版本范围：" + s)
+			return nil, errors.New("无法解析版本范围：" + s)
 		}
 		set := []verCmp{{">=", lo}}
 		switch wild {
@@ -191,7 +191,7 @@ func parseCmpSet(s string) ([]verCmp, error) {
 		}
 		v, wild, ok := parseVersionish(t)
 		if !ok {
-			return nil, errors.New("看不懂版本范围：" + s)
+			return nil, errors.New("无法解析版本范围：" + s)
 		}
 		if wild == 0 { // "*"
 			continue

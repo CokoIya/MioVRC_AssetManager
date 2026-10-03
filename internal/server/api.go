@@ -240,11 +240,11 @@ func NewMux(st *core.Store) *http.ServeMux {
 		// a unityhub:// link installs the Unity version VRChat wants; it needs Unity Hub on this computer
 		hub := strings.HasPrefix(u, "unityhub://")
 		if hub && unity.FindUnityHub() == "" {
-			core.WriteJSON(w, map[string]any{"ok": false, "err": "这台电脑上没找到 Unity Hub：先装 Unity Hub（unity.com/download），再来点这里装 Unity"})
+			core.WriteJSON(w, map[string]any{"ok": false, "err": "本机未安装 Unity Hub，请先安装 Unity Hub（unity.com/download），再点击此处安装 Unity"})
 			return
 		}
 		if !(strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://") || mail || hub) {
-			core.WriteJSON(w, map[string]any{"ok": false, "err": "不是网址"})
+			core.WriteJSON(w, map[string]any{"ok": false, "err": "网址无效"})
 			return
 		}
 		core.WriteJSON(w, map[string]any{"ok": core.OpenURL(u) == nil})
@@ -308,7 +308,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 		var keys []string
 		_ = json.Unmarshal(b["keys"], &keys)
 		if len(keys) == 0 {
-			core.WriteJSON(w, map[string]any{"ok": false, "err": "还没有选素材"})
+			core.WriteJSON(w, map[string]any{"ok": false, "err": "未选择素材"})
 			return
 		}
 		var category *string
@@ -329,7 +329,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 		st.Mu.Lock()
 		if category != nil && *category != "" && !core.ContainsStr(library.Categories, *category) {
 			st.Mu.Unlock()
-			core.WriteJSON(w, map[string]any{"ok": false, "err": "没有这个分类：" + *category})
+			core.WriteJSON(w, map[string]any{"ok": false, "err": "分类不存在：" + *category})
 			return
 		}
 		byKey := map[string]*core.Asset{}
@@ -557,7 +557,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 		link, pwd := strings.TrimSpace(str(b, "url")), strings.TrimSpace(str(b, "pwd"))
 		surl := netdisk.ShareSurl(link)
 		if surl == "" {
-			core.WriteJSON(w, map[string]any{"ok": false, "err": "没认出百度网盘分享链接"})
+			core.WriteJSON(w, map[string]any{"ok": false, "err": "未识别到百度网盘分享链接"})
 			return
 		}
 		if pwd == "" {
@@ -592,7 +592,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 		case errors.Is(err, core.ErrPickCancelled):
 			core.WriteJSON(w, map[string]any{"ok": false, "cancelled": true})
 		case err != nil:
-			core.WriteJSON(w, map[string]any{"ok": false, "err": "打不开选择窗口，请直接粘贴路径：" + err.Error()})
+			core.WriteJSON(w, map[string]any{"ok": false, "err": "无法打开文件夹选择窗口，请直接粘贴路径：" + err.Error()})
 		default:
 			core.WriteJSON(w, map[string]any{"ok": true, "path": p})
 		}
@@ -608,7 +608,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 	// ---------- Gumroad purchases ----------
 	post("/api/gumroad/sync", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		if purchases.LoadGumSession() == nil {
-			core.WriteJSON(w, map[string]any{"ok": false, "login": true, "err": "还没有登录 Gumroad"})
+			core.WriteJSON(w, map[string]any{"ok": false, "login": true, "err": "尚未登录 Gumroad"})
 			return
 		}
 		ok := purchases.StartGumroadSync(st)
@@ -620,7 +620,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 	})
 	post("/api/gumroad/logout", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		if purchases.GumBusy.Load() {
-			core.WriteJSON(w, map[string]any{"ok": false, "err": "正在同步，稍后再试"})
+			core.WriteJSON(w, map[string]any{"ok": false, "err": "正在同步，请稍后重试"})
 			return
 		}
 		err := purchases.LogoutGumroad()
@@ -658,7 +658,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 		if p := strings.TrimSpace(str(b, "importTo")); p != "" { // "下载并导入"
 			p = filepath.Clean(strings.Trim(p, `"`))
 			if !core.IsUnityProject(p) {
-				core.WriteJSON(w, map[string]any{"ok": false, "err": "这不是 Unity 工程（找不到 Assets 和 ProjectSettings 文件夹）"})
+				core.WriteJSON(w, map[string]any{"ok": false, "err": "该文件夹不是 Unity 工程（未找到 Assets 和 ProjectSettings 文件夹）"})
 				return
 			}
 			purchases.SetPendingImport(str(b, "item"), unity.ImportReq{Project: p, Pwd: str(b, "pwd"), Recycle: true})
@@ -721,7 +721,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 	post("/api/pane/open", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		u := str(b, "url")
 		if !(strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://")) {
-			core.WriteJSON(w, map[string]any{"ok": false, "err": "不是网址"})
+			core.WriteJSON(w, map[string]any{"ok": false, "err": "网址无效"})
 			return
 		}
 		if webpane.PaneMode() == "" {
@@ -730,7 +730,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 		}
 		if err := webpane.Pane.Open(u, str(b, "kind"), true); err != nil {
 			core.Logf("页面打不开 %s: %v", u, err)
-			core.WriteJSON(w, map[string]any{"ok": false, "err": "页面打不开：" + err.Error()})
+			core.WriteJSON(w, map[string]any{"ok": false, "err": "页面无法打开：" + err.Error()})
 			return
 		}
 		if str(b, "kind") == "pan" && !pandl.CurrentBaiduAccount().LoggedIn {
@@ -759,7 +759,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 		if act == "external" {
 			u, err := webpane.Pane.Act("url")
 			if err != nil || u == "" {
-				core.WriteJSON(w, map[string]any{"ok": false, "err": "没有打开的页面"})
+				core.WriteJSON(w, map[string]any{"ok": false, "err": "当前未打开任何页面"})
 				return
 			}
 			core.WriteJSON(w, map[string]any{"ok": core.OpenURL(u) == nil})
@@ -809,7 +809,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 		if p := strings.TrimSpace(str(b, "importTo")); p != "" {
 			p = filepath.Clean(strings.Trim(p, `"`))
 			if !core.IsUnityProject(p) {
-				core.WriteJSON(w, map[string]any{"ok": false, "err": "这不是 Unity 工程（找不到 Assets 和 ProjectSettings 文件夹）"})
+				core.WriteJSON(w, map[string]any{"ok": false, "err": "该文件夹不是 Unity 工程（未找到 Assets 和 ProjectSettings 文件夹）"})
 				return
 			}
 			imp = &unity.ImportReq{Project: p, Pwd: str(b, "pwd"), Recycle: true}
@@ -860,7 +860,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 	post("/api/project/open", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		p, ok := unity.KnownProject(st, str(b, "path"))
 		if !ok {
-			core.WriteJSON(w, map[string]any{"ok": false, "err": "不在工程列表里"})
+			core.WriteJSON(w, map[string]any{"ok": false, "err": "该工程不在工程列表中"})
 			return
 		}
 		if err := unity.OpenInUnity(p); err != nil {
@@ -872,7 +872,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 	post("/api/project/cover", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		p, ok := unity.KnownProject(st, str(b, "path"))
 		if !ok {
-			core.WriteJSON(w, map[string]any{"ok": false, "err": "不在工程列表里"})
+			core.WriteJSON(w, map[string]any{"ok": false, "err": "该工程不在工程列表中"})
 			return
 		}
 		var on bool
@@ -887,7 +887,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 	post("/api/import/project", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		p := filepath.Clean(strings.Trim(strings.TrimSpace(str(b, "path")), `"`))
 		if !core.IsUnityProject(p) {
-			core.WriteJSON(w, map[string]any{"ok": false, "err": "这不是 Unity 工程（找不到 Assets 和 ProjectSettings 文件夹）"})
+			core.WriteJSON(w, map[string]any{"ok": false, "err": "该文件夹不是 Unity 工程（未找到 Assets 和 ProjectSettings 文件夹）"})
 			return
 		}
 		st.Mu.Lock()
@@ -916,7 +916,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 	})
 	post("/api/purchases/forget", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		if core.PurchaseBusy.Load() {
-			core.WriteJSON(w, map[string]any{"ok": false, "err": "正在同步，稍后再试"})
+			core.WriteJSON(w, map[string]any{"ok": false, "err": "正在同步，请稍后重试"})
 			return
 		}
 		err := purchases.ForgetBoothLogin()

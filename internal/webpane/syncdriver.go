@@ -105,7 +105,7 @@ func (d *cdpDriver) Reconnect() error {
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	return errors.New("找不到 Booth 页面")
+	return errors.New("未找到 Booth 页面")
 }
 
 func (d *cdpDriver) Eval(expr string, timeout time.Duration) (json.RawMessage, error) {
@@ -234,7 +234,7 @@ func StartFirefoxDriver(exe, profile, startURL string, extra []string) (*bidiDri
 		if cmd.Process != nil {
 			_ = cmd.Process.Kill()
 		}
-		return nil, errors.New("Firefox 没有打开远程接口（可能已经有一个同样配置的 Firefox 窗口开着）")
+		return nil, errors.New("Firefox 未开启远程接口（可能已有使用相同配置的 Firefox 窗口正在运行）")
 	}
 	c, err := cdpDial(strings.TrimRight(ws, "/")+"/session", 10*time.Second)
 	if err != nil {
@@ -242,7 +242,7 @@ func StartFirefoxDriver(exe, profile, startURL string, extra []string) (*bidiDri
 	}
 	if _, err := c.call("session.new", map[string]any{"capabilities": map[string]any{}}, 15*time.Second); err != nil {
 		c.Close()
-		return nil, fmt.Errorf("Firefox 会话没建立：%v", err)
+		return nil, fmt.Errorf("Firefox 会话建立失败：%v", err)
 	}
 	d := &bidiDriver{c: c, cmd: cmd}
 	if err := d.Reconnect(); err != nil {
@@ -281,7 +281,7 @@ func (d *bidiDriver) Reconnect() error {
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	return errors.New("找不到 Booth 页面")
+	return errors.New("未找到 Booth 页面")
 }
 
 func (d *bidiDriver) Eval(expr string, timeout time.Duration) (json.RawMessage, error) {

@@ -35,7 +35,7 @@ const panSaveRoot = "/MioVRCA"
 var baiduCookieNames = []string{"BDUSS", "BDUSS_BFESS", "STOKEN", "PTOKEN", "BAIDUID", "BAIDUID_BFESS",
 	"PSTM", "BIDUPSID", "H_PS_PSSID", "PSINO", "ndut_fmt", "PANWEB", "PANPSC"}
 
-var ErrBaiduLogin = errors.New("百度网盘还没登录，或者登录已经失效")
+var ErrBaiduLogin = errors.New("百度网盘未登录或登录已失效")
 
 func pcsBase() string {
 	if v := os.Getenv("VRCLIB_PCS_BASE"); v != "" { // tests only
@@ -340,9 +340,9 @@ func (b *bdClient) call(method, p string, q, form url.Values, out any) (int, err
 	}
 	if json.Unmarshal(body, &e) != nil {
 		if resp.StatusCode == 400 && strings.Contains(strings.ToLower(string(body)), "too large") {
-			return 0, errors.New("百度网盘拒绝了请求（登录信息过长），退出百度网盘再重新登录一次试试")
+			return 0, errors.New("百度网盘拒绝请求（登录状态数据过长），请退出登录后重新登录")
 		}
-		return 0, fmt.Errorf("百度网盘没有正常响应（%d）", resp.StatusCode)
+		return 0, fmt.Errorf("百度网盘响应异常（%d）", resp.StatusCode)
 	}
 	if out != nil {
 		_ = json.Unmarshal(body, out)
@@ -426,17 +426,17 @@ func (b *bdClient) openShare(surl, pwd string) (*netdisk.BDShare, error) {
 	switch {
 	case resp != nil && strings.Contains(resp.Request.URL.Path, "/share/init"):
 		if pwd == "" {
-			return nil, errors.New("这个分享需要提取码，在详情里填上再下载")
+			return nil, errors.New("该分享需要提取码，请在详情中填写后重新下载")
 		}
-		return nil, errors.New("提取码验证没通过")
+		return nil, errors.New("提取码验证未通过")
 	case strings.Contains(text, "wappass") || strings.Contains(text, "验证码"):
-		return nil, errors.New("百度要求输入验证码：点「在软件里打开分享」手动输入一次，再回来下载")
+		return nil, errors.New("百度要求输入验证码，请点击「在软件中打开分享」手动输入后重新下载")
 	case strings.Contains(text, "分享的文件已经被删除") || strings.Contains(text, "分享的文件已经被取消") ||
 		strings.Contains(text, "链接已过期") || strings.Contains(text, "分享已过期") || strings.Contains(text, "platform-non-found"):
 		return nil, errors.New("分享已失效或被取消")
 	}
 	_ = os.WriteFile(filepath.Join(core.DataDir, "pan-debug.txt"), []byte(core.Truncate(text, 200000)), 0644)
-	return nil, errors.New("没读到分享内容（百度网盘的页面可能改版了）")
+	return nil, errors.New("无法读取分享内容（百度网盘页面可能已改版）")
 }
 
 func (b *bdClient) shareList(s *netdisk.BDShare, dir string) ([]netdisk.PanRaw, error) {
@@ -498,7 +498,7 @@ func (l *shareLister) find(p string) (netdisk.PanRaw, error) {
 			}
 		}
 		if hit == nil {
-			return netdisk.PanRaw{}, errors.New("分享里找不到「" + seg + "」（分享内容可能变了，先重新读取一次）")
+			return netdisk.PanRaw{}, errors.New("分享中未找到「" + seg + "」（分享内容可能已变更，请刷新后重试）")
 		}
 		if i == len(segs)-1 {
 			return *hit, nil
@@ -509,7 +509,7 @@ func (l *shareLister) find(p string) (netdisk.PanRaw, error) {
 		}
 		cur = kids
 	}
-	return netdisk.PanRaw{}, errors.New("分享里找不到这个素材")
+	return netdisk.PanRaw{}, errors.New("分享中未找到该素材")
 }
 
 // ---------- the player's netdisk ----------
@@ -558,7 +558,7 @@ func (b *bdClient) mkdir(p string) error {
 		return err
 	}
 	if errno != 0 && errno != -8 { // -8: it is there already
-		return bdWriteErr("在网盘里建文件夹", errno)
+		return bdWriteErr("在网盘中创建文件夹", errno)
 	}
 	return nil
 }
@@ -568,11 +568,11 @@ func bdWriteErr(what string, errno int) error {
 	case -6, -4, 9019, 4000023:
 		return ErrBaiduLogin
 	case -10, -32, 3:
-		return errors.New("你的百度网盘空间不够了，清理一些文件再试")
+		return errors.New("百度网盘空间不足，请清理文件后重试")
 	case 111:
-		return errors.New("百度网盘里还有别的转存在进行，过一会儿再试")
+		return errors.New("百度网盘有其他转存任务正在进行，请稍后重试")
 	case -62, -63:
-		return errors.New("百度要求输入验证码：点「在软件里打开分享」手动输入一次，再回来下载")
+		return errors.New("百度要求输入验证码，请点击「在软件中打开分享」手动输入后重新下载")
 	case 105, 115, 116, 117, 145:
 		return errors.New("分享已失效或被取消")
 	}
@@ -632,9 +632,9 @@ func (b *bdClient) transfer(s *netdisk.BDShare, items []netdisk.PanRaw, dest str
 				}
 			}
 		case tooMany:
-			return fmt.Errorf("文件太多，百度网盘一次最多存 %d 个；可以在网盘里手动分几次保存", r.TargetLimit)
+			return fmt.Errorf("文件数量过多，百度网盘单次最多转存 %d 个，可在网盘中手动分批保存", r.TargetLimit)
 		default:
-			return bdWriteErr("保存到网盘", errno)
+			return bdWriteErr("转存到网盘", errno)
 		}
 	}
 	return nil
@@ -658,11 +658,11 @@ func (b *bdClient) waitTask(id string) error {
 		case r.Status == "success":
 			return nil
 		case r.Status == "failed":
-			return bdWriteErr("保存到网盘", r.TaskErrno)
+			return bdWriteErr("转存到网盘", r.TaskErrno)
 		}
 		time.Sleep(2 * time.Second)
 	}
-	return errors.New("网盘还在保存，过一会儿再点下载（已经存好的不会重复存）")
+	return errors.New("网盘转存尚未结束，请稍后重新下载（已转存的文件不会重复转存）")
 }
 
 type bdFile struct {
@@ -693,7 +693,7 @@ func (b *bdClient) tree(dir string) ([]bdFile, error) {
 			sz, _ := e.Size.Int64()
 			out = append(out, bdFile{Path: e.Path, Rel: r, Size: sz})
 			if len(out) > 20000 {
-				return errors.New("文件太多")
+				return errors.New("文件数量过多")
 			}
 		}
 		return nil
@@ -748,7 +748,7 @@ func (b *bdClient) fetchRange(remote, part string, from, size int64, prog func(n
 	if cr := resp.Header.Get("Content-Range"); resp.StatusCode == 206 && cr != "" {
 		var a, z int64
 		if _, err := fmt.Sscanf(strings.TrimPrefix(cr, "bytes "), "%d-%d", &a, &z); err != nil || a != from {
-			return fmt.Errorf("百度网盘返回的数据位置不对（%s）", cr)
+			return fmt.Errorf("百度网盘返回的数据范围有误（%s）", cr)
 		}
 	}
 	idle := time.AfterFunc(60*time.Second, func() { resp.Body.Close() })
@@ -820,9 +820,9 @@ func (b *bdClient) download(f bdFile, local string, prog func(n int64)) error {
 				continue
 			}
 			if stuck++; stuck >= 3 {
-				return errors.New("百度网盘给的文件不完整（" + path.Base(f.Path) + "），过一会儿再点下载")
+				return errors.New("百度网盘返回的文件不完整（" + path.Base(f.Path) + "），请稍后重新下载")
 			}
-			err = errors.New("百度网盘给的文件不完整") // nothing more came: try again a little later
+			err = errors.New("百度网盘返回的文件不完整") // nothing more came: try again a little later
 		}
 		if errors.Is(err, errPanCancelled) {
 			return err
@@ -846,7 +846,7 @@ func (b *bdClient) download(f bdFile, local string, prog func(n int64)) error {
 		time.Sleep(time.Duration(min(2+attempt*2, 20)) * time.Second)
 	}
 	if lastErr == nil {
-		lastErr = errors.New("下载没有完成")
+		lastErr = errors.New("下载失败，请重试")
 	}
 	return lastErr
 }
@@ -926,7 +926,7 @@ func QueuePanDownload(st *core.Store, key string, paths []string, imp *unity.Imp
 	}
 	st.Mu.RUnlock()
 	if netdisk.ShareSurl(link) == "" {
-		return errors.New("这个素材没有百度网盘分享链接")
+		return errors.New("该素材没有百度网盘分享链接")
 	}
 	if title == "" {
 		title = "网盘分享 " + surl
@@ -935,7 +935,7 @@ func QueuePanDownload(st *core.Store, key string, paths []string, imp *unity.Imp
 	for _, o := range panJobs {
 		if o.Key == key && o.Stage != "done" && o.Stage != "failed" {
 			panDLMu.Unlock()
-			return errors.New("已经在下载了")
+			return errors.New("已在下载队列中")
 		}
 	}
 	kept := panJobs[:0]
@@ -1058,7 +1058,7 @@ func panDLWorker(st *core.Store) {
 			}
 		}
 		if got > 0 {
-			TaskPanDL.Set(1, 1, fmt.Sprintf("完成：下载了 %d 个网盘分享", got))
+			TaskPanDL.Set(1, 1, fmt.Sprintf("完成：已下载 %d 个网盘分享", got))
 		} else {
 			TaskPanDL.Set(0, 0, "")
 		}
@@ -1085,7 +1085,7 @@ func runPanJob(st *core.Store, j *PanJob) error {
 		setPan(j, func(j *PanJob) { j.Msg = m })
 		TaskPanDL.Set(0, 0, j.Title+"："+m)
 	}
-	msg("正在确认百度网盘登录")
+	msg("正在检查百度网盘登录状态")
 	if _, _, err := b.Whoami(); err != nil {
 		return err
 	}
@@ -1125,7 +1125,7 @@ func runPanJob(st *core.Store, j *PanJob) error {
 		items = []netdisk.PanRaw{it}
 	}
 	if len(items) == 0 {
-		return errors.New("分享是空的")
+		return errors.New("分享内容为空")
 	}
 	if strings.HasPrefix(j.Title, "网盘分享 ") { // added a moment ago, before its listing was read
 		t := strings.TrimSpace(share.Title)
@@ -1181,7 +1181,7 @@ func runPanJob(st *core.Store, j *PanJob) error {
 	}
 	st.Mu.RUnlock()
 	setPan(j, func(j *PanJob) { j.Stage, j.Saved = "save", dest })
-	msg("正在保存到你的网盘")
+	msg("正在转存到网盘")
 	if err := b.mkdir(panSaveRoot); err != nil {
 		return err
 	}
@@ -1220,7 +1220,7 @@ func runPanJob(st *core.Store, j *PanJob) error {
 	st.Mu.Unlock()
 	_ = st.Save()
 	// 2. download the picked parts of the copy
-	msg("正在读取网盘里的文件")
+	msg("正在获取网盘文件列表")
 	local := prev
 	if local == "" || !core.IsDir(local) {
 		local, got = archive.UniquePath(filepath.Join(dlRoot, name)), nil
@@ -1248,7 +1248,7 @@ func runPanJob(st *core.Store, j *PanJob) error {
 			}
 		}
 		if e == nil {
-			return errors.New("网盘里找不到「" + rawName(pk.raw) + "」（可能刚被删了），再点一次下载")
+			return errors.New("网盘中未找到「" + rawName(pk.raw) + "」（可能已被删除），请重新下载")
 		}
 		rel := strings.TrimPrefix(pk.dir+"/"+e.Name, "/")
 		if e.IsDir.String() != "1" {
@@ -1270,7 +1270,7 @@ func runPanJob(st *core.Store, j *PanJob) error {
 		}
 	}
 	if len(files) == 0 && skipped == 0 {
-		return errors.New("网盘里的文件夹是空的")
+		return errors.New("网盘中的文件夹为空")
 	}
 	strip := ""
 	if oneDir {
@@ -1310,7 +1310,7 @@ func runPanJob(st *core.Store, j *PanJob) error {
 	st.Mu.Unlock()
 	_ = st.Save()
 	if err := os.MkdirAll(local, 0755); err != nil {
-		return fmt.Errorf("建不了文件夹：%v", err)
+		return fmt.Errorf("创建文件夹失败：%v", err)
 	}
 	purchases.PinDownloadDir(st, dlRoot)
 	var done int64
@@ -1384,13 +1384,13 @@ func runPanJob(st *core.Store, j *PanJob) error {
 		note = fmt.Sprintf("已下载所选的 %d 项，共 %d 个文件（%s）", len(j.Paths), len(files), fmtBytes(total))
 	}
 	if skipped > 0 {
-		note += fmt.Sprintf("；之前下载过的 %d 个文件没再下载", skipped)
+		note += fmt.Sprintf("；已跳过此前下载过的 %d 个文件", skipped)
 		if len(files) == 0 {
-			note = "所选的部分之前都下载过了"
+			note = "所选内容此前均已下载"
 		}
 	}
 	if len(failed) > 0 {
-		note += "；有压缩包没解压"
+		note += "；部分压缩包解压失败"
 	}
 	setPan(j, func(j *PanJob) { j.Stage, j.Msg, j.Failed, j.File = "done", note, failed, "" })
 	core.Logf("网盘下载完成 %s → %s", j.Key, local)
@@ -1530,9 +1530,9 @@ func (b *bdClient) saveInto(ls *shareLister, items []panPick, dir string, done [
 			return nil
 		}
 		if i >= 149 {
-			return errors.New("网盘还在保存，过一会儿再点下载（已经存好的不会重复存）")
+			return errors.New("网盘转存尚未结束，请稍后重新下载（已转存的文件不会重复转存）")
 		}
-		msg(fmt.Sprintf("网盘正在保存（还有 %d 项）", missing))
+		msg(fmt.Sprintf("正在转存到网盘（剩余 %d 项）", missing))
 		time.Sleep(2 * time.Second)
 	}
 }
