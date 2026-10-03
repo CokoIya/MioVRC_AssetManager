@@ -3,6 +3,6 @@
   "displayName": "MioVRCA 工程封面",
   "version": "1.0.0",
   "unity": "2019.4",
-  "description": "MioVRCA 的工程卡片封面：打开工程、保存或打开场景时，给场景里的模型拍一张正面照，存到 UserSettings/MioVRCA。只在编辑器里运行，不改场景，也不会进模型。在 MioVRC素材托管工具 的工程卡片上点「关闭封面」就会删掉。",
+  "description": "MioVRCA 工程卡片的封面插件：打开工程、保存或打开场景时，自动截取场景中模型的正面图，保存到 UserSettings/MioVRCA。仅在编辑器中运行，不修改场景，也不会随模型上传。在软件的工程卡片上点击「关闭封面」即可移除。",
   "author": { "name": "MioVRC", "url": "https://miovrc.com/vrca/" }
 }

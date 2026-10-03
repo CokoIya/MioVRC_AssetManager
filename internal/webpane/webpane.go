@@ -24,7 +24,7 @@ type paneNativeAPI interface {
 
 var NativePane paneNativeAPI
 
-var errNoPane = errors.New("没有可用的内置浏览器（需要 WebView2、Edge 或 Chrome）")
+var errNoPane = errors.New("本机缺少内置浏览器组件（需要 WebView2、Edge 或 Chrome）")
 
 // Links that would open a new window stay in the pane (popups with a size, such as payment windows,
 // still open on their own).
@@ -40,7 +40,7 @@ e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();
 let box=el,item='',name='',file='';for(let i=0;i<10&&box;i++){box=box.parentElement;if(box&&box.querySelector('a[href*="/items/"]'))break}
 if(box){const a=box.querySelector('a[href*="/items/"]'),im=/\/items\/(\d+)/.exec(a.href);if(im)item=im[1];const t=box.querySelector('[class*="font-bold"]');name=t?t.textContent.trim():''}
 const row=el.parentElement,f=row&&row.querySelector('.break-all');file=f?f.textContent.trim():'';
-window.mioDownload(JSON.stringify({id:m[1],item,name,file}));const sp=el.querySelector('span')||el;sp.textContent='已加入软件下载';el.style.opacity='.6'},true)})()`
+window.mioDownload(JSON.stringify({id:m[1],item,name,file}));const sp=el.querySelector('span')||el;sp.textContent='已加入下载队列';el.style.opacity='.6'},true)})()`
 
 type webPane struct {
 	Mu       sync.Mutex
@@ -195,7 +195,7 @@ func launchPaneWindow(browser, profile, startURL string, headless bool, proxy st
 			}
 		}
 	}
-	return 0, false, errors.New("浏览器没有打开调试端口")
+	return 0, false, errors.New("浏览器未开启调试端口")
 }
 
 // page: the DevTools connection to the pane's page. Caller holds p.mu.
@@ -231,7 +231,7 @@ func (p *webPane) page() (*cdpConn, error) {
 		}
 	}
 	if pick == nil {
-		return nil, errors.New("页面还没准备好")
+		return nil, errors.New("页面尚未就绪")
 	}
 	c, err := cdpDial(pick.WSURL, 6*time.Second)
 	if err != nil {

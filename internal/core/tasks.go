@@ -31,8 +31,8 @@ func (t *Task) Snapshot() Task {
 
 var (
 	TaskScan        = &Task{Name: "scan", Label: "扫描文件夹"}
-	TaskUsage       = &Task{Name: "usage", Label: "分析工程使用情况"}
-	TaskBooth       = &Task{Name: "booth", Label: "抓取 Booth 信息"}
+	TaskUsage       = &Task{Name: "usage", Label: "统计工程使用情况"}
+	TaskBooth       = &Task{Name: "booth", Label: "获取 Booth 信息"}
 	revision  int64 = 1
 	revMu     sync.Mutex
 )
@@ -56,7 +56,7 @@ func RunTask(t *Task, f func()) {
 	defer func() {
 		if r := recover(); r != nil {
 			Logf("任务 %s 出错: %v", t.Name, r)
-			t.Set(0, 0, "出错了，详见 library.log")
+			t.Set(0, 0, "任务出错，详见 library.log")
 		}
 		t.mu.Lock()
 		t.Running, t.Ended = false, time.Now().Unix()

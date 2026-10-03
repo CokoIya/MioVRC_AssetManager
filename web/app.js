@@ -239,7 +239,7 @@ function renderSide() {
   const nNew = countUnits(rcb.filter(a => a.new)), nNews = countUnits(rcb.filter(hasNews));
   let h = "";
   if (nNew || nNews || S.recent) {
-    h += `<h3>动态</h3>` + (nNew || S.recent === "new" ? navItem("新加入", nNew, S.recent === "new", `data-recent="new"`, "#3fd0a6") : "") +
+    h += `<h3>动态</h3>` + (nNew || S.recent === "new" ? navItem("新增", nNew, S.recent === "new", `data-recent="new"`, "#3fd0a6") : "") +
       (nNews || S.recent === "news" ? navItem("有更新", nNews, S.recent === "news", `data-recent="news"`, "#ffb547") : "");
   }
   const base = all.filter(a => matches(a, "cat"));
@@ -255,7 +255,7 @@ function renderSide() {
     const sc = tally(sb, a => (a.styles || []).length ? a.styles : ["__none"]);
     let sub = "";
     for (const st of styleList()) if (sc[st] && (!S.fold.cloth || S.style === st)) sub += `<button class="subitem${S.style === st ? " on" : ""}" data-style="${esc(st)}"><span>${esc(st)}</span><span class="n">${sc[st]}</span></button>`;
-    if (sc.__none && (!S.fold.cloth || S.style === "__none")) sub += `<button class="subitem none${S.style === "__none" ? " on" : ""}" data-style="__none"><span>未加标签</span><span class="n">${sc.__none}</span></button>`;
+    if (sc.__none && (!S.fold.cloth || S.style === "__none")) sub += `<button class="subitem none${S.style === "__none" ? " on" : ""}" data-style="__none"><span>无标签</span><span class="n">${sc.__none}</span></button>`;
     if (!S.fold.cloth) sub += `<button class="subitem edit" id="btnStyles">编辑标签…</button>`;
     if (sub) h += `<div class="subnav">${sub}</div>`;
   }
@@ -277,12 +277,12 @@ function renderSide() {
     ? `<h3 class="withact">Booth 已购${syncing ? `<button class="h3act" id="btnSyncCancel">取消同步</button>` : `<button class="h3act" id="btnSync" title="上次同步：${esc(fmtTime(d.purchaseSync))}">重新同步</button>`}</h3>`
     : `<h3>Booth 已购</h3><div class="cta">${syncing ? `<button class="btn small" id="btnSyncCancel">取消同步</button>` : `<button class="btn small" id="btnSync">同步 Booth 已购</button>`}</div>`;
   h += gum.loggedIn || gum.count
-    ? `<h3 class="withact">Gumroad 已购${gum.busy ? `<button class="h3act" id="btnGumCancel">取消同步</button>` : `<button class="h3act" id="btnGumSync" title="${gum.loggedIn ? (gum.lastSync ? "上次同步：" + esc(fmtTime(gum.lastSync)) : "读取已购") : "登录已失效，重新登录"}">${gum.loggedIn ? "重新同步" : "登录"}</button>`}</h3>`
-    : `<h3>Gumroad 已购</h3><div class="cta">${gum.waiting ? `<span class="muted small">在打开的页面里登录…</span>` : `<button class="btn small" id="btnGumSync">登录并同步 Gumroad</button>`}</div>`;
+    ? `<h3 class="withact">Gumroad 已购${gum.busy ? `<button class="h3act" id="btnGumCancel">取消同步</button>` : `<button class="h3act" id="btnGumSync" title="${gum.loggedIn ? (gum.lastSync ? "上次同步：" + esc(fmtTime(gum.lastSync)) : "同步已购") : "登录已失效，请重新登录"}">${gum.loggedIn ? "重新同步" : "登录"}</button>`}</h3>`
+    : `<h3>Gumroad 已购</h3><div class="cta">${gum.waiting ? `<span class="muted small">请在打开的页面中登录…</span>` : `<button class="btn small" id="btnGumSync">登录并同步 Gumroad</button>`}</div>`;
   if (hasBought) {
     const local = nU(a => a.purchase && !a.virtual), miss = nU(a => a.virtual);
     const other = nU(a => !a.purchase && !a.virtual), localAll = nU(a => !a.virtual), bought = nU(a => a.purchase);
-    h += navItem("本地全部", localAll, S.purchase === "all", `data-purchase="all"`) +
+    h += navItem("全部本地", localAll, S.purchase === "all", `data-purchase="all"`) +
       navItem("已购已下载", local, S.purchase === "local", `data-purchase="local"`, "#ff5a6a") +
       navItem("已购未下载", miss, S.purchase === "missing", `data-purchase="missing"`, "#ffb547") +
       navItem("全部已购", bought, S.purchase === "bought", `data-purchase="bought"`) +
@@ -292,8 +292,8 @@ function renderSide() {
   const ub = all.filter(a => matches(a, "usage"));
   const pc = tally(ub, a => (a.usage || []).map(u => u.project));
   const usedN = countUnits(ub.filter(a => usedStatus(a))), unusedN = countUnits(ub.filter(a => !usedStatus(a)));
-  h += `<h3>工程使用</h3>` + navItem("全部", countUnits(ub), S.usage === "all", `data-usage="all"`) +
-    navItem("在用", usedN, S.usage === "used", `data-usage="used"`, "#3fd0a6") +
+  h += `<h3>使用情况</h3>` + navItem("全部", countUnits(ub), S.usage === "all", `data-usage="all"`) +
+    navItem("使用中", usedN, S.usage === "used", `data-usage="used"`, "#3fd0a6") +
     navItem("未使用", unusedN, S.usage === "unused", `data-usage="unused"`, "#6c7088");
   for (const p of (d.projects || [])) if (pc[p.name]) h += navItem(p.name, pc[p.name], S.usage === "p:" + p.name, `data-usage="p:${esc(p.name)}"`);
 
@@ -310,7 +310,7 @@ function renderSide() {
   for (const r of (d.settings.roots || [])) if (rc[r]) h += navItem(rootLabel(r), rc[r], S.root === r, `data-root="${esc(r)}" title="${esc(r)}"`);
 
   const hiddenN = all.filter(a => a.hidden && !a.splitInto).length;
-  if (hiddenN) h += `<label class="check"><input type="checkbox" id="showHidden"${S.showHidden ? " checked" : ""}> 显示隐藏的（${hiddenN}）</label>`;
+  if (hiddenN) h += `<label class="check"><input type="checkbox" id="showHidden"${S.showHidden ? " checked" : ""}> 显示已隐藏（${hiddenN}）</label>`;
   $("#side").innerHTML = h;
 }
 
@@ -325,13 +325,13 @@ function usedBadge(a) {
   const used = us.filter(u => u.status === "used");
   const list = used.length ? used : us;
   const extra = list.length > 1 ? ` +${list.length - 1}` : "";
-  return `<span class="badge-used${used.length ? "" : " partial"}" title="${esc(us.map(u => `${u.project}：${Math.round(u.ratio * 100)}%`).join("\n"))}">${used.length ? "在用" : "部分"}：${esc(list[0].project)}${extra}</span>`;
+  return `<span class="badge-used${used.length ? "" : " partial"}" title="${esc(us.map(u => `${u.project}：${Math.round(u.ratio * 100)}%`).join("\n"))}">${used.length ? "使用中" : "部分使用"}：${esc(list[0].project)}${extra}</span>`;
 }
 
 function orderLine(p) {
-  if (p.source === "gumroad") { const o = (p.orders || [])[0]; return o && o.date ? o.date + " 在 Gumroad 购入" : "Gumroad 已购"; }
+  if (p.source === "gumroad") { const o = (p.orders || [])[0]; return o && o.date ? o.date + " 购于 Gumroad" : "Gumroad 已购"; }
   const o = (p.orders || [])[0];
-  return o ? (o.date ? o.date + " 购入" : "订单 #" + o.id) : (p.gift ? "收到的礼物" : "Booth 已购");
+  return o ? (o.date ? o.date + " 购买" : "订单 #" + o.id) : (p.gift ? "礼物" : "Booth 已购");
 }
 function boughtBadge(a) {
   if (!a.purchase) return "";
@@ -355,7 +355,7 @@ function groupCardHTML(u) {
     <div class="cover">${coverHTML(a)}${bought ? boughtBadge(bought) : ""}${used.length ? usedBadge({ usage: used }) : ""}
       <div class="where"><div class="path" title="${esc(labels.join("\n"))}">${esc(labels.join("、"))}</div>
         <div class="acts">
-          <button class="act booth${a.boothId ? "" : " nobooth"}" data-act="booth" title="${isGum(a) ? "打开 Gumroad 商品页" : a.boothId ? "打开 Booth 商品页" : "在 Booth 上搜"}">${a.boothId ? ICON.bag : ICON.search}</button>
+          <button class="act booth${a.boothId ? "" : " nobooth"}" data-act="booth" title="${isGum(a) ? "打开 Gumroad 商品页" : a.boothId ? "打开 Booth 商品页" : "在 Booth 搜索"}">${a.boothId ? ICON.bag : ICON.search}</button>
           <button class="act edit" data-act="edit" title="查看全部版本">${ICON.edit}<span>${ms.length} 个版本</span></button>
         </div></div>
     </div>
@@ -374,7 +374,7 @@ function cardHTML(a) {
   const p = a.purchase;
   const shop = (a.booth && a.booth.shop) || (p && p.shop);
   const subline = shop ? shop : (a.booth && a.booth.name && a.booth.name !== a.name ? a.booth.name : rootLabel(loc ? loc.root : ""));
-  const where = a.virtual ? `${orderLine(p)}，本地还没有` : a.panOnly ? panLine(a) : shortPath(loc);
+  const where = a.virtual ? `${orderLine(p)}，尚未下载` : a.panOnly ? panLine(a) : shortPath(loc);
   const tip = a.virtual ? "查看并下载" : a.panOnly ? "查看内容并下载" : "打开文件夹";
   const zh = !S.data.settings.hideZh && a.nameZh ? `<div class="zh" title="${esc(a.nameZh)}">${esc(a.nameZh)}</div>` : "";
   return `<article class="card${a.hidden ? " hiddenasset" : ""}${a.virtual ? " virtual" : ""}${a.panOnly ? " panonly" : ""}" data-key="${esc(a.key)}" tabindex="0" title="${tip}">
@@ -387,7 +387,7 @@ function cardHTML(a) {
           ${canImport(a) ? `<button class="act imp" data-act="import" title="一键导入 Unity 工程">${ICON.cube}<span>导入</span></button>` : ""}
           ${pan ? `<button class="act pan" data-act="pan" title="${a.panOnly ? "打开网盘分享（自动复制提取码）" : "打开网盘"}">${ICON.cloud}${a.panOnly ? "<span>网盘</span>" : ""}</button>` : ""}
           ${p && !a.virtual ? `<button class="act buy" data-act="buypage" title="购买页">${ICON.receipt}</button>` : ""}
-          <button class="act booth${a.boothId ? "" : " nobooth"}" data-act="booth" title="${isGum(a) ? "打开 Gumroad 商品页" : a.boothId ? "打开 Booth 商品页" : "在 Booth 上搜「" + esc(a.boothQuery || a.name) + "」"}">${a.boothId ? ICON.bag : ICON.search}</button>
+          <button class="act booth${a.boothId ? "" : " nobooth"}" data-act="booth" title="${isGum(a) ? "打开 Gumroad 商品页" : a.boothId ? "打开 Booth 商品页" : "在 Booth 搜索「" + esc(a.boothQuery || a.name) + "」"}">${a.boothId ? ICON.bag : ICON.search}</button>
           <button class="act edit${canImport(a) ? " bare" : ""}" data-act="edit" title="详情">${ICON.edit}<span>详情</span></button>
         </div></div>
     </div>
@@ -409,7 +409,7 @@ function renderGrid() {
   if (filtered) rb += `<button class="clear" id="clearFilters">清除筛选</button>`;
   if (S.purchase === "missing" && list.length) rb += `<button class="btn small" id="btnDLMissing">${ICON.download}<span>全部下载</span></button>`;
   if (S.bulk) rb = bulkBarHTML(list);
-  else if (list.length && S.purchase !== "missing") rb += `<button class="btn small ghost" id="btnBulk" title="一次选中多个素材：移到别的分类、隐藏、不再收录">批量整理</button>`;
+  else if (list.length && S.purchase !== "missing") rb += `<button class="btn small ghost" id="btnBulk" title="批量选择素材，移动分类、隐藏或排除">批量整理</button>`;
   for (const w of (d.warnings || [])) rb += `<span class="warnline">${esc(w)}</span>`;
   $("#resultbar").innerHTML = rb;
   const g = $("#grid");
@@ -417,10 +417,10 @@ function renderGrid() {
   if (!list.length) {
     const scanning = d.busy;
     g.innerHTML = `<div class="empty">${!(d.assets || []).some(a => !a.virtual) && S.purchase === "all"
-      ? (scanning ? `<h2>正在扫描</h2><p>第一次会久一点。</p>`
-        : `<h2>还没有素材</h2><p>先在设置里添加素材文件夹。</p><button class="btn primary" id="emptySettings">打开设置</button>`)
-      : S.purchase === "missing" && !(d.assets || []).some(a => a.virtual) ? `<h2>已购的都下载好了</h2>`
-      : `<h2>没有符合条件的素材</h2>`}</div>`;
+      ? (scanning ? `<h2>正在扫描…</h2><p>首次扫描耗时较长，请稍候。</p>`
+        : `<h2>暂无素材</h2><p>请先在设置中添加素材文件夹。</p><button class="btn primary" id="emptySettings">打开设置</button>`)
+      : S.purchase === "missing" && !(d.assets || []).some(a => a.virtual) ? `<h2>已购商品均已下载</h2>`
+      : `<h2>未找到符合条件的素材</h2>`}</div>`;
     return;
   }
   g.innerHTML = list.map(u => u.members.length > 1 ? groupCardHTML(u) : cardHTML(u.primary)).join("");
@@ -432,13 +432,13 @@ function renderGrid() {
 function bulkUnits() { return sorted(unitsOf((S.data.assets || []).filter(a => matches(a)))); }
 function bulkBarHTML(list) {
   const n = S.bulk.keys.size, dis = n ? "" : " disabled";
-  return `<span class="bulkbar"><b>${n}</b><span>个已选</span>
-    <button class="clear" id="bulkAll">全选这 ${list.length} 个</button>${n ? `<button class="clear" id="bulkNone">清空</button>` : ""}
-    <select id="bulkCat"${dis} title="把选中的素材移到这个分类"><option value="">移到分类…</option>${S.data.categories.map(c => `<option>${esc(c)}</option>`).join("")}<option value="__auto">恢复自动分类</option></select>
+  return `<span class="bulkbar"><span>已选</span><b>${n}</b><span>个</span>
+    <button class="clear" id="bulkAll">全选当前 ${list.length} 个</button>${n ? `<button class="clear" id="bulkNone">取消选择</button>` : ""}
+    <select id="bulkCat"${dis} title="将所选素材移至该分类"><option value="">移至分类…</option>${S.data.categories.map(c => `<option>${esc(c)}</option>`).join("")}<option value="__auto">恢复自动分类</option></select>
     <button class="btn small" data-bulk="hide"${dis}>隐藏</button><button class="btn small" data-bulk="show"${dis}>取消隐藏</button>
-    <button class="btn small" data-bulk="ignore"${dis} title="扫描时跳过这些文件夹，可以在设置里撤销">不再收录</button>
+    <button class="btn small" data-bulk="ignore"${dis} title="扫描时跳过所选素材的文件夹，可在设置中恢复">排除</button>
     <button class="btn small primary" id="bulkDone">完成</button></span>
-    <span class="muted small">点卡片选中，按住 Shift 再点可以连选一片</span>`;
+    <span class="muted small">单击卡片选择，按住 Shift 单击可连续选择</span>`;
 }
 function bulkMark() {
   document.querySelectorAll("#grid .card").forEach(c => {
@@ -459,7 +459,7 @@ function bulkAssets() { return (S.data.assets || []).filter(a => S.bulk.keys.has
 async function bulkApply(body, done) {
   const list = bulkAssets(); if (!list.length) return;
   const r = await api("/api/user/bulk", Object.assign({ keys: list.map(a => a.key) }, body));
-  if (!r.ok) { toast(r.err || "没能保存", 4000); return; }
+  if (!r.ok) { toast(r.err || "保存失败", 4000); return; }
   S.bulk.keys.clear(); S.bulk.last = null;
   toast(done(r)); await load();
 }
@@ -480,19 +480,19 @@ function renderStatus() {
     const dt = (d.tasks || []).find(t => t.name === "download");
     if (dt && dt.msg && dt.ended && Date.now() / 1000 - dt.ended < 600 && !d.dlNeedLogin) h += `<span class="okline">${esc(dt.msg)}</span>`;
     const pt = (d.tasks || []).find(t => t.name === "purchase");
-    if (pt && pt.msg && pt.ended && Date.now() / 1000 - pt.ended < 600) h += `<span class="${pt.msg.startsWith("完成") ? "okline" : "err"}">Booth 已购：${esc(pt.msg)}</span>`;
+    if (pt && pt.msg && pt.ended && Date.now() / 1000 - pt.ended < 600) h += `<span class="${pt.msg.startsWith("完成") ? "okline" : "err"}">${pt.msg.startsWith("完成") ? "" : "Booth 已购："}${esc(pt.msg)}</span>`;
     const gt = (d.tasks || []).find(t => t.name === "gumroad");
     if (gt && gt.msg && gt.ended && Date.now() / 1000 - gt.ended < 600) h += `<span class="${gt.msg.startsWith("完成") ? "okline" : "err"}">${gt.msg.startsWith("完成") ? "" : "Gumroad 已购："}${esc(gt.msg)}</span>`;
   }
-  if (d.dlNeedLogin) h += `<span class="err">下载需要登录 Booth <button class="verbtn linkish" id="btnDLLogin">登录</button></span>`;
+  if (d.dlNeedLogin) h += `<span class="err">下载前需登录 Booth <button class="verbtn linkish" id="btnDLLogin">登录</button></span>`;
   if (running.some(t => t.name === "download")) h += `<button class="verbtn linkish" id="btnDLCancel">取消下载</button>`;
-  if ((d.panJobs || []).some(j => j.stage === "login")) h += `<span class="err">下载网盘分享需要登录百度网盘 <button class="verbtn linkish" id="btnBdLogin">登录</button></span>`;
+  if ((d.panJobs || []).some(j => j.stage === "login")) h += `<span class="err">下载网盘分享前需登录百度网盘 <button class="verbtn linkish" id="btnBdLogin">登录</button></span>`;
   if (running.some(t => t.name === "pandl")) h += `<button class="verbtn linkish" id="btnPanCancel">取消网盘下载</button>`;
   if (!running.length) {
     const pt = (d.tasks || []).find(t => t.name === "pandl"), it = (d.tasks || []).find(t => t.name === "import");
     for (const t of [pt, it]) if (t && t.msg && t.ended && Date.now() / 1000 - t.ended < 600) h += `<span class="${/完成|已导入/.test(t.msg) ? "okline" : "err"}">${esc(t.msg)}</span>`;
   }
-  h += `<span class="right"><button class="verbtn" id="btnFeedback">反馈和建议</button><button class="verbtn" id="btnVersion" title="更新公告">v${esc(d.version)}</button></span>`;
+  h += `<span class="right"><button class="verbtn" id="btnFeedback">反馈与建议</button><button class="verbtn" id="btnVersion" title="更新日志">v${esc(d.version)}</button></span>`;
   $("#status").innerHTML = h;
   renderUpdateBtn();
   $("#btnScan").disabled = !!d.busy;
@@ -514,7 +514,7 @@ function applyView() {
   for (const [id, name] of [["#vLib", "lib"], ["#vProj", "proj"], ["#vPipe", "pipe"], ["#vShop", "shop"], ["#vXy", "xianyu"]]) {
     $(id).classList.toggle("on", v === name); $(id).setAttribute("aria-selected", String(v === name));
   }
-  $("#q").placeholder = shop ? "在 Booth 里搜索（可不填）" : xy ? "在闲鱼搜索，按回车" : proj || pipe ? "搜索工程" : "搜索名称、店铺、标签、路径";
+  $("#q").placeholder = shop ? "搜索 Booth 商品（可留空）" : xy ? "搜索闲鱼，按 Enter 确认" : proj || pipe ? "搜索工程" : "搜索名称、店铺、标签、路径";
   $("#sort").hidden = v !== "lib"; $("#shopSort").hidden = !shop;
   $("#btnPanAdd").hidden = shop || proj || pipe; $("#btnScan").hidden = v !== "lib";
   const web = webVisible();
@@ -561,9 +561,9 @@ function renderShopSide() {
     <h3>适配素体</h3><div class="chips">${chips(bases, sh.bases, "sb")}${extra ? `<button class="chip more" id="shAllBases">更多…</button>` : ""}</div>
     <h3>风格</h3><div class="chips">${chips(S.data.styleNames || [], sh.styles, "ss")}</div>
     <h3>显示</h3>
-    <label class="check"><input type="checkbox" data-shf="hideBought"${sh.hideBought ? " checked" : ""}> 不显示已购</label>
-    <label class="check"><input type="checkbox" data-shf="hideOwned"${sh.hideOwned ? " checked" : ""}> 不显示素材库里有的</label>
-    <label class="check"><input type="checkbox" data-shf="adult"${sh.adult ? " checked" : ""}> 包含成人向</label>`;
+    <label class="check"><input type="checkbox" data-shf="hideBought"${sh.hideBought ? " checked" : ""}> 隐藏已购商品</label>
+    <label class="check"><input type="checkbox" data-shf="hideOwned"${sh.hideOwned ? " checked" : ""}> 隐藏素材库已有</label>
+    <label class="check"><input type="checkbox" data-shf="adult"${sh.adult ? " checked" : ""}> 包含成人向内容</label>`;
 }
 function shopVisible() {
   const sh = S.shop;
@@ -583,17 +583,17 @@ function renderShopGrid() {
   const sh = S.shop, list = shopVisible();
   const picked = [...sh.cats, ...sh.bases, ...sh.styles];
   const hidden = sh.items.length - list.length;
-  let rb = `<b>${list.length}</b><span>个商品${hidden ? `（隐藏了 ${hidden} 个）` : ""}</span>`;
+  let rb = `<b>${list.length}</b><span>个商品${hidden ? `（已隐藏 ${hidden} 个）` : ""}</span>`;
   if (picked.length || sh.q) rb += `<span class="picked">${picked.map(esc).join(" + ")}${sh.q ? `${picked.length ? " + " : ""}“${esc(sh.q)}”` : ""}</span><button class="clear" id="shopClear">清除</button>`;
   $("#resultbar").innerHTML = rb;
   const g = $("#grid");
   if (!list.length) {
-    g.innerHTML = `<div class="empty">${sh.loading ? `<h2>正在读取 Booth…</h2>` : sh.err ? `<h2>没能读取 Booth</h2><p>${esc(sh.err)}</p>`
-      : sh.items.length ? `<h2>这一页都被筛掉了</h2>${sh.more ? `<button class="btn" id="shopMore">再看一页</button>` : ""}` : `<h2>没有找到商品</h2><p>少选几个标签试试。</p>`}</div>`;
+    g.innerHTML = `<div class="empty">${sh.loading ? `<h2>正在加载 Booth 商品…</h2>` : sh.err ? `<h2>Booth 加载失败</h2><p>${esc(sh.err)}</p>`
+      : sh.items.length ? `<h2>本页商品均已被筛选隐藏</h2>${sh.more ? `<button class="btn" id="shopMore">加载下一页</button>` : ""}` : `<h2>未找到商品</h2><p>请减少筛选条件后重试。</p>`}</div>`;
     return;
   }
   g.innerHTML = list.map(shopCardHTML).join("") +
-    (sh.more || sh.loading ? `<div class="shopmore">${sh.loading ? `<span class="muted">正在读取…</span>` : `<button class="btn" id="shopMore">加载更多</button>`}</div>` : "");
+    (sh.more || sh.loading ? `<div class="shopmore">${sh.loading ? `<span class="muted">正在加载…</span>` : `<button class="btn" id="shopMore">加载更多</button>`}</div>` : "");
 }
 let shopTimer;
 function shopSoon() { clearTimeout(shopTimer); shopTimer = setTimeout(() => shopSearch(true), 380); }
@@ -607,14 +607,14 @@ async function shopSearch(reset) {
   let r;
   try {
     r = await api("/api/shop/search", { cats: [...sh.cats], bases: [...sh.bases], styles: [...sh.styles], q: sh.q, sort: sh.sort, page: sh.page, adult: sh.adult });
-  } catch (e) { r = { ok: false, err: "软件内部出错" }; }
+  } catch (e) { r = { ok: false, err: "程序内部错误" }; }
   if (seq !== sh.seq) return; // a newer search has started
   sh.loading = false;
   if (r.ok) {
     const have = new Set(sh.items.map(x => x.id));
     sh.items = sh.items.concat((r.items || []).filter(x => !have.has(x.id)));
     sh.more = !!r.more;
-  } else sh.err = r.err || "读取失败";
+  } else sh.err = r.err || "加载失败";
   if (S.view === "shop") renderShopGrid();
 }
 async function openShopItem(id) {
@@ -623,9 +623,9 @@ async function openShopItem(id) {
   S.shop.detail = { loading: true, hit };
   renderShopDrawer();
   let r;
-  try { r = await api("/api/shop/item", { id }); } catch (e) { r = { ok: false, err: "软件内部出错" }; }
+  try { r = await api("/api/shop/item", { id }); } catch (e) { r = { ok: false, err: "程序内部错误" }; }
   if (S.shopOpen !== id) return;
-  S.shop.detail = r.ok ? { item: r.item, hit } : { err: r.err || "读取失败", hit };
+  S.shop.detail = r.ok ? { item: r.item, hit } : { err: r.err || "加载失败", hit };
   renderShopDrawer();
 }
 function renderShopDrawer() {
@@ -636,7 +636,7 @@ function renderShopDrawer() {
   const cover = imgs[0] || hit.thumb || "";
   const bought = it ? it.bought : hit.bought, owned = it ? it.owned : hit.owned;
   let body = "";
-  if (d.loading) body = `<div class="muted small">正在读取商品信息…</div>`;
+  if (d.loading) body = `<div class="muted small">正在加载商品信息…</div>`;
   else if (d.err) body = `<div class="small err">${esc(d.err)}</div>`;
   else {
     if (imgs.length > 1) body += `<div class="sec"><div class="bimgs">${imgs.map(u => `<img loading="lazy" src="/rthumb?u=${encodeURIComponent(boothImg(u, false))}" data-big="${esc(boothImg(u, true))}" alt="">`).join("")}</div></div>`;
@@ -650,9 +650,9 @@ function renderShopDrawer() {
         <div class="btnrow"><button class="btn small" data-sd="trans"${dd.loading ? " disabled" : ""}>${dd.loading ? "翻译中…" : dd.showZh ? "原文" : "翻译"}</button></div></details></div>`;
     }
   }
-  const main = owned ? `<button class="btn primary" data-sd="lib">在素材库查看</button>`
+  const main = owned ? `<button class="btn primary" data-sd="lib">在素材库中查看</button>`
     : bought ? `<button class="btn primary" data-sd="dlall">${ICON.download}<span style="margin-left:6px">下载</span></button>`
-    : `<button class="btn primary" data-sd="booth">在 Booth 打开</button>`;
+    : `<button class="btn primary" data-sd="booth">在 Booth 中打开</button>`;
   dr.innerHTML = `<div class="dhead">
       <div class="dcover">${cover ? `<img src="/rthumb?u=${encodeURIComponent(cover)}" alt="">` : ""}</div>
       <div style="min-width:0;flex:1">
@@ -715,9 +715,9 @@ async function openWeb(u, kind) {
   }
   renderAll();
   let r;
-  try { r = await api("/api/pane/open", { url: u, kind }); } catch (e) { r = { ok: false, err: "软件内部出错" }; }
+  try { r = await api("/api/pane/open", { url: u, kind }); } catch (e) { r = { ok: false, err: "程序内部错误" }; }
   if (!r.ok) {
-    toast(r.err || "页面打不开", 4000);
+    toast(r.err || "页面无法打开", 4000);
     if (covers) { S.web.open[v] = false; renderAll(); }
     return;
   }
@@ -742,9 +742,9 @@ function closeWeb() {
 function renderXySide() {
   $("#side").innerHTML = `<h3>闲鱼</h3>
     <div class="sidelinks"><button class="navitem" data-xy="home"><span>首页</span></button><button class="navitem" data-xy="im"><span>消息</span></button><button class="navitem" data-xy="login"><span>登录</span></button></div>
-    <p class="sidenote">在上面的搜索框输入想找的东西，按回车搜索。登录、聊天、下单都在这里完成，登录会保存在本机。</p>
-    <h3>收进素材库</h3>
-    <p class="sidenote">卖家发来网盘分享后，在聊天里选中整段分享文字（链接和提取码），点页面上方的「收录网盘链接」。</p>`;
+    <p class="sidenote">在顶部搜索框输入关键词，按 Enter 搜索。登录、聊天和下单均可在此完成，登录状态保存在本机。</p>
+    <h3>收录网盘分享</h3>
+    <p class="sidenote">卖家发送网盘分享后，在聊天中选中完整的分享文本（含链接和提取码），再点击页面上方的「收录网盘链接」。</p>`;
 }
 // ---------- 工程 ----------
 async function loadProjects() {
@@ -761,15 +761,15 @@ function renderProjSide() {
   const ps = S.projs || [], busy = (S.data.tasks || []).some(t => t.name === "usage" && t.running);
   $("#side").innerHTML = `<h3>工程</h3>
     <div class="sidelinks"><button class="navitem" id="btnProjAdd"><span>添加工程…</span></button>
-      <button class="navitem" id="btnProjUsage"${busy ? " disabled" : ""}><span>${busy ? "正在统计用到的素材…" : "重新统计用到的素材"}</span></button></div>
-    <p class="sidenote">${ps.length ? `${ps.length} 个工程，` : ""}从设置里的「Unity 工程」文件夹找到。工程里的插件和模型请用 VCC 或 ALCOM 管理。</p>
+      <button class="navitem" id="btnProjUsage"${busy ? " disabled" : ""}><span>${busy ? "正在统计使用情况…" : "重新统计使用情况"}</span></button></div>
+    <p class="sidenote">${ps.length ? `共 ${ps.length} 个工程。` : ""}工程列表来自设置中的「Unity 工程文件夹」；工程内的插件请使用 VCC 或 ALCOM 管理。</p>
     <h3>流水线</h3>
-    <p class="sidenote">在卡片上点「流水线」：把导入的衣服、头发、配饰、道具装到模型上，按你定的层级生成菜单开关和图标，还能让 AI 接着做别的改模操作。</p>
-    <p class="sidenote">没有工程的话，到「流水线」页一键新建基础工程。</p>
-    <div class="sidelinks"><button class="navitem" id="btnNewProj"><span>新建基础工程…</span></button><button class="navitem" id="btnAICfg"><span>设置 AI 服务…</span></button></div>
+    <p class="sidenote">点击卡片上的「流水线」，可将已导入的衣服、头发、配饰和道具装配到模型，按设定的层级生成菜单开关和图标，并可继续通过 AI 执行其他改模操作。</p>
+    <p class="sidenote">尚无工程时，可在「流水线」页新建基础工程。</p>
+    <div class="sidelinks"><button class="navitem" id="btnNewProj"><span>新建基础工程…</span></button><button class="navitem" id="btnAICfg"><span>配置 AI 服务…</span></button></div>
     <h3>封面</h3>
-    <p class="sidenote">在卡片上点「开启封面」，会往那个工程的 Packages 里放一个小插件。之后每次打开工程、保存场景，它会给场景里的模型拍一张正面照当封面，旧的自动删掉。</p>
-    <p class="sidenote">插件只在 Unity 编辑器里运行，不改场景，也不会跟模型一起上传。点「关闭封面」会删掉插件和照片。</p>`;
+    <p class="sidenote">点击卡片上的「开启封面」，将在该工程的 Packages 中安装封面插件，每次打开工程或保存场景时自动截取模型正面图作为封面。</p>
+    <p class="sidenote">插件仅在 Unity 编辑器中运行，不修改场景，也不会随模型上传。关闭封面时将一并移除插件和截图。</p>`;
 }
 function relDay(t) {
   if (!t) return "";
@@ -778,9 +778,9 @@ function relDay(t) {
 }
 function projCardHTML(p) {
   const cover = p.cover ? `<img src="/thumb?w=640&p=${encodeURIComponent(p.cover)}&t=${p.coverAt}" alt="" loading="lazy">`
-    : `<div class="pph">${ICON.cube}<span>${p.helper ? "打开工程或保存场景后，这里会出现模型的正面照" : "开启封面后，会自动给模型拍一张正面照"}</span></div>`;
-  const ver = p.unity ? `<span class="uver${p.editor ? "" : " missing"}" title="${p.editor ? "" : esc(`这台电脑上没找到 Unity ${p.unity}`)}">Unity ${esc(p.unity)}</span>` : "";
-  const opened = p.running ? `<span class="okline">Unity 里开着</span>` : p.opened ? `<span>${relDay(p.opened)}打开过</span>` : "";
+    : `<div class="pph">${ICON.cube}<span>${p.helper ? "打开工程或保存场景后，将在此显示模型正面截图" : "开启封面后，将自动截取模型正面图作为封面"}</span></div>`;
+  const ver = p.unity ? `<span class="uver${p.editor ? "" : " missing"}" title="${p.editor ? "" : esc(`本机未检测到 Unity ${p.unity}`)}">Unity ${esc(p.unity)}</span>` : "";
+  const opened = p.running ? `<span class="okline">已在 Unity 中打开</span>` : p.opened ? `<span>上次打开：${relDay(p.opened)}</span>` : "";
   return `<article class="pcard" data-proj="${esc(p.path)}">
     <div class="pcover${p.cover ? "" : " empty"}">${cover}${p.running ? `<span class="badge-run">已打开</span>` : ""}</div>
     <div class="pbody">
@@ -788,29 +788,29 @@ function projCardHTML(p) {
       <div class="sub" title="${esc(p.path)}">${esc(p.path)}</div>
       <div class="pmeta">${ver}${opened}</div>
       <div class="pacts">
-        <button class="btn small primary" data-pa="unity"${p.running ? ` disabled title="已经在 Unity 里打开了"` : ""}>${ICON.cube}<span>打开 Unity</span></button>
+        <button class="btn small primary" data-pa="unity"${p.running ? ` disabled title="已在 Unity 中打开"` : ""}>${ICON.cube}<span>打开 Unity</span></button>
         <button class="btn small" data-pa="folder">${ICON.folder}<span>文件夹</span></button>
-        <button class="btn small" data-pa="ai" title="到流水线页：给这个工程的模型装素材、生成菜单">${ICON.belt}<span>流水线</span></button>
+        <button class="btn small" data-pa="ai" title="前往流水线：为该工程的模型装配素材并生成菜单">${ICON.belt}<span>流水线</span></button>
         <button class="btn small ghost" data-pa="cover">${p.helper ? "关闭封面" : "开启封面"}</button>
       </div>
-      ${p.assets ? `<button class="puse" data-pa="assets">用到素材库里的 ${p.assets} 个素材</button>` : `<div class="puse none">没用到素材库里的素材</div>`}
+      ${p.assets ? `<button class="puse" data-pa="assets">使用了素材库中的 ${p.assets} 个素材</button>` : `<div class="puse none">未使用素材库中的素材</div>`}
     </div></article>`;
 }
 function renderProjGrid() {
   const all = S.projs, q = S.pq.toLowerCase();
   const g = $("#grid");
-  if (!all) { $("#resultbar").innerHTML = ""; g.innerHTML = `<div class="empty"><h2>正在读取工程</h2></div>`; return; }
+  if (!all) { $("#resultbar").innerHTML = ""; g.innerHTML = `<div class="empty"><h2>正在加载工程…</h2></div>`; return; }
   const list = all.filter(p => !q || (p.name + " " + p.path).toLowerCase().includes(q))
     .sort((a, b) => (b.running - a.running) || (b.opened || 0) - (a.opened || 0) || a.name.localeCompare(b.name));
   $("#resultbar").innerHTML = `<b>${list.length}</b><span>个工程${q ? `（共 ${all.length} 个）` : ""}</span><span class="muted small">按最近打开排序</span>`;
   g.innerHTML = list.length ? list.map(projCardHTML).join("")
-    : `<div class="empty">${all.length ? `<h2>没有符合条件的工程</h2>` : `<h2>还没有 Unity 工程</h2><p>在设置里添加放工程的文件夹，或者直接添加一个工程。</p><button class="btn primary" id="btnProjAdd">添加工程…</button>`}</div>`;
+    : `<div class="empty">${all.length ? `<h2>未找到符合条件的工程</h2>` : `<h2>暂无 Unity 工程</h2><p>可在设置中添加工程所在的文件夹，或直接添加单个工程。</p><button class="btn primary" id="btnProjAdd">添加工程…</button>`}</div>`;
 }
 async function addProject() {
-  const p = await pickInto("选择 Unity 工程文件夹（里面有 Assets）");
+  const p = await pickInto("选择 Unity 工程文件夹（包含 Assets）");
   if (!p) return;
   const r = await api("/api/import/project", { path: p });
-  if (!r.ok) { toast(r.err || "这不是 Unity 工程", 4000); return; }
+  if (!r.ok) { toast(r.err || "所选文件夹不是 Unity 工程", 4000); return; }
   toast("已添加：" + r.name); await load(); loadProjects();
 }
 async function projAction(what, path, btn) {
@@ -821,16 +821,16 @@ async function projAction(what, path, btn) {
   if (what === "unity") {
     btn.disabled = true;
     const r = await api("/api/project/open", { path: p.path });
-    if (!r.ok) { btn.disabled = false; toast(r.err || "没能打开", 5000); return; }
-    toast(`正在用 Unity ${p.unity} 打开 ${p.name}`, 3500); setTimeout(loadProjects, 4000); return;
+    if (!r.ok) { btn.disabled = false; toast(r.err || "打开失败", 5000); return; }
+    toast(`正在使用 Unity ${p.unity} 打开 ${p.name}`, 3500); setTimeout(loadProjects, 4000); return;
   }
   if (what === "cover") {
     const on = !p.helper;
-    if (on && !confirm(`给「${p.name}」开启封面？\n\n会在这个工程的 Packages 里放一个小插件（com.miovrc.projectcard）。打开工程、保存场景时，它给场景里的模型拍一张正面照当封面。\n只在 Unity 编辑器里运行，不改场景，也不会跟模型一起上传。`)) return;
-    if (!on && !confirm(`关闭「${p.name}」的封面？会删掉插件和拍好的照片。`)) return;
+    if (on && !confirm(`为「${p.name}」开启封面？\n\n将在该工程的 Packages 中安装封面插件（com.miovrc.projectcard），在打开工程或保存场景时自动截取模型正面图作为封面。\n插件仅在 Unity 编辑器中运行，不修改场景，也不会随模型上传。`)) return;
+    if (!on && !confirm(`关闭「${p.name}」的封面？将移除插件和已生成的截图。`)) return;
     const r = await api("/api/project/cover", { path: p.path, on });
-    if (!r.ok) { toast(r.err || "没能完成", 5000); return; }
-    toast(on ? (r.running ? "已开启。切回 Unity，等它编译完就会拍封面" : "已开启。下次打开这个工程时会拍封面") : "已关闭封面", 4500);
+    if (!r.ok) { toast(r.err || "操作失败", 5000); return; }
+    toast(on ? (r.running ? "封面已开启，切换到 Unity 并等待编译完成后自动生成" : "封面已开启，下次打开该工程时自动生成") : "封面已关闭", 4500);
     loadProjects();
   }
 }
@@ -839,9 +839,9 @@ function renderWeb() {
   const key = mode + "|" + S.view + "|" + (S.web.st.open === false);
   if (host.dataset.k !== key) {
     host.dataset.k = key;
-    host.innerHTML = !mode ? `<div class="webnote"><h2>没有内置浏览器</h2><p>没找到 WebView2、Edge 或 Chrome，页面会在默认浏览器里打开。</p><button class="btn" data-w="reopen">在浏览器打开闲鱼</button></div>`
+    host.innerHTML = !mode ? `<div class="webnote"><h2>内置浏览器不可用</h2><p>未检测到 WebView2、Edge 或 Chrome，页面将在默认浏览器中打开。</p><button class="btn" data-w="reopen">在浏览器中打开闲鱼</button></div>`
       : S.web.st.open === false ? `<div class="webnote"><h2>页面已关闭</h2><button class="btn" data-w="reopen">重新打开</button></div>`
-      : mode === "window" ? `<div class="webnote"><h2>页面在单独的窗口里</h2><p>这台电脑没有 WebView2，页面开在一个单独的窗口中；上面的按钮可以控制它。</p><button class="btn" data-w="front">显示窗口</button></div>`
+      : mode === "window" ? `<div class="webnote"><h2>页面已在独立窗口中打开</h2><p>本机未安装 WebView2，页面在独立窗口中显示，可通过上方按钮操作。</p><button class="btn" data-w="front">显示窗口</button></div>`
       : `<div class="webnote muted">正在打开…</div>`;
   }
   renderWebBar();
@@ -854,9 +854,9 @@ function renderWebBar() {
     <button class="wb" data-w="forward" title="前进"${st.fwd ? "" : " disabled"}>${ICON.fwd}</button>
     <button class="wb" data-w="${st.loading ? "stop" : "reload"}" title="${st.loading ? "停止" : "刷新"}">${st.loading ? ICON.x : ICON.upd}</button>
     <div class="wtitle" title="${esc(st.url || "")}"><b>${esc(st.title || (st.loading ? "正在打开…" : st.url || ""))}</b><span>${esc(st.url || "")}</span></div>
-    ${xy ? `<button class="btn small" data-w="grab" title="把聊天里选中的网盘分享收进素材库">收录网盘链接</button>`
-      : pan && S.web.loaded === "gumroad" ? `<span class="wnote">${gm.loggedIn ? "Gumroad：" + esc(gm.name || "已登录") : gm.waiting ? "登录后会自动读取已购" : ""}</span>`
-      : pan ? `<span class="wnote">${bd.loggedIn ? "百度网盘：" + esc(bd.name || "已登录") : bd.waiting ? "登录后会自动保存" : ""}</span>`
+    ${xy ? `<button class="btn small" data-w="grab" title="将聊天中选中的网盘分享收录到素材库">收录网盘链接</button>`
+      : pan && S.web.loaded === "gumroad" ? `<span class="wnote">${gm.loggedIn ? "Gumroad：" + esc(gm.name || "已登录") : gm.waiting ? "登录后自动同步已购" : ""}</span>`
+      : pan ? `<span class="wnote">${bd.loggedIn ? "百度网盘：" + esc(bd.name || "已登录") : bd.waiting ? "登录后自动保存登录状态" : ""}</span>`
       : `<button class="btn small" data-w="sync"${S.data.purchaseBusy ? " disabled" : ""}>${S.data.purchaseBusy ? "正在同步…" : "同步已购"}</button>`}
     <button class="wb" data-w="copy" title="复制链接"${st.url ? "" : " disabled"}>${ICON.copy}</button>
     <button class="wb" data-w="external" title="在默认浏览器中打开"${st.url ? "" : " disabled"}>${ICON.ext}</button>
@@ -878,7 +878,7 @@ async function webAction(w) {
     case "grab": {
       const r = await api("/api/pane/act", { act: "selection" });
       const text = (r.text || "").trim();
-      if (!/pan\.baidu\.com|pan\.quark\.cn|aliyundrive|alipan|123pan|lanzou/i.test(text)) { toast("先在聊天里选中网盘分享文字（链接和提取码），再点这里", 4000); return; }
+      if (!/pan\.baidu\.com|pan\.quark\.cn|aliyundrive|alipan|123pan|lanzou/i.test(text)) { toast("请先在聊天中选中网盘分享文本（含链接和提取码）", 4000); return; }
       openPanAdd(text); return;
     }
   }
@@ -927,7 +927,7 @@ setInterval(placePane, 120);
 function findAsset(key) { return (S.data.assets || []).find(a => a.key === key); }
 async function openPath(p) {
   const r = await api("/api/open", { path: p });
-  if (!r.ok) toast(r.err || "打不开这个位置");
+  if (!r.ok) toast(r.err || "无法打开该位置");
 }
 function shareLink(u) {
   let url = (u.shareUrl || "").trim();
@@ -935,7 +935,7 @@ function shareLink(u) {
   return url;
 }
 function panPathURL(p) { return "https://pan.baidu.com/disk/main#/index?category=all&path=" + encodeURIComponent(p.trim()); }
-async function openURL(u) { const r = await api("/api/openurl", { url: u }); if (!r.ok) toast(r.err || "打不开链接"); }
+async function openURL(u) { const r = await api("/api/openurl", { url: u }); if (!r.ok) toast(r.err || "无法打开链接"); }
 async function copyText(s, msg) {
   try { await navigator.clipboard.writeText(s); toast(msg || "已复制"); }
   catch (e) { const ta = document.createElement("textarea"); ta.value = s; document.body.append(ta); ta.select(); document.execCommand("copy"); ta.remove(); toast(msg || "已复制"); }
@@ -956,7 +956,7 @@ function boothURL(a) {
 function panLine(a) {
   const l = a.pan;
   if (a.panPath) return "网盘：" + a.panPath.split("/").filter(Boolean).slice(-3).join(" / ");
-  if (!l) return S.data.tasks && (S.data.tasks.find(t => t.name === "pan") || {}).running ? "读取中…" : "百度网盘分享";
+  if (!l) return S.data.tasks && (S.data.tasks.find(t => t.name === "pan") || {}).running ? "正在加载…" : "百度网盘分享";
   if (l.err && !l.files) return "网盘：" + l.err;
   return `百度网盘，${l.count} 个文件，${fmtSize(l.size)}`;
 }
@@ -971,14 +971,14 @@ async function startSync() {
     renderAll();
   }
   const r = await api("/api/purchases/sync", {});
-  toast(!r.ok ? "正在同步" : mode === "native" ? "在下面的 Booth 页面登录后，会自动读取已购" : mode ? "在打开的窗口里登录 Booth，登录后会自动读取" : "已打开 Booth 窗口，登录后自动读取", 4000);
+  toast(!r.ok ? "正在同步" : mode === "native" ? "请在下方的 Booth 页面登录，登录后自动同步已购" : mode ? "请在打开的窗口中登录 Booth，登录后自动同步已购" : "已打开 Booth 窗口，登录后自动同步已购", 4000);
   S.data.purchaseBusy = true; renderStatus(); poll(true);
   if (mode) { placedKey = ""; webPoll(true); }
 }
 async function pickInto(title) {
   const r = await api("/api/pickfolder", { title });
   if (r.ok) return r.path;
-  if (!r.cancelled) toast(r.err || "打不开选择窗口", 4000);
+  if (!r.cancelled) toast(r.err || "无法打开文件夹选择窗口", 4000);
   return "";
 }
 
@@ -1020,7 +1020,7 @@ function panTree(files, depth, prefix, parts, pick) {
     }
     if (!f.d) return `<div class="pf">${box}${pick ? `<i class="fi"></i>` : ""}<span class="nm">${esc(f.n)}</span>${got}${tag ? `<span class="tags">${tag}</span>` : ""}${extTag(f.n)}<span class="s">${fmtSize(f.s)}</span></div>`;
     const open = S.panOpen.has(path) || (depth === 0 && few && !S.panClosed.has(path));
-    return `<details data-pp="${esc(path)}"${open ? " open" : ""}><summary>${box}${ICON.folder}<span class="nm">${esc(f.n)}</span>${got}${tag ? `<span class="tags">${tag}</span>` : ""}${f.p ? `<span class="muted small">（未列全）</span>` : ""}${pick ? `<span class="s">${fmtSize(panNodeSize(f))}</span>` : ""}</summary>
+    return `<details data-pp="${esc(path)}"${open ? " open" : ""}><summary>${box}${ICON.folder}<span class="nm">${esc(f.n)}</span>${got}${tag ? `<span class="tags">${tag}</span>` : ""}${f.p ? `<span class="muted small">（未完全列出）</span>` : ""}${pick ? `<span class="s">${fmtSize(panNodeSize(f))}</span>` : ""}</summary>
       <div class="kids">${panTree(f.c, depth + 1, path, parts, pick)}</div></details>`;
   }).join("");
 }
@@ -1077,18 +1077,18 @@ function panSelBar(a) {
   if (!S.panSel.size) return "";
   const busy = (j => j && !["done", "failed", "login"].includes(j.stage))(panJobFor(a));
   return `<div class="panselbar" id="panselbar"><span>${esc(panSelLine(a))}</span><span class="spacer"></span>
-    ${busy ? "" : `<button class="btn small primary" data-d="pandlsel">${ICON.download}<span>下载所选</span></button>`}<button class="btn small ghost" data-d="panselclear">清除选择</button></div>`;
+    ${busy ? "" : `<button class="btn small primary" data-d="pandlsel">${ICON.download}<span>下载所选</span></button>`}<button class="btn small ghost" data-d="panselclear">取消选择</button></div>`;
 }
 // one line on what the share holds: which base bodies, and what comes with them
 function panSummary(a) {
   const ps = a.panParts || [];
   if (ps.length < 2) return "";
   const bases = [...new Set(ps.flatMap(p => p.bases || []))];
-  const extra = [["psd", "PSD 源文件"], ["material", "材质包"], ["doc", "说明"], ["bonus", "特典"]].filter(([k]) => ps.some(p => p.kind === k)).map(x => x[1]);
+  const extra = [["psd", "PSD 源文件"], ["material", "材质包"], ["doc", "说明文档"], ["bonus", "特典"]].filter(([k]) => ps.some(p => p.kind === k)).map(x => x[1]);
   const n = ps.filter(p => p.kind === "variant").length;
   return `<div class="pansum">
     ${bases.length ? `<div class="r"><span class="k">适配素体</span><span class="v">${bases.map(b => `<span class="base">${esc(b)}</span>`).join("")}</span></div>` : ""}
-    <div class="r"><span class="k">内容</span><span class="v">${n ? `${n} 个下载` : ""}${extra.length ? `${n ? "，另有 " : ""}${extra.join("、")}` : ""}</span></div></div>`;
+    <div class="r"><span class="k">内容</span><span class="v">${n ? `${n} 个下载项` : ""}${extra.length ? `${n ? "，另有 " : ""}${extra.join("、")}` : ""}</span></div></div>`;
 }
 function panSec(a) {
   const u = a.user, l = a.pan, running = taskRunning("pan");
@@ -1096,23 +1096,23 @@ function panSec(a) {
   const pick = panPickable(a) ? { set: S.panSel, got: got.includes("/") ? [] : got } : null;
   let list = "";
   if (u.shareUrl) {
-    if (!l) list = `<div class="muted small panmsg">${running ? "读取中…" : "保存后读取文件列表"}</div>`;
-    else if (l.err && !(l.files || []).length) list = `<div class="small err panmsg">读取失败：${esc(l.err)}</div>`;
-    else list = `<div class="panhead"><b>${l.count} 个文件</b><span>${fmtSize(l.size)}</span>${l.truncated ? `<span class="muted small">只列出了一部分</span>` : ""}<span class="muted small right">读取于 ${esc(fmtTime(l.fetched))}</span></div>
+    if (!l) list = `<div class="muted small panmsg">${running ? "正在加载…" : "保存后加载文件列表"}</div>`;
+    else if (l.err && !(l.files || []).length) list = `<div class="small err panmsg">加载失败：${esc(l.err)}</div>`;
+    else list = `<div class="panhead"><b>${l.count} 个文件</b><span>${fmtSize(l.size)}</span>${l.truncated ? `<span class="muted small">仅列出部分文件</span>` : ""}<span class="muted small right">更新于 ${esc(fmtTime(l.fetched))}</span></div>
       ${panSummary(a)}
-      ${pick && !S.panSel.size ? `<div class="hint2 pickhint">只要其中一部分？勾选要下载的文件或文件夹。</div>` : ""}
-      <div class="pantree${pick ? " picking" : ""}">${panTree(l.files, 0, "", new Map((a.panParts || []).map(p => [p.path, p])), pick)}</div>${pick ? panSelBar(a) : ""}${l.err ? `<div class="small err">重新读取失败：${esc(l.err)}</div>` : ""}`;
+      ${pick && !S.panSel.size ? `<div class="hint2 pickhint">如只需部分内容，请勾选要下载的文件或文件夹。</div>` : ""}
+      <div class="pantree${pick ? " picking" : ""}">${panTree(l.files, 0, "", new Map((a.panParts || []).map(p => [p.path, p])), pick)}</div>${pick ? panSelBar(a) : ""}${l.err ? `<div class="small err">刷新失败：${esc(l.err)}</div>` : ""}`;
   }
   if (a.panParent) return panItemSec(a, list);
-  if (a.splitInto || a.canSplit) list = `<div class="splitnote">${a.splitInto ? `已拆成 ${a.splitInto} 个素材` : `包含 ${a.canSplit} 个素材`}
-      <button class="btn small" data-d="nosplit">${a.splitInto ? "合并显示" : "拆开显示"}</button></div>` + list;
-  const head = `<h4 class="withact">${a.panOnly ? "网盘内容" : "网盘"}${u.shareUrl ? `<button class="h4act" data-d="panrefresh"${running ? " disabled" : ""}>${running ? "读取中…" : "重新读取"}</button>` : ""}</h4>`;
+  if (a.splitInto || a.canSplit) list = `<div class="splitnote">${a.splitInto ? `已拆分为 ${a.splitInto} 个素材` : `包含 ${a.canSplit} 个素材`}
+      <button class="btn small" data-d="nosplit">${a.splitInto ? "合并显示" : "拆分显示"}</button></div>` + list;
+  const head = `<h4 class="withact">${a.panOnly ? "网盘内容" : "网盘"}${u.shareUrl ? `<button class="h4act" data-d="panrefresh"${running ? " disabled" : ""}>${running ? "正在刷新…" : "刷新"}</button>` : ""}</h4>`;
   // a share-only asset: what is in it comes first, the link fields after
   return `<div class="sec">${head}${a.panOnly ? list : ""}
-      <div class="field${a.panOnly ? " gap" : ""}"><label>粘贴分享</label><input id="f_paste" placeholder="粘贴分享文字，自动识别链接和提取码"></div>
+      <div class="field${a.panOnly ? " gap" : ""}"><label>分享文本</label><input id="f_paste" placeholder="粘贴分享文本，自动识别链接和提取码"></div>
       <div class="field"><label>分享链接</label><input id="f_shareUrl" value="${esc(u.shareUrl || "")}" placeholder="https://pan.baidu.com/s/..."></div>
-      <div class="field"><label>提取码</label><div class="inline"><input id="f_sharePwd" value="${esc(u.sharePwd || "")}" placeholder="可不填"><button class="btn" data-d="copypwd">复制</button></div></div>
-      <div class="field"><label>网盘路径</label><div class="inline"><input id="f_panPath" value="${esc(u.panPath || "")}" placeholder="可不填"><button class="btn" data-d="openpanpath">打开</button></div></div>
+      <div class="field"><label>提取码</label><div class="inline"><input id="f_sharePwd" value="${esc(u.sharePwd || "")}" placeholder="选填"><button class="btn" data-d="copypwd">复制</button></div></div>
+      <div class="field"><label>网盘路径</label><div class="inline"><input id="f_panPath" value="${esc(u.panPath || "")}" placeholder="选填"><button class="btn" data-d="openpanpath">打开</button></div></div>
       ${a.panOnly ? "" : list}
     </div>`;
 }
@@ -1122,18 +1122,18 @@ function panItemSec(a, list) {
     <div class="fromshare"><div><div class="muted small">来自分享</div><div class="nm">${esc(parent ? parent.name : "网盘分享")}</div>
       <div class="muted small">${esc(a.panPath)}</div></div>
       <div class="btnrow"><button class="btn small" data-d="pan">打开网盘分享</button><button class="btn small" data-d="copypwd">复制提取码</button>
-      ${parent ? `<button class="btn small ghost" data-vgo="${esc(parent.key)}">整个分享</button>` : ""}</div></div>
+      ${parent ? `<button class="btn small ghost" data-vgo="${esc(parent.key)}">查看完整分享</button>` : ""}</div></div>
     ${list}
     <input id="f_paste" type="hidden" value=""><input id="f_shareUrl" type="hidden" value=""><input id="f_sharePwd" type="hidden" value="${esc(a.user.sharePwd || "")}"><input id="f_panPath" type="hidden" value="">
   </div>`;
 }
-const BOOTH_SRC = { user: "手动关联", name: "按文件夹名里的编号识别", url: "按素材里的 Booth 链接识别", library: "来自已购记录", auto: "按名称自动匹配，请确认" };
+const BOOTH_SRC = { user: "手动关联", name: "根据文件夹名中的商品编号识别", url: "根据素材内的 Booth 链接识别", library: "来自已购记录", auto: "按名称自动匹配，待确认" };
 function newsTitle(a) {
   const out = [];
   if (a.newerOnBooth) out.push(`Booth 有新版本 ${a.newerOnBooth}（本地 ${a.localVer}）`);
-  if (a.boothNews) out.push("商品页有改动：" + a.boothNews);
-  if (a.panNews) out.push(`分享有变化：新增 ${(a.panNews.added || []).length}，删除 ${(a.panNews.removed || []).length}`);
-  if (a.shareErr) out.push("分享读取失败：" + a.shareErr);
+  if (a.boothNews) out.push("商品页有更新：" + a.boothNews);
+  if (a.panNews) out.push(`分享内容有变更：新增 ${(a.panNews.added || []).length} 个，删除 ${(a.panNews.removed || []).length} 个`);
+  if (a.shareErr) out.push("分享加载失败：" + a.shareErr);
   return out.join("\n");
 }
 function fileList(paths, max) {
@@ -1146,17 +1146,17 @@ function newsSec(a) {
   let h = "";
   if (a.newerOnBooth) h += `<div class="news"><div class="t">Booth 有新版本 <b>${esc(a.newerOnBooth)}</b>（本地 ${esc(a.localVer)}）</div>
     <div class="btnrow">${a.newerDl ? `<button class="btn small" data-dl="${esc(a.newerDl)}">下载新版本</button>` : `<button class="btn small" data-d="buypage">打开下载页</button>`}</div></div>`;
-  if (a.boothNews) h += `<div class="news"><div class="t">商品页有改动（${esc(fmtTime(a.boothNewsAt))}）：${esc(a.boothNews)}</div>
-    <div class="btnrow"><button class="btn small" data-d="booth">打开商品页</button><button class="btn small ghost" data-seen="booth">知道了</button></div></div>`;
+  if (a.boothNews) h += `<div class="news"><div class="t">商品页有更新（${esc(fmtTime(a.boothNewsAt))}）：${esc(a.boothNews)}</div>
+    <div class="btnrow"><button class="btn small" data-d="booth">打开商品页</button><button class="btn small ghost" data-seen="booth">标为已读</button></div></div>`;
   if (a.panNews) {
     const n = a.panNews;
-    h += `<div class="news"><div class="t">分享有变化（${esc(fmtTime(n.at))}）</div>
+    h += `<div class="news"><div class="t">分享内容有变更（${esc(fmtTime(n.at))}）</div>
       ${(n.added || []).length ? `<div class="d">新增 ${n.added.length} 个：${fileList(n.added, 6)}</div>` : ""}
       ${(n.removed || []).length ? `<div class="d">删除 ${n.removed.length} 个：${fileList(n.removed, 4)}</div>` : ""}
-      <div class="btnrow"><button class="btn small" data-d="pan">打开网盘分享</button><button class="btn small ghost" data-seen="pan">知道了</button></div></div>`;
+      <div class="btnrow"><button class="btn small" data-d="pan">打开网盘分享</button><button class="btn small ghost" data-seen="pan">标为已读</button></div></div>`;
   }
-  if (a.shareErr) h += `<div class="news warn"><div class="t">分享读取失败：${esc(a.shareErr)}</div>
-    <div class="d">链接可能失效了，下面是上次读到的内容。</div></div>`;
+  if (a.shareErr) h += `<div class="news warn"><div class="t">分享加载失败：${esc(a.shareErr)}</div>
+    <div class="d">链接可能已失效，以下为上次加载的内容。</div></div>`;
   return `<div class="sec"><h4>更新</h4>${h}</div>`;
 }
 // the other downloads of the same product
@@ -1173,9 +1173,9 @@ function variantSec(a) {
       <div class="vl">${label}</div>
       <div class="vn"><div class="t" title="${esc(m.name)}">${esc(m.name)}</div><div class="w" title="${esc(where)}">${esc(where)}</div></div>
       <span class="vs">${m.virtual ? "未下载" : fmtSize(m.size)}</span>
-      ${u ? `<span class="st ${u}">${u === "used" ? "在用" : "部分"}</span>` : ""}
+      ${u ? `<span class="st ${u}">${u === "used" ? "使用中" : "部分使用"}</span>` : ""}
       <button class="act" data-vopen="${esc(m.key)}" title="${m.virtual ? "下载页" : m.panOnly ? "网盘" : "打开文件夹"}">${m.virtual ? ICON.download : m.panOnly ? ICON.cloud : ICON.folder}</button>
-      ${m.key === a.key ? `<span class="vcur">正在看</span>` : `<button class="btn small ghost" data-vgo="${esc(m.key)}">查看</button>`}
+      ${m.key === a.key ? `<span class="vcur">当前</span>` : `<button class="btn small ghost" data-vgo="${esc(m.key)}">查看</button>`}
     </div>`;
   }).join("");
   return `<div class="sec"><h4>版本（${all.length}）</h4>
@@ -1191,8 +1191,8 @@ function psdSec(a) {
       <span class="d">${f.w ? f.w + "×" + f.h : ""}</span><span class="s">${fmtSize(f.size)}</span>
       <button class="act" data-psd="${esc(f.path)}" title="打开文件夹">${ICON.folder}</button></div>`).join("");
   const more = [];
-  if (a.psdInZip) more.push(`压缩包里有 ${a.psdInZip} 个`);
-  if (a.psdCount - listed - (a.psdInZip || 0) > 0) more.push(`另有 ${a.psdCount - listed - (a.psdInZip || 0)} 个没列出`);
+  if (a.psdInZip) more.push(`压缩包内 ${a.psdInZip} 个`);
+  if (a.psdCount - listed - (a.psdInZip || 0) > 0) more.push(`另有 ${a.psdCount - listed - (a.psdInZip || 0)} 个未列出`);
   return `<div class="sec"><h4>PSD 源文件（${a.psdCount}）</h4>
     ${rows ? `<div class="psdrows">${rows}</div>` : ""}${more.length ? `<div class="muted small" style="margin-top:6px">${more.join("，")}</div>` : ""}</div>`;
 }
@@ -1205,8 +1205,8 @@ function styleField(a) {
   const auto = !u.stylesSet && !S.stylePick && (a.autoStyles || []).length;
   return `<div class="field"><label>风格标签</label><div>
       <div class="stchips">${styleList().map(st => `<button class="stchip${picked.has(st) ? " on" : ""}" data-st="${esc(st)}">${esc(st)}</button>`).join("")}
-        <input id="f_newstyle" class="stnew" placeholder="＋ 新标签" maxlength="12"></div>
-      ${auto || u.stylesSet || S.stylePick ? `<div class="hint">${auto ? "自动" : `<button class="linkbtn" data-d="stauto">恢复自动</button>`}</div>` : ""}
+        <input id="f_newstyle" class="stnew" placeholder="＋ 添加标签" maxlength="12"></div>
+      ${auto || u.stylesSet || S.stylePick ? `<div class="hint">${auto ? "自动识别" : `<button class="linkbtn" data-d="stauto">恢复自动识别</button>`}</div>` : ""}
     </div></div>`;
 }
 function boothSec(a) {
@@ -1222,13 +1222,13 @@ function boothSec(a) {
     h += `<div class="bitem">
       ${imgs.length ? `<div class="bimgs">${imgs.map(u => `<img loading="lazy" src="/rthumb?u=${encodeURIComponent(boothImg(u, false))}" data-big="${esc(boothImg(u, true))}" alt="">`).join("")}</div>` : ""}
       <div class="bname">${esc(b && b.name ? b.name : "Booth #" + a.boothId)}</div>
-      <div class="muted small">${[b && b.shop, b && b.price, b && b.category].filter(Boolean).map(esc).join("　") || (taskRunning("booth") ? "读取中…" : "")}</div>
+      <div class="muted small">${[b && b.shop, b && b.price, b && b.category].filter(Boolean).map(esc).join("　") || (taskRunning("booth") ? "正在加载…" : "")}</div>
       ${b && (b.tags || []).length ? `<div class="btags">${b.tags.slice(0, 14).map(t => `<span>${esc(t)}</span>`).join("")}</div>` : ""}
       ${BOOTH_SRC[src] ? `<div class="hint bsrc${src === "auto" ? " warn" : ""}">${esc(BOOTH_SRC[src])}</div>` : ""}
       <div class="btnrow">
         <button class="btn small" data-d="booth">打开商品页</button>
-        ${src === "auto" ? `<button class="btn small" data-d="bconfirm">是这个</button><button class="btn small" data-d="breject">不是这个</button>` : ""}
-        <button class="btn small" data-d="bchange">换一个</button>
+        ${src === "auto" ? `<button class="btn small" data-d="bconfirm">确认匹配</button><button class="btn small" data-d="breject">匹配有误</button>` : ""}
+        <button class="btn small" data-d="bchange">重新关联</button>
         ${src === "user" ? `<button class="btn small ghost" data-d="bunlink">取消关联</button>` : ""}
       </div></div>
       ${b && b.desc ? descBlock(a) : ""}
@@ -1261,20 +1261,20 @@ function showBig(list, i, direct) {
 function searchPanel(a) {
   const bs = S.bs && S.bs.key === a.key ? S.bs : { key: a.key, q: a.boothQuery || a.name, hits: a.boothHits || null };
   let res = "";
-  if (bs.loading) res = `<div class="muted small">搜索中…</div>`;
+  if (bs.loading) res = `<div class="muted small">正在搜索…</div>`;
   else if (bs.err) res = `<div class="small err">${esc(bs.err)}</div>`;
-  else if (bs.hits && !bs.hits.length) res = `<div class="muted small">没有结果</div>`;
+  else if (bs.hits && !bs.hits.length) res = `<div class="muted small">无搜索结果</div>`;
   else if (bs.hits) res = `<div class="bhits">${bs.hits.slice(0, 12).map(h => `<div class="bhit${h.full ? " full" : ""}">
       <img loading="lazy" src="/rthumb?u=${encodeURIComponent(h.thumb || "")}" alt="">
       <div class="t" title="${esc(h.name)}">${esc(h.name)}</div>
       <div class="m">${esc(h.shop || h.shopSub || "")}${h.price ? "　" + esc(h.price) : ""}</div>
       <div class="m">${esc(h.category || "")}</div>
-      <div class="hb"><button class="btn small" data-link="${esc(h.id)}">就是这个</button><button class="btn small ghost" data-url="${esc(boothItemURL(h.id))}">打开</button></div>
+      <div class="hb"><button class="btn small" data-link="${esc(h.id)}">关联</button><button class="btn small ghost" data-url="${esc(boothItemURL(h.id))}">查看</button></div>
     </div>`).join("")}</div>`;
-  return `<div class="bsearch"><input id="bs_q" value="${esc(bs.q || "")}" placeholder="商品名">
+  return `<div class="bsearch"><input id="bs_q" value="${esc(bs.q || "")}" placeholder="输入商品名称">
       <button class="btn small" data-d="bsearch">${ICON.search}<span>搜索</span></button>
-      <button class="btn small ghost" data-d="bopen">在浏览器搜</button>
-      ${!a.boothId && !a.user.noBooth ? `<button class="btn small ghost" data-d="bnone">不是 Booth 商品</button>` : ""}</div>${res}`;
+      <button class="btn small ghost" data-d="bopen">在浏览器中搜索</button>
+      ${!a.boothId && !a.user.noBooth ? `<button class="btn small ghost" data-d="bnone">非 Booth 商品</button>` : ""}</div>${res}`;
 }
 function descBlock(a) {
   const b = a.booth, d = S.desc[a.key] || {};
@@ -1301,13 +1301,13 @@ function purchaseSec(a) {
     ${dlRows(p)}
     <div class="order"><span class="d">${esc(((p.orders || [])[0] || {}).date || "")}</span><span></span>
       <button class="btn small" data-url="${esc(p.pageUrl)}">下载页</button>${p.productUrl ? `<button class="btn small" data-url="${esc(p.productUrl)}">商品页</button>` : ""}<button class="btn small" data-url="${esc(p.libraryUrl)}">已购列表</button></div>
-    ${p.matched ? `<div class="hint" style="margin-top:6px">按下载位置或文件名对应</div>` : ""}
+    ${p.matched ? `<div class="hint" style="margin-top:6px">已按下载位置或文件名匹配本地文件</div>` : ""}
   </div>`;
   return `<div class="sec" id="dlsec"><h4 class="withact">Booth 已购${p.gift ? "（礼物）" : ""}${(p.dls || []).length > 1 ? `<button class="h4act" data-d="dlall">全部下载</button>` : ""}</h4>
     ${dlRows(p)}
     ${orders}
     <div class="order"><span></span><button class="btn small" data-url="${esc(p.libraryUrl)}">已购列表</button></div>
-    ${p.matched ? `<div class="hint" style="margin-top:6px">按文件名对应</div>` : ""}
+    ${p.matched ? `<div class="hint" style="margin-top:6px">已按文件名匹配本地文件</div>` : ""}
   </div>`;
 }
 // ---------- one-click import into a Unity project ----------
@@ -1328,14 +1328,14 @@ function projSelect(id) {
 }
 function chosenProject(id) {
   const v = ($("#" + (id || "imp_proj")) || {}).value || "";
-  if (!v || v === "__pick") { toast("先选择要导入的 Unity 工程"); return ""; }
+  if (!v || v === "__pick") { toast("请先选择目标 Unity 工程"); return ""; }
   return v;
 }
 async function pickProject(sel) {
-  const p = await pickInto("选择 Unity 工程文件夹（里面有 Assets）");
+  const p = await pickInto("选择 Unity 工程文件夹（包含 Assets）");
   if (!p) { sel.value = lastProject() || ""; return; }
   const r = await api("/api/import/project", { path: p });
-  if (!r.ok) { toast(r.err || "这不是 Unity 工程", 4000); sel.value = lastProject() || ""; return; }
+  if (!r.ok) { toast(r.err || "所选文件夹不是 Unity 工程", 4000); sel.value = lastProject() || ""; return; }
   setProject(r.path); await load();
 }
 function impJobFor(a) {
@@ -1349,24 +1349,24 @@ function impResult(j) {
     const tool = /7-Zip/.test(j.err || "");
     return `<div class="impres err"><div>${esc(j.err || j.msg || "导入失败")}</div>
       ${(j.failed || []).length ? `<div class="small">${j.failed.map(esc).join("<br>")}</div>` : ""}
-      <div class="btnrow">${tool ? `<button class="btn small" data-url="https://www.7-zip.org/">下载 7-Zip</button>` : ""}<button class="btn small ghost" data-d="impdismiss">知道了</button></div></div>`;
+      <div class="btnrow">${tool ? `<button class="btn small" data-url="https://www.7-zip.org/">下载 7-Zip</button>` : ""}<button class="btn small ghost" data-d="impdismiss">关闭</button></div></div>`;
   }
   const tops = (j.tops || []).slice(0, 4).join("、") + ((j.tops || []).length > 4 ? " 等" : "");
-  return `<div class="impres ok"><div>已导入到 <b>${esc(proj)}</b>：${(j.imported || []).length} 个 unitypackage，${j.files} 个文件</div>
-    <div class="small">${tops ? `放在 ${esc(tops)}。` : ""}Unity 开着的话，切回 Unity 就会刷新；没开就等下次打开工程。</div>
-    ${j.removed ? `<div class="small">已把 ${j.removed} 个压缩包移到回收站。</div>` : ""}
-    ${(j.failed || []).length ? `<div class="small warnline">没解压开：${j.failed.map(esc).join("；")}</div>` : ""}
-    <div class="btnrow"><button class="btn small primary" data-aidress="${esc(j.project)}">${ICON.belt}<span>去流水线装上它</span></button><button class="btn small" data-gopen="${esc(j.project)}">打开工程文件夹</button><button class="btn small ghost" data-d="impdismiss">知道了</button></div></div>`;
+  return `<div class="impres ok"><div>已导入 <b>${esc(proj)}</b>：${(j.imported || []).length} 个 unitypackage，共 ${j.files} 个文件</div>
+    <div class="small">${tops ? `位置：${esc(tops)}。` : ""}若 Unity 已打开，切换到 Unity 窗口即可刷新；否则将在下次打开工程时生效。</div>
+    ${j.removed ? `<div class="small">已将 ${j.removed} 个压缩包移至回收站。</div>` : ""}
+    ${(j.failed || []).length ? `<div class="small warnline">解压失败：${j.failed.map(esc).join("；")}</div>` : ""}
+    <div class="btnrow"><button class="btn small primary" data-aidress="${esc(j.project)}">${ICON.belt}<span>前往流水线装配</span></button><button class="btn small" data-gopen="${esc(j.project)}">打开工程文件夹</button><button class="btn small ghost" data-d="impdismiss">关闭</button></div></div>`;
 }
 function impProgress(j) {
   if (j.stage === "choose") {
-    return `<div class="impchoose"><div>这个素材有不同素体的版本，选要导入的：</div>
+    return `<div class="impchoose"><div>该素材包含多个素体版本，请选择要导入的版本：</div>
       ${(j.choices || []).map((c, i) => `<label class="check"><input type="checkbox" data-ipick="${i}"${c.pick ? " checked" : ""}><span class="n">${esc(c.name)}</span>${(c.bases || []).map(b => `<span class="base">${esc(b)}</span>`).join("")}<span class="s">${fmtSize(c.size)}</span></label>`).join("")}
       <div class="btnrow"><button class="btn small primary" data-d="impgo">导入所选</button><button class="btn small ghost" data-d="impcancel">取消</button></div></div>`;
   }
   const pct = j.total ? Math.round(j.done / j.total * 100) : 0;
-  return `<div class="impprog"><div class="t">${esc(j.msg || "正在准备")}</div><div class="bar wide"><i style="width:${pct}%"></i></div>
-    <div class="small muted">导入到 ${esc(rootLabel(j.project))}</div></div>`;
+  return `<div class="impprog"><div class="t">${esc(j.msg || "正在准备…")}</div><div class="bar wide"><i style="width:${pct}%"></i></div>
+    <div class="small muted">目标工程：${esc(rootLabel(j.project))}</div></div>`;
 }
 function importSec(a) {
   const j = impJobFor(a);
@@ -1376,26 +1376,26 @@ function importSec(a) {
   else {
     const other = impBusy() && !j;
     body = `${j ? impResult(j) : ""}
-      <div class="impform">${projSelect()}<button class="btn primary" data-d="import"${other ? " disabled title=\"正在导入另一个素材\"" : ""}>${ICON.cube}<span>一键导入</span></button></div>
-      <div class="impopts"><input id="imp_pwd" placeholder="解压密码（没有就不填）" autocomplete="off"><label class="check"><input type="checkbox" id="imp_recycle"${S.impRecycle === false ? "" : " checked"}>解压后把压缩包移到回收站</label></div>
-      <div class="hint2">先解压素材里的压缩包（PSD、分卷、带密码的也行），再把 unitypackage 导入工程的 Assets。${(S.data.arcTools || []).length ? `rar、7z 和分卷用你电脑上的 ${esc(S.data.arcTools[0])} 解压。` : "电脑上没找到解压软件，rar、7z 和分卷解不开，需要先装一个（7-Zip、Bandizip、WinRAR 都行）。"}</div>`;
+      <div class="impform">${projSelect()}<button class="btn primary" data-d="import"${other ? " disabled title=\"另一个素材正在导入\"" : ""}>${ICON.cube}<span>一键导入</span></button></div>
+      <div class="impopts"><input id="imp_pwd" placeholder="解压密码（选填）" autocomplete="off"><label class="check"><input type="checkbox" id="imp_recycle"${S.impRecycle === false ? "" : " checked"}>解压后将压缩包移至回收站</label></div>
+      <div class="hint2">自动解压素材中的压缩包（支持 PSD 包、分卷和加密压缩包），并将 unitypackage 导入工程的 Assets。${(S.data.arcTools || []).length ? `rar、7z 及分卷压缩包使用本机的 ${esc(S.data.arcTools[0])} 解压。` : "未检测到解压软件，无法解压 rar、7z 及分卷压缩包，请先安装 7-Zip、Bandizip 或 WinRAR。"}</div>`;
   }
-  return `<div class="sec imp" id="impsec"><h4>导入 Unity 工程</h4>${body}</div>`;
+  return `<div class="sec imp" id="impsec"><h4>导入到 Unity 工程</h4>${body}</div>`;
 }
 async function startImport(a) {
   const project = chosenProject(); if (!project) return;
   setProject(project);
   const r = await api("/api/import/start", { key: a.key, project, pwd: ($("#imp_pwd") || {}).value || "", recycle: S.impRecycle !== false });
-  if (!r.ok) { toast(r.err || "没能开始导入", 4000); return; }
+  if (!r.ok) { toast(r.err || "无法开始导入", 4000); return; }
   await load(); poll(true);
 }
 // a virtual Booth purchase: download, then import
 function dlImportSec(a) {
   if (!a.virtual || !(a.purchase && (a.purchase.dls || []).length)) return "";
   const j = impJobFor(a);
-  return `<div class="sec imp" id="impsec"><h4>下载并导入 Unity 工程</h4>${j && !["done", "failed"].includes(j.stage) ? impProgress(j) : (j ? impResult(j) : "")}
+  return `<div class="sec imp" id="impsec"><h4>下载并导入到 Unity 工程</h4>${j && !["done", "failed"].includes(j.stage) ? impProgress(j) : (j ? impResult(j) : "")}
     <div class="impform">${projSelect()}<button class="btn" data-d="dlimport">${ICON.download}<span>下载并导入</span></button></div>
-    <div class="hint2">下载完自动解压，再导入到选好的工程。</div></div>`;
+    <div class="hint2">下载完成后自动解压，并导入所选工程。</div></div>`;
 }
 
 // ---------- Baidu Netdisk downloads ----------
@@ -1412,29 +1412,29 @@ function bdLine() {
   const b = S.data.baidu || {};
   if (!b.loggedIn) return "";
   return `<div class="bdacct"><span>百度网盘：${esc(b.name || "已登录")}${VIP[b.vip] ? `<span class="muted">（${VIP[b.vip]}）</span>` : ""}</span>
-    <button class="linkbtn" data-d="bdswitch">更换账号</button><button class="linkbtn" data-d="bdlogout">退出</button></div>`;
+    <button class="linkbtn" data-d="bdswitch">更换账号</button><button class="linkbtn" data-d="bdlogout">退出登录</button></div>`;
 }
 function fmtSpeed(n) { return n > 0 ? fmtSize(n) + "/s" : ""; }
 function panJobHTML(j) {
-  const stageText = { queued: "排队中", save: "正在保存到你的网盘", download: "正在下载", unpack: "正在解压", login: "需要登录百度网盘" }[j.stage] || "";
+  const stageText = { queued: "排队中", save: "正在转存到网盘", download: "正在下载", unpack: "正在解压", login: "需要登录百度网盘" }[j.stage] || "";
   if (j.stage === "done") {
     return `<div class="impres ok"><div>${esc(j.msg)}</div><div class="small">${esc(j.dir || "")}</div>
-      ${(j.failed || []).length ? `<div class="small warnline">没解压开：${j.failed.map(esc).join("；")}（有密码的话，在下面填密码后点「一键导入」）</div>` : ""}
-      ${j.saved ? `<div class="small muted">网盘里的副本在「${esc(j.saved)}」，不需要的话可以自己在网盘里删掉。</div>` : ""}
-      <div class="btnrow">${j.dir ? `<button class="btn small" data-gopen="${esc(j.dir)}">打开文件夹</button>` : ""}<button class="btn small ghost" data-d="pandismiss">知道了</button></div></div>`;
+      ${(j.failed || []).length ? `<div class="small warnline">解压失败：${j.failed.map(esc).join("；")}（如有密码，请在下方填写后点击「一键导入」）</div>` : ""}
+      ${j.saved ? `<div class="small muted">网盘中的转存副本位于「${esc(j.saved)}」，如不需要可自行删除。</div>` : ""}
+      <div class="btnrow">${j.dir ? `<button class="btn small" data-gopen="${esc(j.dir)}">打开文件夹</button>` : ""}<button class="btn small ghost" data-d="pandismiss">关闭</button></div></div>`;
   }
   if (j.stage === "failed") {
     const captcha = /验证码/.test(j.err || "");
     return `<div class="impres err"><div>${esc(j.err || "下载失败")}</div>
-      <div class="btnrow"><button class="btn small" data-d="panretry">重试</button>${captcha ? `<button class="btn small" data-d="pan">在软件里打开分享</button>` : ""}<button class="btn small ghost" data-d="pandismiss">知道了</button></div></div>`;
+      <div class="btnrow"><button class="btn small" data-d="panretry">重试</button>${captcha ? `<button class="btn small" data-d="pan">在软件中打开分享</button>` : ""}<button class="btn small ghost" data-d="pandismiss">关闭</button></div></div>`;
   }
   const pct = j.stage === "download" && j.total ? Math.floor(j.done / j.total * 100) : 0;
   const line = j.stage === "download" ? `${stageText} ${j.files + 1 > j.fileN ? j.fileN : j.files + 1}/${j.fileN}　${fmtSize(j.done)} / ${fmtSize(j.total)}　${fmtSpeed(j.speed)}` : (j.msg || stageText);
   return `<div class="impprog"><div class="t">${esc(line)}</div><div class="bar wide"><i style="width:${pct}%"></i></div>
     ${j.file && j.stage === "download" ? `<div class="small muted fn">${esc(j.file)}</div>` : ""}
-    ${j.slow ? `<div class="small warnline">百度对非超级会员账号限速，大文件会很慢；开通百度网盘超级会员后会快很多。</div>` : ""}
-    ${(j.paths || []).length ? `<div class="small muted">只下载所选的 ${j.paths.length} 项</div>` : ""}
-    ${j.project ? `<div class="small muted">下载完会导入到 ${esc(rootLabel(j.project))}</div>` : ""}
+    ${j.slow ? `<div class="small warnline">百度网盘对非超级会员账号限速，大文件下载较慢。</div>` : ""}
+    ${(j.paths || []).length ? `<div class="small muted">仅下载所选的 ${j.paths.length} 项</div>` : ""}
+    ${j.project ? `<div class="small muted">下载完成后导入 ${esc(rootLabel(j.project))}</div>` : ""}
     <div class="btnrow"><button class="btn small ghost" data-d="pancancel">取消下载</button></div></div>`;
 }
 function panDLSec(a) {
@@ -1445,25 +1445,25 @@ function panDLSec(a) {
   if (!a.panOnly && !sel && !(j && j.stage !== "done")) return "";
   let body = "";
   if (!b.loggedIn) {
-    body += `<div class="news"><div class="t">先登录百度网盘，就能在软件里直接下载。</div>
-      <div class="d">登录信息加密保存在这台电脑上，不用每次登录。</div>
+    body += `<div class="news"><div class="t">登录百度网盘后，可在软件中直接下载。</div>
+      <div class="d">登录状态加密保存在本机，无需重复登录。</div>
       <div class="btnrow"><button class="btn small primary" data-d="bdlogin">登录百度网盘</button></div></div>`;
   } else body += bdLine();
   if (j && j.stage !== "login") body += panJobHTML(j);
-  const where = a.panOnly ? "下载到 " + esc(S.data.dlDir || "素材文件夹") : "下载到这个素材的文件夹";
+  const where = a.panOnly ? "下载到 " + esc(S.data.dlDir || "素材文件夹") : "下载到该素材所在的文件夹";
   if (!busy && sel) {
-    body += `<div class="selline">${esc(panSelLine(a))}<button class="linkbtn" data-d="panselclear">清除选择</button></div>
+    body += `<div class="selline">${esc(panSelLine(a))}<button class="linkbtn" data-d="panselclear">取消选择</button></div>
       <div class="impform"><button class="btn${b.loggedIn ? " primary" : ""}" data-d="pandlsel">${ICON.download}<span>下载所选</span></button>${a.panOnly ? `<button class="btn ghost" data-d="pandl">下载全部</button>` : ""}</div>
       <div class="impform">${projSelect("pan_proj")}<button class="btn" data-d="pandlselimp">${ICON.cube}<span>下载所选并导入</span></button></div>
-      <div class="hint2">只转存、下载勾选的部分，文件夹结构不变；${where}，压缩包自动解压。速度取决于百度网盘会员等级，普通账号会被百度限速。</div>`;
+      <div class="hint2">仅转存并下载所选内容，保留原有文件夹结构；${where}，压缩包自动解压。下载速度取决于百度网盘会员等级，普通账号会被限速。</div>`;
   } else if (!busy && a.panOnly) {
     body += `<div class="impform"><button class="btn${b.loggedIn ? " primary" : ""}" data-d="pandl">${ICON.download}<span>下载到素材库</span></button></div>
       <div class="impform">${projSelect("pan_proj")}<button class="btn" data-d="pandlimp">${ICON.cube}<span>下载并导入</span></button></div>
-      <div class="hint2">先存到你网盘的「MioVRCA」文件夹，再${where}，压缩包自动解压。${panPickable(a) ? "只要其中一部分的话，在下面的「网盘内容」里勾选。" : ""}速度取决于百度网盘会员等级，普通账号会被百度限速。</div>`;
+      <div class="hint2">先转存到网盘的「MioVRCA」文件夹，再${where}，压缩包自动解压。${panPickable(a) ? "如只需部分内容，可在下方「网盘内容」中勾选。" : ""}下载速度取决于百度网盘会员等级，普通账号会被限速。</div>`;
   }
   return `<div class="sec imp" id="pansec"><h4>${a.panOnly ? "下载到本地" : "从网盘下载"}</h4>${body}</div>`;
 }
-// the folder card of a finished netdisk download keeps its note until 「知道了」
+// the folder card of a finished netdisk download keeps its note until 「关闭」
 function panDoneSec(a) {
   const j = !a.panOnly && a.fromPan && panJobFor(a);
   return j && j.stage === "done" && !(S.panSel.size && panPickable(a)) ? `<div class="sec imp"><h4>网盘下载</h4>${panJobHTML(j)}</div>` : "";
@@ -1485,34 +1485,34 @@ function refreshJobs(imp, pans) {
 async function startPanDL(a, importTo, paths) {
   if (importTo === true) { importTo = chosenProject("pan_proj"); if (!importTo) return; setProject(importTo); }
   const r = await api("/api/pan/download", { key: a.fromPan || a.key, importTo: importTo || "", paths: paths || [] });
-  if (!r.ok) { toast(r.err || "没能开始下载", 4000); return; }
+  if (!r.ok) { toast(r.err || "无法开始下载", 4000); return; }
   if (paths && paths.length) S.panSel = new Set();
-  if (r.login) { toast("先登录百度网盘，登录后会自动开始下载", 4000); baiduLogin(false); return; }
+  if (r.login) { toast("请先登录百度网盘，登录后自动开始下载", 4000); baiduLogin(false); return; }
   toast(paths && paths.length ? `开始下载所选的 ${paths.length} 项` : "开始下载"); await load(); poll(true);
 }
 async function baiduLogin(switching) {
   if (switching) { await api("/api/baidu/logout", {}); await load(); }
-  if (!S.data.paneMode) { toast("这台电脑没有内置浏览器（WebView2 / Edge），没法在软件里登录百度网盘", 5000); return; }
+  if (!S.data.paneMode) { toast("本机缺少内置浏览器组件（WebView2 / Edge），无法在软件中登录百度网盘", 5000); return; }
   S.web.forLogin = true;
   openWeb(S.data.baiduLogin, "pan");
 }
 // ---------- Gumroad: log in inside the program, then the purchases are read ----------
 function gumLogin() {
-  if (!S.data.paneMode) { toast("这台电脑没有内置浏览器（WebView2 / Edge），没法在软件里登录 Gumroad", 5000); return; }
+  if (!S.data.paneMode) { toast("本机缺少内置浏览器组件（WebView2 / Edge），无法在软件中登录 Gumroad", 5000); return; }
   S.web.forLogin = true;
-  toast("在下面的页面里登录 Gumroad，登录后会自动读取已购", 5000);
+  toast("请在下方页面登录 Gumroad，登录后自动同步已购", 5000);
   openWeb(S.data.gumroad.loginUrl, "gumroad");
 }
 function gumLoggedIn() {
   const g = S.data.gumroad || {};
-  toast("Gumroad 已登录" + (g.name ? "：" + g.name : "") + "，正在读取已购", 4000);
+  toast("Gumroad 已登录" + (g.name ? "：" + g.name : "") + "，正在同步已购", 4000);
   if (S.web.forLogin && S.view === "lib" && S.web.open.lib) closeWeb();
 }
 async function gumSync() {
   if (!(S.data.gumroad || {}).loggedIn) return gumLogin();
   const r = await api("/api/gumroad/sync", {});
   if (r.login) return gumLogin();
-  toast(r.ok ? "开始读取 Gumroad 已购" : "正在同步"); poll(true);
+  toast(r.ok ? "开始同步 Gumroad 已购" : "正在同步"); poll(true);
 }
 function baiduLoggedIn() {
   const b = S.data.baidu || {};
@@ -1533,7 +1533,7 @@ function jobText(j) {
 }
 function dlRows(p) {
   const files = p.files || [], dls = p.dls || [];
-  if (!dls.length) return `<div class="muted small">${p.source === "gumroad" ? esc(p.note || "这件商品没有可以直接下载的文件（可能只能在线看，或文件在别的网站）") + "。点「下载页」到 Gumroad 上看" : "没有读到可下载的文件，重新同步一次 Booth 已购试试。"}</div>`;
+  if (!dls.length) return `<div class="muted small">${p.source === "gumroad" ? esc(p.note || "该商品没有可直接下载的文件（可能仅支持在线查看，或文件托管在其他网站）") + "。可点击「下载页」前往 Gumroad 查看。" : "未获取到可下载的文件，请重新同步 Booth 已购。"}</div>`;
   return `<div class="dlrows">${dls.map((id, i) => {
     const j = jobFor(id), got = (j && j.status === "done" && j.path) || (p.got || [])[i];
     const busy = j && ["queued", "running", "unpacking"].includes(j.status);
@@ -1558,15 +1558,15 @@ function dlBar(item) {
 async function startDownload(item, ids) {
   S.dlAsked = Date.now();
   const r = await api("/api/booth/download", { item, ids: ids || [] });
-  if (!r.ok) { toast(r.err || "没能开始下载", 3500); return; }
-  toast(r.n ? `开始下载 ${r.n} 个文件` : "已经在下载了");
+  if (!r.ok) { toast(r.err || "无法开始下载", 3500); return; }
+  toast(r.n ? `开始下载 ${r.n} 个文件` : "已在下载队列中");
   await load(); poll(true);
 }
 // progress between full refreshes
 function refreshDL(jobs) {
   const known = new Set((S.data.downloads || []).map(j => j.id));
   const added = jobs.filter(j => !known.has(j.id) && j.status !== "done");
-  if (added.length && Date.now() - (S.dlAsked || 0) > 4000) toast(`已加入下载：${added.map(j => j.name || j.id).join("、")}`, 3500);
+  if (added.length && Date.now() - (S.dlAsked || 0) > 4000) toast(`已加入下载队列：${added.map(j => j.name || j.id).join("、")}`, 3500);
   const before = JSON.stringify((S.data.downloads || []).map(j => [j.id, j.status]));
   S.data.downloads = jobs;
   if (before !== JSON.stringify(jobs.map(j => [j.id, j.status]))) return load();
@@ -1633,7 +1633,7 @@ function renderDrawer(key, keepScroll) {
     ${newsSec(a)}
     ${importSec(a)}${dlImportSec(a)}${panDLSec(a)}${panDoneSec(a)}
     ${variantSec(a)}
-    ${a.panOnly ? "" : a.virtual ? `<div class="sec"><h4>保存位置</h4><div class="muted small">还没下载。会下载到 ${esc(S.data.dlDir || "素材文件夹")}。</div></div>`
+    ${a.panOnly ? "" : a.virtual ? `<div class="sec"><h4>保存位置</h4><div class="muted small">尚未下载，将保存到 ${esc(S.data.dlDir || "素材文件夹")}。</div></div>`
     : `<div class="sec"><h4>保存位置</h4>
       ${(a.locations || []).map((l, i) => `<div class="loc"><span class="k">${{ dir: "文件夹", zip: "zip", rar: "rar", "7z": "7z", unitypackage: "unitypackage", file: "文件" }[l.kind] || l.kind}</span>
         <span class="p">${esc(l.path)}</span><span class="s">${fmtSize(l.size)}</span>
@@ -1643,31 +1643,31 @@ function renderDrawer(key, keepScroll) {
     ${a.purchase ? purchaseSec(a) : ""}
     ${panSec(a)}
     ${boothSec(a)}
-    <div class="sec"><h4>整理</h4>
+    <div class="sec"><h4>素材信息</h4>
       <div class="field"><label>显示名称</label><input id="f_name" value="${esc(u.name || "")}" placeholder="${esc(a.autoName)}"></div>
-      <div class="field"><label>中文名</label><input id="f_nameZh" value="${esc(u.nameZh || "")}" placeholder="${esc(a.nameZh || "自动翻译")}"></div>
+      <div class="field"><label>中文译名</label><input id="f_nameZh" value="${esc(u.nameZh || "")}" placeholder="${esc(a.nameZh || "自动翻译")}"></div>
       <div class="field"><label>分类</label><select id="f_cat"><option value="">自动（${esc(a.autoCategory)}）</option>${d.categories.map(c => `<option${c === u.category ? " selected" : ""}>${esc(c)}</option>`).join("")}</select></div>
       <div class="field"><label>适配素体</label><input id="f_bases" value="${esc((u.bases || a.bases || []).join(", "))}" placeholder="Plum, Chocolat"></div>
       ${u.bases ? `<div class="field"><span></span><span class="hint">自动识别：${esc((a.autoBases || []).join(", ") || "无")}</span></div>` : ""}
       ${styleField(a)}
-      <div class="field"><label>标签</label><input id="f_tags" value="${esc((u.tags || []).join(", "))}" placeholder="用逗号分隔"></div>
-      ${a.virtual ? `<input id="f_booth" type="hidden" value="">` : `<div class="field"><label>Booth 链接</label><input id="f_booth" value="${esc(u.boothUrl || "")}" placeholder="${isGum(a) ? "这是 Gumroad 的商品；填 Booth 链接会改成关联 Booth" : a.boothId ? "已识别 #" + esc(a.boothId) : "https://booth.pm/ja/items/..."}"></div>`}
+      <div class="field"><label>标签</label><input id="f_tags" value="${esc((u.tags || []).join(", "))}" placeholder="多个标签用逗号分隔"></div>
+      ${a.virtual ? `<input id="f_booth" type="hidden" value="">` : `<div class="field"><label>Booth 链接</label><input id="f_booth" value="${esc(u.boothUrl || "")}" placeholder="${isGum(a) ? "当前关联 Gumroad 商品；填写 Booth 链接后改为关联 Booth" : a.boothId ? "已识别 #" + esc(a.boothId) : "https://booth.pm/ja/items/..."}"></div>`}
       <div class="field"><label>备注</label><textarea id="f_notes">${esc(u.notes || "")}</textarea></div>
       ${(a.localCovers || []).length > 1 || u.cover ? `<div class="field"><label>封面</label><div class="covers">${(a.localCovers || []).map(c => `<img src="/thumb?w=160&p=${encodeURIComponent(c)}" data-cover="${esc(c)}" class="${u.cover === c ? "on" : ""}" title="${esc(c)}">`).join("")}</div></div>` : ""}
     </div>
-    ${!isLocal(a) ? "" : `<div class="sec"><h4>工程使用</h4>
-      ${(a.usage || []).length ? `<div class="uses">${a.usage.map(x => `<div class="use"><span class="st ${x.status}">${x.status === "used" ? "在用" : "部分"}</span><span>${esc(x.project)}</span><span class="pct">${x.matched}/${x.total} 个资源（${Math.round(x.ratio * 100)}%）</span></div>`).join("")}</div>`
-        : `<div class="muted small">${a.guidCount ? "没有工程在用" : (a.packages ? "还没分析" : "没有 unitypackage，无法判断")}</div>`}
+    ${!isLocal(a) ? "" : `<div class="sec"><h4>使用情况</h4>
+      ${(a.usage || []).length ? `<div class="uses">${a.usage.map(x => `<div class="use"><span class="st ${x.status}">${x.status === "used" ? "使用中" : "部分使用"}</span><span>${esc(x.project)}</span><span class="pct">${x.matched}/${x.total} 个资源（${Math.round(x.ratio * 100)}%）</span></div>`).join("")}</div>`
+        : `<div class="muted small">${a.guidCount ? "未被任何工程使用" : (a.packages ? "尚未统计" : "不含 unitypackage，无法统计")}</div>`}
     </div>`}
     ${a.panOnly ? `<div class="sec"><h4>管理</h4><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-d="hide">${u.hidden ? "取消隐藏" : "隐藏"}</button>${a.panParent ? "" : `<button class="btn" data-d="pandelete">从素材库移除</button>`}</div></div>`
     : a.virtual ? `<div class="sec"><h4>管理</h4><button class="btn" data-d="hide">${u.hidden ? "取消隐藏" : "隐藏"}</button></div>` : `<div class="sec"><h4>识别调整</h4>
-      <div class="muted small" style="margin-bottom:8px">原名：${esc(a.rawName)}${(a.hints || []).length ? `　分类文件夹：${esc(a.hints.join(" / "))}` : ""}</div>
+      <div class="muted small" style="margin-bottom:8px">原始名称：${esc(a.rawName)}${(a.hints || []).length ? `　分类文件夹：${esc(a.hints.join(" / "))}` : ""}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${a.hasDir ? `<button class="btn" data-d="split">拆成多个素材</button>` : ""}
+        ${a.hasDir ? `<button class="btn" data-d="split">拆分为多个素材</button>` : ""}
         <button class="btn" data-d="hide">${u.hidden ? "取消隐藏" : "隐藏"}</button>
-        <button class="btn" data-d="ignore" title="扫描时跳过">不再收录</button>
-        ${a.group || u.noGroup ? `<button class="btn" data-d="nogroup">${u.noGroup ? "允许合并同款" : "不和同款合并"}</button>` : ""}
-        ${a.boothId && !isGum(a) ? `<button class="btn" data-d="rebooth">重新读取 Booth</button>` : ""}
+        <button class="btn" data-d="ignore" title="扫描时跳过该文件夹">排除</button>
+        ${a.group || u.noGroup ? `<button class="btn" data-d="nogroup">${u.noGroup ? "恢复版本合并" : "取消版本合并"}</button>` : ""}
+        ${a.boothId && !isGum(a) ? `<button class="btn" data-d="rebooth">刷新 Booth 信息</button>` : ""}
       </div>
     </div>`}
   </div>
@@ -1731,7 +1731,7 @@ async function saveGroup(a, u, msg) {
     await api("/api/user", { key: m.key, user: mu }); n++;
   }
   S.dirty = new Set(); S.coverPick = null; S.stylePick = null;
-  toast((msg || "已保存") + (n ? `，同款 ${n} 个一起更新` : ""));
+  toast((msg || "已保存") + (n ? `，已同步到其余 ${n} 个版本` : ""));
   await load();
 }
 async function addStyle(name) {
@@ -1777,7 +1777,7 @@ async function openUpdate(force) {
   try {
     const r = await api("/api/update/check", { force: !!force });
     S.upd = r.ok ? { info: r.update, newer: r.newer } : { err: r.err };
-  } catch (e) { S.upd = { err: "检查失败" }; }
+  } catch (e) { S.upd = { err: "检查更新失败" }; }
   await load();
   if ($("#modal").dataset.kind === "update") renderUpdateModal();
 }
@@ -1789,29 +1789,32 @@ function renderUpdateModal() {
   if (t.running || S.updRestart) {
     const pct = t.total ? Math.min(100, Math.round(t.done / t.total * 100)) : 0;
     top = `<p class="lead">${esc(t.msg || (S.updRestart ? "正在重启…" : "正在准备…"))}</p><div class="upbar"><i style="width:${S.updRestart ? 100 : pct}%"></i></div>
-      <p class="muted small">完成后自动重启，数据不受影响。</p>`;
+      <p class="muted small">更新完成后自动重启，数据不受影响。</p>`;
     foot = "";
   } else if (st.checking) {
-    top = `<p class="lead">正在检查…</p>`;
+    top = `<p class="lead">正在检查更新…</p>`;
   } else if (st.err) {
-    top = `<p class="lead err">${esc(st.err)}</p><p class="muted small">连不上的话可以在设置里填代理，或者去发布页下载。</p>`;
+    top = `<p class="lead err">${esc(st.err)}</p><p class="muted small">如无法连接，可在设置中配置代理，或前往发布页下载。</p>`;
   } else if (info && versionNewer(info.version, d.version)) {
-    const how = info.zip ? `下载后自动替换并重启，约 ${fmtSize(info.zip.size)}` : info.setup ? "下载安装程序后打开" : "没有安装包，请去发布页下载";
-    top = `<div class="uphead"><b>新版本 ${esc(info.version)}</b>${info.published ? `<span class="muted small">${esc(fmtDate(info.published))}</span>` : ""}<span class="muted small">当前 ${esc(d.version)}</span></div>
-      ${info.notes ? `<div class="upnotes">${mdLite(info.notes)}</div>` : `<p class="muted small">这一版改了什么，点「发布页」可以看到。</p>`}
+    const how = info.zip ? `自动下载并重启，约 ${fmtSize(info.zip.size)}` : info.setup ? "下载安装程序后手动运行" : "暂无安装包，请前往发布页下载";
+    top = `<div class="uphead"><b>新版本 ${esc(info.version)}</b>${info.published ? `<span class="muted small">${esc(fmtDate(info.published))}</span>` : ""}<span class="muted small">当前版本 ${esc(d.version)}</span></div>
+      ${info.notes ? `<div class="upnotes">${mdLite(info.notes)}</div>` : `<p class="muted small">更新内容请见发布页。</p>`}
       <p class="muted small">${how}${t.msg && t.msg.startsWith("更新失败") ? `<br><span class="err">${esc(t.msg)}</span>` : ""}</p>`;
-    foot = `<button class="btn ghost" data-m="upskip">跳过这个版本</button><button class="btn ghost" data-m="uppage">发布页</button><span class="spacer"></span>
-      <button class="btn ghost" data-m="close">以后再说</button>
+    foot = `<button class="btn ghost" data-m="upskip">跳过此版本</button><button class="btn ghost" data-m="uppage">发布页</button><span class="spacer"></span>
+      <button class="btn ghost" data-m="close">稍后提醒</button>
       ${info.zip || info.setup ? `<button class="btn primary" data-m="upgo">${info.zip ? "更新并重启" : "下载安装程序"}</button>` : ""}`;
   } else {
     top = `<p class="lead">已是最新版本 ${esc(d.version)}</p>`;
   }
   const busy = t.running || S.updRestart;
-  m.innerHTML = `<div class="mhead">更新</div><div class="mbody">${top}${busy ? "" : `<h4 class="boardh">更新公告</h4>${noticeBoard()}`}</div>${foot ? `<div class="mfoot">${foot}</div>` : ""}`;
+  m.innerHTML = `<div class="mhead">软件更新</div><div class="mbody">${top}${busy ? "" : `<h4 class="boardh">更新日志</h4>${noticeBoard()}`}</div>${foot ? `<div class="mfoot">${foot}</div>` : ""}`;
 }
 // the history shipped with the program (CHANGELOG.md)
 function noticeBoard() {
-  return `<div class="board">${(S.data.changelog || []).map(e => `<div class="note"><div class="nv">${esc(e.version)}${e.version === S.data.version ? `<span class="cur">当前版本</span>` : ""}</div>
+  const log = S.data.changelog || [];
+  // a version without an entry of its own goes by the newest one
+  const cur = log.some(e => e.version === S.data.version) ? S.data.version : (log[0] || {}).version;
+  return `<div class="board">${log.map(e => `<div class="note"><div class="nv">${esc(e.version)}${e.version === cur ? `<span class="cur">当前版本</span>` : ""}</div>
     <ul>${(e.items || []).map(i => `<li>${esc(i)}</li>`).join("")}</ul></div>`).join("")}</div>`;
 }
 // release text written on GitHub: headings, "- " lists, **bold**, `code`; links show as text
@@ -1835,7 +1838,7 @@ function openWhatsNew(version, list) {
   const many = list.length > 1;
   const body = list.map(e => `${many ? `<div class="wnv">${esc(e.version)}</div>` : ""}<ul class="wn">${(e.items || []).map(i => `<li>${esc(i)}</li>`).join("")}</ul>`).join("");
   m.innerHTML = `<div class="mhead">已更新到 ${esc(version)}</div><div class="mbody">${body}</div>
-    <div class="mfoot"><button class="btn ghost" data-m="allnotes">全部更新公告</button><span class="spacer"></span><button class="btn primary" data-m="close">知道了</button></div>`;
+    <div class="mfoot"><button class="btn ghost" data-m="allnotes">全部更新日志</button><span class="spacer"></span><button class="btn primary" data-m="close">关闭</button></div>`;
   m.classList.add("on"); $("#scrim").classList.add("on");
   api("/api/whatsnew/seen", {}).catch(() => {});
 }
@@ -1856,38 +1859,38 @@ function openSettings(focusId) {
       <button class="btn small addbtn" data-pickto="s_roots">${ICON.folder}<span>添加…</span></button></div>
     <div class="row"><label>Unity 工程文件夹</label><textarea id="s_proj">${esc((s.projectRoots || []).join("\n"))}</textarea>
       <button class="btn small addbtn" data-pickto="s_proj">${ICON.folder}<span>添加…</span></button></div>
-    <div class="row"><label>自动</label>
-      ${chk("s_rescan", !s.manualRescan, "打开时重新扫描")}
-      ${chk("s_watch", !s.noWatch, "有新素材时自动整理")}
-      ${chk("s_auto", s.autoBooth, "读取 Booth 封面和商品名")}
-      ${chk("s_match", !s.noAutoMatch, "没有封面时按名称匹配 Booth 商品")}
-      ${chk("s_sync", !s.noSync, "检查网盘分享和 Booth 商品页的变化")}
-      ${chk("s_upd", !s.noUpdateCheck, "检查新版本")}</div>
+    <div class="row"><label>自动化</label>
+      ${chk("s_rescan", !s.manualRescan, "启动时重新扫描")}
+      ${chk("s_watch", !s.noWatch, "检测到新素材时自动收录")}
+      ${chk("s_auto", s.autoBooth, "自动获取 Booth 封面和商品名")}
+      ${chk("s_match", !s.noAutoMatch, "无封面时按名称匹配 Booth 商品")}
+      ${chk("s_sync", !s.noSync, "定期检查网盘分享和 Booth 商品页的更新")}
+      ${chk("s_upd", !s.noUpdateCheck, "自动检查软件更新")}</div>
     <div class="row"><label>显示</label>
-      ${chk("s_zh", !s.hideZh, "显示中文名")}
-      <select id="s_win" class="optsel"><option value="">在窗口中打开</option><option value="tab"${s.windowMode === "tab" ? " selected" : ""}>在浏览器标签页中打开</option></select></div>
+      ${chk("s_zh", !s.hideZh, "显示中文译名")}
+      <select id="s_win" class="optsel"><option value="">以独立窗口运行</option><option value="tab"${s.windowMode === "tab" ? " selected" : ""}>在浏览器标签页中运行</option></select></div>
     <div class="row"><label>下载位置（Booth 已购、网盘分享）</label>
       <div class="inline"><input id="s_dldir" value="${esc(s.downloadDir || "")}" placeholder="${esc("自动：" + (S.data.dlDir || "剩余空间最大的非系统盘"))}"><button class="btn small" data-pickone="s_dldir">${ICON.folder}<span>选择…</span></button></div>
       ${chk("s_extract", !s.noExtract, "下载后自动解压")}
       ${chk("s_keepzip", s.keepZip, "解压后保留压缩包")}</div>
-    <div class="row"><label>代理</label><input id="s_proxy" value="${esc(s.proxy || "")}" placeholder="留空使用系统代理，例如 127.0.0.1:7890"></div>
-    <div class="row"><label>素体识别表（显示名=别名1|别名2）</label><textarea id="s_bases" style="min-height:120px">${esc((s.bases || []).join("\n"))}</textarea></div>
-    <div class="row"><label>风格标签（标签名=关键词1|关键词2）</label><textarea id="s_styles" style="min-height:140px">${esc((s.styles || []).join("\n"))}</textarea></div>
-    ${Object.keys(ov).length ? `<div class="row"><label>手动调整</label>${Object.entries(ov).map(([p, v]) => `<div class="ov"><span>${esc(p)}</span><span class="muted" style="flex:none">${{ split: "拆成多个", ignore: "不收录", asset: "合并为一个" }[v] || v}</span><button class="btn" data-ov="${esc(p)}">撤销</button></div>`).join("")}</div>` : ""}
+    <div class="row"><label>代理</label><input id="s_proxy" value="${esc(s.proxy || "")}" placeholder="留空则使用系统代理，例如 127.0.0.1:7890"></div>
+    <div class="row"><label>素体识别规则（显示名=别名1|别名2）</label><textarea id="s_bases" style="min-height:120px">${esc((s.bases || []).join("\n"))}</textarea></div>
+    <div class="row"><label>风格标签规则（标签名=关键词1|关键词2）</label><textarea id="s_styles" style="min-height:140px">${esc((s.styles || []).join("\n"))}</textarea></div>
+    ${Object.keys(ov).length ? `<div class="row"><label>手动调整</label>${Object.entries(ov).map(([p, v]) => `<div class="ov"><span>${esc(p)}</span><span class="muted" style="flex:none">${{ split: "已拆分", ignore: "已排除", asset: "已合并" }[v] || v}</span><button class="btn" data-ov="${esc(p)}">恢复</button></div>`).join("")}</div>` : ""}
     <div class="row" id="s_baidu"><label>百度网盘${(S.data.baidu || {}).loggedIn ? `<span class="muted small">　已登录：${esc(S.data.baidu.name || "")}${VIP[S.data.baidu.vip] ? "（" + VIP[S.data.baidu.vip] + "）" : ""}</span>` : `<span class="muted small">　未登录</span>`}</label>
       <div class="btnrow" style="margin-top:0">${(S.data.baidu || {}).loggedIn ? `<button class="btn small" data-m="bdswitch">更换账号</button><button class="btn small" data-m="bdlogout">退出登录</button>` : `<button class="btn small" data-m="bdlogin">登录</button>`}</div>
-      <div class="muted small" style="margin-top:6px">登录后可以在软件里直接下载网盘分享。登录信息加密保存在这台电脑上。下载速度取决于账号的会员等级，普通账号会被百度限速。</div></div>
+      <div class="muted small" style="margin-top:6px">登录后可在软件中直接下载网盘分享。登录状态加密保存在本机。下载速度取决于账号会员等级，普通账号会被限速。</div></div>
     <div class="row"><label>Booth 已购${S.data.purchaseSync ? `<span class="muted small">　已同步 ${S.data.purchaseCount} 件（${esc(fmtTime(S.data.purchaseSync))}）</span>` : ""}</label>
       <div class="btnrow" style="margin-top:0"><button class="btn small" data-m="sync">同步</button><button class="btn small" data-m="forget">退出登录</button>${S.data.purchaseSync ? `<button class="btn small" data-m="clearp">清空记录</button>` : ""}</div></div>
-    <div class="row"><label>Gumroad 已购<span class="muted small">　${(S.data.gumroad || {}).loggedIn ? "已登录" + ((S.data.gumroad || {}).name ? "：" + esc(S.data.gumroad.name) : "") : "未登录"}${(S.data.gumroad || {}).count ? `，已读到 ${S.data.gumroad.count} 件` : ""}</span></label>
+    <div class="row"><label>Gumroad 已购<span class="muted small">　${(S.data.gumroad || {}).loggedIn ? "已登录" + ((S.data.gumroad || {}).name ? "：" + esc(S.data.gumroad.name) : "") : "未登录"}${(S.data.gumroad || {}).count ? `，已同步 ${S.data.gumroad.count} 件` : ""}</span></label>
       <div class="btnrow" style="margin-top:0"><button class="btn small" data-m="gumsync">${(S.data.gumroad || {}).loggedIn ? "同步" : "登录"}</button>${(S.data.gumroad || {}).loggedIn ? `<button class="btn small" data-m="gumlogout">退出登录</button>` : ""}${(S.data.gumroad || {}).count ? `<button class="btn small" data-m="gumclear">清空记录</button>` : ""}</div>
-      <div class="muted small" style="margin-top:6px">在软件里登录 Gumroad 后读取已购，没下载的可以直接下载。登录信息加密保存在这台电脑上，只发给 gumroad.com。</div></div>
-    <div class="row"><label>流水线的 AI<span class="muted small">　${AI.cfg && AI.cfg.ready ? esc(aiProvLabel(AI.cfg)) : "还没有设置 AI 服务"}</span></label>
-      <div class="btnrow" style="margin-top:0"><button class="btn small" data-m="aicfg">设置 AI 服务</button></div>
-      <div class="muted small" style="margin-top:6px">「流水线」页把导入的素材装到模型上、生成菜单；设置了 AI 服务后还能让 AI 接着改模。不设置也能跑（按网格名字分组）。</div></div>
+      <div class="muted small" style="margin-top:6px">登录 Gumroad 后同步已购记录，未下载的商品可直接下载。登录状态加密保存在本机，仅用于访问 gumroad.com。</div></div>
+    <div class="row"><label>流水线 AI 服务<span class="muted small">　${AI.cfg && AI.cfg.ready ? esc(aiProvLabel(AI.cfg)) : "未配置"}</span></label>
+      <div class="btnrow" style="margin-top:0"><button class="btn small" data-m="aicfg">配置 AI 服务</button></div>
+      <div class="muted small" style="margin-top:6px">流水线将已导入的素材装配到模型并生成菜单；配置 AI 服务后，可继续通过 AI 执行改模操作。未配置时按网格名称分组，仍可使用。</div></div>
     <div class="row"><label>其他</label>
-      <div class="btnrow" style="margin-top:0"><button class="btn small" data-m="checkupd">更新公告</button><button class="btn small" data-m="feedback">反馈和建议</button>${S.data.canShortcut ? `<button class="btn small" data-m="shortcut">创建桌面快捷方式</button>` : ""}</div></div>
-    <div class="row muted small">数据位置：${esc(S.data.dataDir)}</div>
+      <div class="btnrow" style="margin-top:0"><button class="btn small" data-m="checkupd">更新日志</button><button class="btn small" data-m="feedback">反馈与建议</button>${S.data.canShortcut ? `<button class="btn small" data-m="shortcut">创建桌面快捷方式</button>` : ""}</div></div>
+    <div class="row muted small">数据目录：${esc(S.data.dataDir)}</div>
   </div><div class="mfoot"><button class="btn ghost" data-m="close">取消</button><button class="btn primary" data-m="save">保存</button></div>`;
   m.classList.add("on"); $("#scrim").classList.add("on");
   if (focusId && $("#" + focusId)) { $("#" + focusId).scrollIntoView({ block: "center" }); $("#" + focusId).focus(); }
@@ -1923,29 +1926,29 @@ function fbPlain() {
 function renderFeedback() {
   const f = S.fb, m = $("#modal");
   let body, foot;
-  const fallback = `<div class="btnrow"><button class="btn small" data-m="fbcopy">复制内容</button><button class="btn small" data-m="fbmail">用邮件软件发送</button><button class="btn small" data-m="fbaddr">复制邮箱地址</button></div>`;
+  const fallback = `<div class="btnrow"><button class="btn small" data-m="fbcopy">复制内容</button><button class="btn small" data-m="fbmail">通过邮件客户端发送</button><button class="btn small" data-m="fbaddr">复制邮箱地址</button></div>`;
   if (f.sent && f.note) {
     body = `<p class="lead">${esc(f.note)}</p>
-      <div class="fberr"><p>也可以复制内容，发邮件到 ${esc(fbMail())}。</p>${fallback}</div>`;
-    foot = `<span class="spacer"></span><button class="btn primary" data-m="close">好</button>`;
+      <div class="fberr"><p>也可复制内容后发送邮件至 ${esc(fbMail())}。</p>${fallback}</div>`;
+    foot = `<span class="spacer"></span><button class="btn primary" data-m="close">确定</button>`;
   } else if (f.sent) {
-    body = `<p class="lead">已发送，谢谢！</p>`;
-    foot = `<span class="spacer"></span><button class="btn primary" data-m="close">好</button>`;
+    body = `<p class="lead">反馈已发送，感谢支持。</p>`;
+    foot = `<span class="spacer"></span><button class="btn primary" data-m="close">确定</button>`;
   } else {
     body = `<div class="fbkinds" role="radiogroup">${FB_KINDS.map(k => `<button class="stchip${f.kind === k ? " on" : ""}" role="radio" aria-checked="${f.kind === k}" data-fbkind="${k}">${k}</button>`).join("")}</div>
-      <div class="row"><textarea id="fb_text" maxlength="5000" placeholder="${f.kind === "功能建议" ? "想要的功能" : f.kind === "问题反馈" ? "遇到的问题，以及当时的操作" : ""}">${esc(f.text)}</textarea></div>
+      <div class="row"><textarea id="fb_text" maxlength="5000" placeholder="${f.kind === "功能建议" ? "请描述希望增加的功能" : f.kind === "问题反馈" ? "请描述遇到的问题及操作步骤" : ""}">${esc(f.text)}</textarea></div>
       <div class="row"><label>联系方式（选填）</label><input id="fb_contact" value="${esc(f.contact)}" placeholder="邮箱 / QQ / Discord"></div>
-      <div class="row"><label class="check" style="padding:0"><input type="checkbox" id="fb_info"${f.withInfo ? " checked" : ""}> 附带运行信息</label>
-        <details class="fbinfo"><summary>查看内容</summary><pre id="fb_infopre">${esc(f.info || "读取中…")}</pre></details></div>
-      ${f.err ? `<div class="fberr"><p><b>${esc(f.err)}</b></p><p>可以复制内容，发邮件到 ${esc(fbMail())}。</p>${fallback}</div>` : ""}`;
+      <div class="row"><label class="check" style="padding:0"><input type="checkbox" id="fb_info"${f.withInfo ? " checked" : ""}> 附带运行环境信息</label>
+        <details class="fbinfo"><summary>查看内容</summary><pre id="fb_infopre">${esc(f.info || "正在加载…")}</pre></details></div>
+      ${f.err ? `<div class="fberr"><p><b>${esc(f.err)}</b></p><p>可复制内容后发送邮件至 ${esc(fbMail())}。</p>${fallback}</div>` : ""}`;
     foot = `<span class="muted small">作者邮箱：${esc(fbMail())}</span><span class="spacer"></span><button class="btn ghost" data-m="close">取消</button>
       <button class="btn primary" data-m="fbsend"${f.sending ? " disabled" : ""}>${f.sending ? "正在发送…" : "发送"}</button>`;
   }
-  m.innerHTML = `<div class="mhead">反馈和建议</div><div class="mbody">${body}</div><div class="mfoot">${foot}</div>`;
+  m.innerHTML = `<div class="mhead">反馈与建议</div><div class="mbody">${body}</div><div class="mfoot">${foot}</div>`;
 }
 async function sendFeedback() {
   fbKeep(); const f = S.fb;
-  if (f.text.trim().length < 4) { toast("内容太短"); $("#fb_text").focus(); return; }
+  if (f.text.trim().length < 4) { toast("内容过短，请补充说明"); $("#fb_text").focus(); return; }
   f.sending = true; f.err = ""; renderFeedback();
   let r;
   try { r = await api("/api/feedback", { kind: f.kind, text: f.text, contact: f.contact, withInfo: f.withInfo }); }
@@ -1962,10 +1965,10 @@ async function sendFeedback() {
 function openPanAdd(prefill) {
   const m = $("#modal");
   m.innerHTML = `<div class="mhead">添加网盘素材</div><div class="mbody">
-    <div class="row"><label>分享链接或分享文字</label><textarea id="pa_text" placeholder="链接: https://pan.baidu.com/s/1xxxx 提取码: abcd"></textarea></div>
-    <div class="row"><label>提取码</label><input id="pa_pwd" placeholder="可不填"></div>
-    <div class="row"><label>名称</label><input id="pa_name" placeholder="可不填"></div>
-    <div class="row"><label class="check"><input type="checkbox" id="pa_dl"${S.data.paneMode ? " checked" : " disabled"}> 添加后直接下载到素材库${(S.data.baidu || {}).loggedIn ? "" : "（第一次需要登录百度网盘）"}</label></div>
+    <div class="row"><label>分享链接或分享文本</label><textarea id="pa_text" placeholder="链接: https://pan.baidu.com/s/1xxxx 提取码: abcd"></textarea></div>
+    <div class="row"><label>提取码</label><input id="pa_pwd" placeholder="选填"></div>
+    <div class="row"><label>名称</label><input id="pa_name" placeholder="选填"></div>
+    <div class="row"><label class="check"><input type="checkbox" id="pa_dl"${S.data.paneMode ? " checked" : " disabled"}> 添加后立即下载到素材库${(S.data.baidu || {}).loggedIn ? "" : "（首次需登录百度网盘）"}</label></div>
   </div><div class="mfoot"><button class="btn ghost" data-m="close">取消</button><button class="btn primary" data-m="panadd">添加</button></div>`;
   m.classList.add("on"); $("#scrim").classList.add("on");
   $("#pa_text").focus();
@@ -1984,12 +1987,12 @@ function renderSetup() {
   const st = S.setup; const m = $("#modal");
   const list = kind => (st[kind].length ? st[kind].map((c, i) => `<label class="cand"><input type="checkbox" data-sk="${kind}" data-si="${i}"${c.checked ? " checked" : ""}>
       <span class="p">${esc(c.path)}</span>${c.note ? `<span class="note">${esc(c.note)}</span>` : ""}</label>`).join("")
-    : `<div class="muted small cand-empty">没有找到</div>`);
+    : `<div class="muted small cand-empty">未检测到</div>`);
   const adder = (kind, label) => `<div class="addrow"><button class="btn small" data-spick="${kind}">${ICON.folder}<span>${label}</span></button>
-    <input data-spath="${kind}" placeholder="或粘贴路径后回车"></div>`;
+    <input data-spath="${kind}" placeholder="或粘贴路径后按 Enter"></div>`;
   m.innerHTML = `<div class="mhead">选择文件夹</div><div class="mbody">
     <div class="row"><label>素材文件夹</label>${list("roots")}${adder("roots", "添加…")}</div>
-    <div class="row"><label>Unity 工程（可不选）</label>${list("projects")}${adder("projects", "添加…")}</div>
+    <div class="row"><label>Unity 工程（选填）</label>${list("projects")}${adder("projects", "添加…")}</div>
   </div><div class="mfoot"><button class="btn primary" data-setup="go">开始扫描</button></div>`;
   m.dataset.kind = "setup"; m.classList.add("on"); $("#scrim").classList.add("on");
 }
@@ -2003,7 +2006,7 @@ function setupAdd(kind, path) {
 async function finishSetup() {
   const roots = S.setup.roots.filter(c => c.checked).map(c => c.path);
   const projects = S.setup.projects.filter(c => c.checked).map(c => c.path);
-  if (!roots.length) { toast("至少选一个素材文件夹"); return; }
+  if (!roots.length) { toast("请至少选择一个素材文件夹"); return; }
   const s = Object.assign({}, S.data.settings, { roots, projectRoots: projects, setupDone: true });
   await api("/api/settings", { settings: s });
   S.setup = null; $("#modal").dataset.kind = ""; closeModal(true);
@@ -2016,7 +2019,7 @@ const AI = { cfg: null, proj: null, sess: null, timer: 0, back: null, cfgForm: n
 async function aiLoadCfg() { const r = await api("/api/ai/config", {}); if (r.ok) AI.cfg = r.ai; return AI.cfg; }
 function aiProvLabel(c) {
   const p = (c.providers || []).find(x => x.id === c.provider);
-  return p ? `${p.label} · ${(c.profiles[p.id] || {}).model || "还没选模型"}` : "";
+  return p ? `${p.label} · ${(c.profiles[p.id] || {}).model || "未选择模型"}` : "";
 }
 // ---------- 流水线 (the fifth tab: the AI assistant as an assembly line) ----------
 const KINDS = ["素体", "衣服", "头发", "配饰", "道具", "其他"];
@@ -2028,7 +2031,7 @@ function pipeProject(path) {
 // the project card's 「AI 助手」 and the import result's button land here, on that project
 async function openAI(path, folders) {
   const p = pipeProject(path);
-  if (!p) { toast("这个工程不在工程列表里"); return; }
+  if (!p) { toast("该工程不在工程列表中"); return; }
   if (folders && folders.length) PIPE.preset = folders.slice();
   pipeSelect(p, true);
   if (S.view !== "pipe") setView("pipe"); else { renderPipeSide(); renderPipeMain(); pipeLoad(); }
@@ -2064,10 +2067,10 @@ async function pipeLoad() {
   const jobs = [aiLoadCfg().catch(() => {}), api("/api/pipe/toolchain", {}).then(r => { if (r.ok) PIPE.tool = r.toolchain; }).catch(() => {})];
   if (p) jobs.push(api("/api/pipe/assets", { project: p.path }).then(r => {
     if (!AI.proj || AI.proj.path !== p.path) return;
-    if (!r.ok) { PIPE.err = r.err || "读不到工程"; PIPE.assets = []; return; }
+    if (!r.ok) { PIPE.err = r.err || "无法读取工程"; PIPE.assets = []; return; }
     PIPE.err = ""; PIPE.assets = r.assets || []; AI.sess = Object.assign(AI.sess || {}, { kit: r.kit });
     pipeDefaults();
-  }).catch(() => { PIPE.err = "软件没有回应"; PIPE.assets = []; }));
+  }).catch(() => { PIPE.err = "程序无响应"; PIPE.assets = []; }));
   await Promise.all(jobs);
   PIPE.loading = false;
   if (S.view !== "pipe") return;
@@ -2107,21 +2110,21 @@ function renderPipeSide() {
   const tool = (ok, name, val, btn) => `<div class="toolrow"><i class="dot ${ok ? "ok" : "warn"}"></i><span class="k">${name}</span><span class="v">${val}</span>${btn || ""}</div>`;
   let tools = "";
   if (t) {
-    tools += tool(!!t.unity, `Unity ${esc(t.unityWant)}`, t.unity ? "已安装" : "没找到", t.unity ? "" : `<button class="btn small" data-url="${esc(t.hubInstallLink)}" title="在 Unity Hub 里安装 VRChat 要求的这个版本">安装</button>`);
-    tools += tool(t.alcomSeen, "ALCOM", t.alcom ? "已安装" : t.alcomSeen ? "有配置，没找到程序" : "没找到", t.alcom ? `<button class="btn small" data-pipe="launch" data-what="alcom">打开</button>` : `<button class="btn small" data-url="https://vrc-get.anatawa12.com/alcom/" title="ALCOM 是 VRChat 官方 VCC 的替代品，管理工程里的插件">下载</button>`);
+    tools += tool(!!t.unity, "Unity", t.unity ? `已安装 ${esc(t.unityWant)}` : `未安装 ${esc(t.unityWant)}`, t.unity ? "" : `<button class="btn small" data-url="${esc(t.hubInstallLink)}" title="通过 Unity Hub 安装 VRChat 要求的版本">安装</button>`);
+    tools += tool(t.alcomSeen, "ALCOM", t.alcom ? "已安装" : t.alcomSeen ? "有配置，未找到程序" : "未安装", t.alcom ? `<button class="btn small" data-pipe="launch" data-what="alcom">打开</button>` : `<button class="btn small" data-url="https://vrc-get.anatawa12.com/alcom/" title="ALCOM 是 VCC 的开源替代工具，用于管理工程中的插件">下载</button>`);
     if (t.vcc) tools += tool(true, "VCC", "已安装", `<button class="btn small" data-pipe="launch" data-what="vcc">打开</button>`);
-    if (!t.alcom && !t.vcc) tools += tool(false, "VCC", "没找到", "");
+    if (!t.alcom && !t.vcc) tools += tool(false, "VCC", "未安装", "");
   } else tools = `<div class="toolrow"><i class="dot"></i><span class="k">正在检测…</span></div>`;
   $("#side").innerHTML = `<h3 class="withact">工程<span class="foldn">${ps.length ? ps.length : ""}</span></h3>
     <div class="projlist">${list.map(p => `<button class="navitem${p.path === cur ? " on" : ""}" data-pipeproj="${esc(p.path)}" title="${esc(p.path)}"><span class="dot" style="background:${p.running ? "var(--ok)" : "transparent"}"></span><span class="nm">${esc(p.name)}</span></button>`).join("")
-      || `<p class="sidenote">${ps.length ? "没有符合条件的工程" : "还没有 Unity 工程。新建一个基础工程，或者在设置里添加放工程的文件夹。"}</p>`}</div>
-    <div class="sidelinks"><button class="navitem strong" id="btnNewProj"><span>${ICON.plus}新建基础工程…</span></button><button class="navitem" id="btnProjAdd"><span>添加已有工程…</span></button></div>
-    <h3>这台电脑</h3>
+      || `<p class="sidenote">${ps.length ? "未找到符合条件的工程" : "暂无 Unity 工程。可新建基础工程，或在设置中添加工程所在的文件夹。"}</p>`}</div>
+    <div class="sidelinks"><button class="navitem strong" id="btnNewProj"><span>${ICON.plus}新建基础工程…</span></button><button class="navitem" id="btnProjAdd"><span>添加现有工程…</span></button></div>
+    <h3>运行环境</h3>
     <div class="tools">${tools}</div>
-    <div class="toolrow"><i class="dot ${c.ready ? "ok" : "warn"}"></i><span class="k">AI 服务</span><span class="v" title="${c.ready ? esc(aiProvLabel(c)) : "不用 AI 也能跑流水线"}">${c.ready ? esc(aiProvLabel(c)) : "还没设置"}</span><button class="btn small" id="btnAICfg">${c.ready ? "更换" : "设置"}</button></div>
-    <h3>流水线是什么</h3>
-    <p class="sidenote">把素材库里导入工程的衣服、头发、配饰、道具，按类别装到模型上，生成菜单开关和图标。每一步都在 Unity 里能 Ctrl+Z 撤销，不会替你保存场景。</p>
-    <p class="sidenote">没有工程的话先「新建基础工程」：自动建好 Unity 工程、装上 VRChat SDK 和常用改模插件，还能顺手把素体导进去。</p>`;
+    <div class="toolrow"><i class="dot ${c.ready ? "ok" : "warn"}"></i><span class="k">AI 服务</span><span class="v" title="${c.ready ? esc(aiProvLabel(c)) : "未配置 AI 服务时仍可运行流水线"}">${c.ready ? esc(aiProvLabel(c)) : "未配置"}</span><button class="btn small" id="btnAICfg">${c.ready ? "更改" : "配置"}</button></div>
+    <h3>关于流水线</h3>
+    <p class="sidenote">将已导入工程的衣服、头发、配饰和道具按类别装配到模型，并生成菜单开关和图标。所有改动均可在 Unity 中按 Ctrl+Z 撤销，场景不会自动保存。</p>
+    <p class="sidenote">尚无工程时，可先「新建基础工程」：自动创建 Unity 工程并安装 VRChat SDK 和常用改模插件，可同时导入素体。</p>`;
 }
 
 // the stations of the line, with what each one shows right now
@@ -2129,71 +2132,71 @@ function pipeStations() {
   const p = AI.proj, k = (AI.sess || {}).kit || {}, steps = (AI.sess || {}).steps || [], picked = pipePicked();
   const st = [];
   const ready = !!k.alive && !k.hint;
-  st.push({ id: 1, name: "工程", dot: !p ? "" : ready ? "ok" : "warn", text: !p ? "选一个工程" : ready ? "Unity 已连接" : !k.pipeline ? "装插件、开 Unity" : k.alive ? "有事要处理" : "等 Unity 连上" });
-  st.push({ id: 2, name: "素材", dot: picked.length ? "ok" : "", text: PIPE.assets === null ? "正在读取" : picked.length ? `勾了 ${picked.length} 件` : "勾选要装的" });
+  st.push({ id: 1, name: "工程", dot: !p ? "" : ready ? "ok" : "warn", text: !p ? "未选择工程" : ready ? "Unity 已连接" : !k.pipeline ? "需安装插件" : k.alive ? "需处理" : "等待 Unity 连接" });
+  st.push({ id: 2, name: "素材", dot: picked.length ? "ok" : "", text: PIPE.assets === null ? "正在读取" : picked.length ? `已选 ${picked.length} 项` : "未选择素材" });
   const last = (tool) => { for (let i = steps.length - 1; i >= 0; i--) if (steps[i].kind === "tool" && steps[i].tool === tool) return steps[i]; return null; };
   const busy = (AI.sess || {}).busy;
   const d = last("dress") || last("place_avatar"), m = last("build_menu"), say = steps.length && steps[steps.length - 1].kind === "say";
-  const state = (s, after) => !s ? (busy && after ? { dot: "run", text: "等上一站" } : { dot: "", text: "待开始" }) : s.busy ? { dot: "run", text: "进行中" } : s.ok ? { dot: "ok", text: "完成" } : { dot: "warn", text: "出错了" };
+  const state = (s, after) => !s ? (busy && after ? { dot: "run", text: "等待中" } : { dot: "", text: "待开始" }) : s.busy ? { dot: "run", text: "进行中" } : s.ok ? { dot: "ok", text: "完成" } : { dot: "warn", text: "出错" };
   st.push(Object.assign({ id: 3, name: "装配" }, state(d, true)));
   st.push(Object.assign({ id: 4, name: "菜单" }, state(m, true)));
-  st.push({ id: 5, name: "验收", dot: m && !m.busy && m.ok && say && !busy ? "warn" : "", text: m && !m.busy && m.ok && say && !busy ? "去 Unity 看看" : "做完再来" });
+  st.push({ id: 5, name: "验收", dot: m && !m.busy && m.ok && say && !busy ? "warn" : "", text: m && !m.busy && m.ok && say && !busy ? "待验收" : "未开始" });
   return st;
 }
 function pipeBeltHTML() {
   const busy = !!(AI.sess || {}).busy;
-  return `<div class="belt${busy ? " moving" : ""}" role="tablist" aria-label="流水线工位">${pipeStations().map(s =>
+  return `<div class="belt${busy ? " moving" : ""}" role="tablist" aria-label="流水线步骤">${pipeStations().map(s =>
     `<button class="station" data-station="${s.id}" role="tab"><span class="can"><i class="dot ${s.dot}"></i><b>${s.id}</b></span><span class="nm">${s.name}</span><span class="ds">${esc(s.text)}</span></button>`).join("")}</div>`;
 }
 function renderPipeMain() {
   const g = $("#grid"), p = AI.proj;
   $("#resultbar").innerHTML = "";
   if (!p) {
-    g.innerHTML = `<div class="empty"><h2>还没有 Unity 工程</h2><p>流水线要在一个 Unity 工程里干活。没有的话，一键建一个带 VRChat SDK 和常用插件的基础工程。</p>
-      <div class="btnrow center"><button class="btn primary" id="btnNewProj">${ICON.plus}<span>新建基础工程…</span></button><button class="btn" id="btnProjAdd">添加已有工程…</button></div></div>`;
+    g.innerHTML = `<div class="empty"><h2>暂无 Unity 工程</h2><p>流水线需要在 Unity 工程中运行。可一键新建包含 VRChat SDK 和常用插件的基础工程。</p>
+      <div class="btnrow center"><button class="btn primary" id="btnNewProj">${ICON.plus}<span>新建基础工程…</span></button><button class="btn" id="btnProjAdd">添加现有工程…</button></div></div>`;
     return;
   }
   const f = PIPE;
   g.innerHTML = `<div class="pipe">
     <div id="pipe_belt">${pipeBeltHTML()}</div>
     <section class="stn" id="stn1"><header><span class="no">1</span><h2>工程</h2><span class="pname" title="${esc(p.path)}">${esc(p.name)}<span class="sub">${esc(p.path)}</span></span>
-      <div class="hacts"><button class="btn small" data-pipe="folder">${ICON.folder}<span>文件夹</span></button>${PIPE.tool && PIPE.tool.alcom ? `<button class="btn small" data-pipe="launch" data-what="alcom" title="管理这个工程的插件">在 ALCOM 里打开</button>` : ""}</div></header>
+      <div class="hacts"><button class="btn small" data-pipe="folder">${ICON.folder}<span>文件夹</span></button>${PIPE.tool && PIPE.tool.alcom ? `<button class="btn small" data-pipe="launch" data-what="alcom" title="管理该工程的插件">在 ALCOM 中打开</button>` : ""}</div></header>
       <div class="aistat" id="ai_stat"></div></section>
-    <section class="stn" id="stn2"><header><span class="no">2</span><h2>素材</h2><span class="hint">工程里已导入的素材，自动从 Assets 里读出来；勾上要装的，类别不对就在下拉里改。</span>
-      <div class="hacts"><button class="btn small" data-pipe="rescan" title="重新读取工程里的素材">重新检测</button></div></header>
+    <section class="stn" id="stn2"><header><span class="no">2</span><h2>素材</h2><span class="hint">自动列出工程 Assets 中已导入的素材。勾选要装配的素材，类别有误可在下拉列表中修改。</span>
+      <div class="hacts"><button class="btn small" data-pipe="rescan" title="重新读取工程中的素材">刷新</button></div></header>
       <div id="pipe_assets">${pipeAssetsHTML()}</div>
-      <div class="addrow"><input id="pipe_add" placeholder="手动添加位置：Assets/店铺名/素材名（也可以直接填 prefab）" autocomplete="off" spellcheck="false"><button class="btn small" data-pipe="add">添加</button></div></section>
-    <section class="stn" id="stn3"><header><span class="no">3</span><h2>装配</h2><span class="no">4</span><h2>菜单</h2><span class="hint">按类别装到模型上，再生成菜单开关和图标。</span></header>
-      <div class="howrow"><span>素体 → 场景里没有模型时放进去</span><span>衣服 → 互斥切换，可按部件开关</span><span>头发 → 单独互斥</span><span>配饰 → 开关，默认显示</span><span>道具 → 开关，默认隐藏</span></div>
+      <div class="addrow"><input id="pipe_add" placeholder="手动添加路径：Assets/店铺名/素材名（也可填写 prefab 路径）" autocomplete="off" spellcheck="false"><button class="btn small" data-pipe="add">添加</button></div></section>
+    <section class="stn" id="stn3"><header><span class="no">3</span><h2>装配</h2><span class="no">4</span><h2>菜单</h2><span class="hint">按类别将素材装配到模型，并生成菜单开关和图标。</span></header>
+      <div class="howrow"><span>素体 → 场景中无模型时自动放入</span><span>衣服 → 互斥切换，支持部件开关</span><span>头发 → 独立互斥组</span><span>配饰 → 开关，默认显示</span><span>道具 → 开关，默认隐藏</span></div>
       <div class="row"><label for="pipe_hier">菜单层级</label>
         <div class="inline"><input id="pipe_hier" value="${esc(f.hier || (AI.cfg || {}).hierarchy || "")}" autocomplete="off"><button class="btn small" data-ai="hierdef">恢复默认</button></div>
-        <div class="hint2">用 &gt; 隔开每一层。{分类} 是衣服 / 头发 / 配饰 / 道具这一层，{素材} 是每个素材自己的一层，{开关} 是它的开关；去掉 {素材}，每个素材就只做一个总开关。也可以用自己的话写，AI 会照着排。</div></div>
-      <div class="aigo"><label class="check"><input type="checkbox" id="pipe_noai"${f.noAI ? " checked" : ""}>不用 AI，按网格名字分组（快，不花钱，分得粗一些）</label>
-        <button class="btn big" id="pipe_go" data-ai="dress">${ICON.play}<span>开始流水线</span></button></div></section>
-    <section class="stn" id="stn5"><header><span class="no">5</span><h2>验收</h2><span class="hint">每一步会列在下面。做完后到 Unity 里检查，满意再保存。</span></header>
+        <div class="hint2">用 &gt; 分隔各层级。{分类} 对应衣服 / 头发 / 配饰 / 道具，{素材} 为每个素材单独一层，{开关} 为该素材的开关；去掉 {素材} 后，每个素材仅生成一个总开关。也可用自然语言描述，由 AI 按描述排列。</div></div>
+      <div class="aigo"><label class="check"><input type="checkbox" id="pipe_noai"${f.noAI ? " checked" : ""}>不使用 AI，按网格名称分组（速度快、无费用，分组较粗）</label>
+        <button class="btn big" id="pipe_go" data-ai="dress">${ICON.play}<span>运行流水线</span></button></div></section>
+    <section class="stn" id="stn5"><header><span class="no">5</span><h2>验收</h2><span class="hint">执行记录显示在下方。完成后请在 Unity 中检查，确认无误后再保存场景。</span></header>
       <div class="ailog" id="ai_log" aria-live="polite"></div>
-      <div class="aifoot"><textarea id="ai_text" placeholder="让 AI 接着做别的，例如：把鞋子开关改名叫凉鞋；给外套加一个红色配色；检查有没有丢失的材质。Ctrl+Enter 发送">${esc(f.text)}</textarea>
+      <div class="aifoot"><textarea id="ai_text" placeholder="继续向 AI 下达指令，例如：将鞋子的开关改名为“凉鞋”；为外套添加红色配色；检查是否有丢失的材质。按 Ctrl+Enter 发送">${esc(f.text)}</textarea>
         <div class="aibtns" id="ai_btns"></div></div>
-      <ul class="accept"><li>在 Unity 里进 Play 模式，用 Gesture Manager 把菜单点一遍：互斥是不是只留一件、开关是不是对的物体。</li><li>满意就按 Ctrl+S 保存场景；不满意按 Ctrl+Z，或者点「撤销上一步」。</li><li>上传前看 VRChat SDK 面板：同步参数不能超过 256 位，有警告就回来让 AI 减几个开关。</li></ul></section>
+      <ul class="accept"><li>在 Unity 中进入 Play 模式，用 Gesture Manager 逐项测试菜单：互斥组是否只显示一件，开关是否对应正确的物体。</li><li>确认无误后按 Ctrl+S 保存场景；如需回退，按 Ctrl+Z 或点击「撤销上一步」。</li><li>上传前检查 VRChat SDK 面板：同步参数不得超过 256 位，如有警告，可让 AI 减少开关数量。</li></ul></section>
   </div>`;
   aiRenderLive();
 }
 function pipeAssetsHTML() {
   if (PIPE.err) return `<div class="aiempty err">${esc(PIPE.err)}</div>`;
-  if (PIPE.assets === null) return `<div class="aiempty">正在读取工程里的素材…</div>`;
+  if (PIPE.assets === null) return `<div class="aiempty">正在读取工程中的素材…</div>`;
   const rows = pipeRows();
-  if (!rows.length) return `<div class="aiempty">这个工程的 Assets 里还没有素材。到「素材库」里挑一件，用「一键导入」导进来，或者在下面手动填位置。</div>`;
+  if (!rows.length) return `<div class="aiempty">该工程的 Assets 中暂无素材。可在「素材库」中选择素材并「一键导入」，或在下方手动添加路径。</div>`;
   const k = (AI.sess || {}).kit || {};
   const sel = a => `<select data-pkind="${esc(a.folder)}" title="类别">${KINDS.map(x => `<option${x === a.kind ? " selected" : ""}>${x}</option>`).join("")}</select>`;
-  return `<table class="atable"><thead><tr><th></th><th>素材</th><th>类别</th><th>在工程里的位置</th><th class="r">prefab</th><th></th></tr></thead><tbody>${rows.map(a => {
+  return `<table class="atable"><thead><tr><th></th><th>素材</th><th>类别</th><th>工程内路径</th><th class="r">prefab</th><th></th></tr></thead><tbody>${rows.map(a => {
     const marks = [];
-    if (a.worn) marks.push(`<span class="tag ok" title="它的 prefab 已经在模型上">已装上</span>`);
-    if (a.avatar) marks.push(`<span class="tag" title="里面有整只模型的 prefab">整只模型</span>`);
-    if (a.source) marks.push(`<span class="tag faint" title="${a.source === "导入" ? "这个软件导进来的" : "按文件匹配到素材库里的素材"}">${esc(a.source)}</span>`);
-    if (a.extra) marks.push(`<button class="tag x" data-pipe="drop" data-folder="${esc(a.folder)}" title="去掉这一行">×</button>`);
-    return `<tr class="${a.pick ? "on" : ""}${a.kind === "其他" ? " dim" : ""}"><td><input type="checkbox" data-ppick="${esc(a.folder)}"${a.pick ? " checked" : ""} aria-label="装这个"></td>
+    if (a.worn) marks.push(`<span class="tag ok" title="该素材的 prefab 已在模型上">已装配</span>`);
+    if (a.avatar) marks.push(`<span class="tag" title="包含完整模型的 prefab">完整模型</span>`);
+    if (a.source) marks.push(`<span class="tag faint" title="${a.source === "导入" ? "由本软件导入" : "按文件匹配到素材库中的素材"}">${esc(a.source)}</span>`);
+    if (a.extra) marks.push(`<button class="tag x" data-pipe="drop" data-folder="${esc(a.folder)}" title="移除此行">×</button>`);
+    return `<tr class="${a.pick ? "on" : ""}${a.kind === "其他" ? " dim" : ""}"><td><input type="checkbox" data-ppick="${esc(a.folder)}"${a.pick ? " checked" : ""} aria-label="选择此素材"></td>
       <td class="nm" title="${esc(a.name)}">${esc(a.name)}</td><td>${sel(a)}</td><td class="path" title="${esc(a.folder)}">${esc(a.folder)}</td><td class="r muted">${a.prefabs || ""}</td><td class="marks">${marks.join("")}</td></tr>`;
-  }).join("")}</tbody></table>${k.alive ? "" : `<div class="hint2">Unity 连上后，这里还会标出哪些已经装在模型上、哪些是整只模型。</div>`}`;
+  }).join("")}</tbody></table>${k.alive ? "" : `<div class="hint2">Unity 连接后，将标注已装配的素材和完整模型。</div>`}`;
 }
 // the one thing to do next gets the coloured button: the plugins, Unity, the service, then the line itself
 function aiNext() {
@@ -2212,36 +2215,36 @@ function aiStatHTML() {
   if (!k) return row("", "Unity 插件", "正在检查…") + row("", "Unity", "正在检查…");
   const sk = k.skills ? `UnitySkills ${esc(k.skillsVer || "")}${k.skills === "own" ? "（工程自带）" : ""}` : "";
   h += k.pipeline
-    ? row(k.pipelineOld ? "warn" : "ok", "Unity 插件", `${k.pipelineOld ? "已安装，有新版" : "已安装"}<span class="sub">　流水线插件${sk ? " + " + sk : ""}</span>`,
+    ? row(k.pipelineOld ? "warn" : "ok", "Unity 插件", `${k.pipelineOld ? "已安装，可更新" : "已安装"}<span class="sub">　流水线插件${sk ? " + " + sk : ""}</span>`,
       `${k.pipelineOld ? `<button class="btn small${pri("install")}" data-ai="install">更新</button>` : ""}<button class="btn small ghost" data-ai="remove">移除</button>`)
-    : row("warn", "Unity 插件", "这个工程还没有装", `<button class="btn small${pri("install")}" data-ai="install">安装并打开 Unity</button>`);
-  if (!k.pipeline) return h + row("", "Unity", k.running ? "开着" : "没有打开", !k.running && k.editor ? `<button class="btn small" data-ai="unity">打开 Unity</button>` : "");
+    : row("warn", "Unity 插件", "未安装", `<button class="btn small${pri("install")}" data-ai="install">安装并打开 Unity</button>`);
+  if (!k.pipeline) return h + row("", "Unity", k.running ? "已打开" : "未打开", !k.running && k.editor ? `<button class="btn small" data-ai="unity">打开 Unity</button>` : "");
   const ok = k.alive && !k.hint;
-  const conn = k.alive ? `已连接${k.skillsOn ? `<span class="sub">　UnitySkills 端口 ${k.port}${k.mode ? "，" + esc(k.mode) + " 模式" : ""}</span>` : `<span class="sub">　UnitySkills 服务还没启动（穿戴和菜单不受影响）</span>`}` : "";
+  const conn = k.alive ? `已连接${k.skillsOn ? `<span class="sub">　UnitySkills 端口 ${k.port}${k.mode ? "，" + esc(k.mode) + " 模式" : ""}</span>` : `<span class="sub">　UnitySkills 服务未启动（不影响装配和菜单）</span>`}` : "";
   h += row(ok ? "ok" : "warn", "Unity", k.hint ? `${conn ? conn + "<br>" : ""}<span class="warnline">${esc(k.hint)}</span>` : conn,
     !k.running && k.editor ? `<button class="btn small${pri("unity")}" data-ai="unity">打开 Unity</button>` : "");
-  if (!c.ready) h += row("warn", "AI 服务", "还没设置。不用 AI 也能跑流水线（按网格名字分组）", `<button class="btn small${pri("cfg")}" data-ai="cfg">设置</button>`);
+  if (!c.ready) h += row("warn", "AI 服务", "未配置。不使用 AI 也可运行流水线（按网格名称分组）", `<button class="btn small${pri("cfg")}" data-ai="cfg">配置</button>`);
   else {
-    const vm = esc(c.eyeModel || ""), set = `<button class="btn small ghost" data-ai="cfg">设置</button>`;
+    const vm = esc(c.eyeModel || ""), set = `<button class="btn small ghost" data-ai="cfg">配置</button>`;
     const looks = {
-      main: ["ok", "AI 自己看截图", set],
-      other: ["ok", `这个模型看不了图，由${c.eyeOwn ? "同一家的" : "看图模型"} ${vm} 把截图描述给它`, set],
-      unknown: ["", `第一次拍照时会测一下这个模型能不能看图<span class="sub">　截图也会显示在下面的记录里</span>`, set],
-      none: ["warn", "这个模型看不了图，这一家也没有现成的看图模型：截图只显示给你看。另设一个看图模型，AI 就能检查画面", set],
-      off: ["", "已关闭：截图只显示给你看", set],
+      main: ["ok", "由当前 AI 模型直接识别截图", set],
+      other: ["ok", `当前 AI 模型不支持识图，由${c.eyeOwn ? "同服务商的" : "视觉模型"} ${vm} 代为描述截图`, set],
+      unknown: ["", `首次截图时将检测当前 AI 模型是否支持识图<span class="sub">　截图同时显示在下方记录中</span>`, set],
+      none: ["warn", "当前 AI 模型不支持识图，该服务商也未提供视觉模型，截图仅显示在记录中。配置视觉模型后，AI 可检查画面", set],
+      off: ["", "已关闭，截图仅显示在记录中", set],
     }[c.looks || "unknown"];
-    h += row(looks[0], "看图", looks[1], looks[2] || "");
+    h += row(looks[0], "识图", looks[1], looks[2] || "");
   }
   return h;
 }
 function aiLogHTML() {
   const steps = (AI.sess || {}).steps || [];
-  if (!steps.length) return `<div class="aiempty">流水线做的每一步会列在这里。<br>改动都能在 Unity 里按 Ctrl+Z 撤销；它不会替你保存场景。</div>`;
+  if (!steps.length) return `<div class="aiempty">流水线的执行记录将显示在此处。<br>所有改动均可在 Unity 中按 Ctrl+Z 撤销，场景不会自动保存。</div>`;
   const busyTool = steps.some(s => s.busy);
   return steps.map(s => {
     if (s.kind === "ask") {
       return `<div class="aistep ask${s.busy ? " open" : ""}"><div>${esc(s.text)}</div>${s.busy
-        ? `<div class="btnrow"><button class="btn small primary" data-ai="allow">允许这一次</button><button class="btn small" data-ai="allowall" title="这段对话里之后的这类操作都不再问">这次对话都允许</button><button class="btn small" data-ai="deny">不允许</button></div>`
+        ? `<div class="btnrow"><button class="btn small primary" data-ai="allow">仅本次允许</button><button class="btn small" data-ai="allowall" title="本次对话中不再询问同类操作">本次对话始终允许</button><button class="btn small" data-ai="deny">拒绝</button></div>`
         : `<div class="out">${esc(s.out || "")}</div>`}</div>`;
     }
     if (s.kind === "tool") {
@@ -2250,13 +2253,13 @@ function aiLogHTML() {
       return `<div class="aistep tool${s.busy ? " busy" : ""}">${mark}<span><b>${esc(s.text)}</b>${s.out ? `<span class="out">　${esc(s.out)}</span>` : ""}${shots}</span></div>`;
     }
     return `<div class="aistep ${s.kind === "error" ? "err" : s.kind}">${esc(s.text)}</div>`;
-  }).join("") + ((AI.sess || {}).busy && !busyTool ? `<div class="aistep tool busy"><i class="spin"></i><span class="out">AI 正在想下一步…</span></div>` : "");
+  }).join("") + ((AI.sess || {}).busy && !busyTool ? `<div class="aistep tool busy"><i class="spin"></i><span class="out">AI 正在规划下一步…</span></div>` : "");
 }
 function aiBtnsHTML() {
   const s = AI.sess || {};
   if (s.busy) return `<button class="btn" data-ai="stop">停止</button>`;
   return `<button class="btn${aiNext() === "send" ? " primary" : ""}" data-ai="send">发送</button>
-    <div class="aimini">${s.changes ? `<button class="btn small ghost" data-ai="undo" title="相当于在 Unity 里按一次 Ctrl+Z">撤销上一步</button>` : ""}${(s.steps || []).length ? `<button class="btn small ghost" data-ai="reset" title="清空这段对话，AI 不再记得前面说过什么。Unity 里已经做的改动不受影响">新对话</button>` : ""}</div>`;
+    <div class="aimini">${s.changes ? `<button class="btn small ghost" data-ai="undo" title="等同于在 Unity 中按一次 Ctrl+Z">撤销上一步</button>` : ""}${(s.steps || []).length ? `<button class="btn small ghost" data-ai="reset" title="清空当前对话，AI 将不保留此前的上下文。Unity 中已完成的改动不受影响">新对话</button>` : ""}</div>`;
 }
 // only the parts that change are redrawn, so what the player is typing stays
 function aiRenderLive() {
@@ -2287,22 +2290,22 @@ async function aiPoll() {
   const s = AI.sess || {};
   // a run just ended: the asset list may know more now (what is on the avatar)
   if (wasBusy && !s.busy && (s.steps || []).length >= hadSteps) pipeRescan(true);
-  // … and so may the 看图 row: the first look finds out whether the model reads pictures
+  // … and so may the 识图 row: the first look finds out whether the model reads pictures
   if (wasBusy && !s.busy) aiLoadCfg().then(() => { if (AI.proj && AI.proj.path === path) aiRenderLive(); }).catch(() => {});
   AI.timer = setTimeout(aiPoll, s.busy || !(s.kit || {}).alive ? 900 : 3000);
 }
 async function pipeRescan(quiet) {
   const p = AI.proj; if (!p) return;
   let r; try { r = await api("/api/pipe/assets", { project: p.path, fresh: true }); } catch (e) { return; }
-  if (!AI.proj || AI.proj.path !== p.path || !r.ok) { if (!quiet && r && !r.ok) toast(r.err || "读不到工程"); return; }
+  if (!AI.proj || AI.proj.path !== p.path || !r.ok) { if (!quiet && r && !r.ok) toast(r.err || "无法读取工程"); return; }
   PIPE.assets = r.assets || []; AI.sess = Object.assign(AI.sess || {}, { kit: r.kit }); pipeDefaults();
   const el = $("#pipe_assets"); if (el) el.innerHTML = pipeAssetsHTML();
   aiRenderLive();
-  if (!quiet) toast(`读到 ${PIPE.assets.length} 项`);
+  if (!quiet) toast(`已读取 ${PIPE.assets.length} 项素材`);
 }
 async function aiRun(body) {
   const r = await api("/api/ai/run", Object.assign({ project: AI.proj.path }, body));
-  if (!r.ok) { toast(r.err || "没能开始", 5000); return false; }
+  if (!r.ok) { toast(r.err || "启动失败", 5000); return false; }
   const log = $("#ai_log"); if (log) log.scrollTop = log.scrollHeight;
   const sec = $("#stn5"); if (sec) sec.scrollIntoView({ behavior: "smooth", block: "start" });
   aiPoll(); return true;
@@ -2310,15 +2313,15 @@ async function aiRun(body) {
 async function aiSend() {
   const ta = $("#ai_text"); if (!ta || (AI.sess || {}).busy) return;
   const text = ta.value.trim(); if (!text) { ta.focus(); return; }
-  if (!AI.cfg.ready) { toast("先设置 AI 服务"); pipeKeep(); AI.back = AI.proj.path; return openAICfg(); }
+  if (!AI.cfg.ready) { toast("请先配置 AI 服务"); pipeKeep(); AI.back = AI.proj.path; return openAICfg(); }
   if (await aiRun({ mode: "chat", text })) { ta.value = ""; PIPE.text = ""; }
 }
 async function pipeStart() {
   const p = AI.proj, k = (AI.sess || {}).kit || {}, noAI = $("#pipe_noai").checked, hierarchy = $("#pipe_hier").value.trim();
   const picked = pipePicked();
-  if (!picked.length) { toast("先在「素材」里勾上要装的素材", 4500); const s = $("#stn2"); if (s) s.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
-  if (!noAI && !AI.cfg.ready) { toast("先设置 AI 服务，或者勾上「不用 AI」"); pipeKeep(); AI.back = p.path; return openAICfg(); }
-  if (!k.alive) { toast(k.hint || "Unity 还没有连上", 5000); const s = $("#stn1"); if (s) s.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+  if (!picked.length) { toast("请先在「素材」中勾选要装配的素材", 4500); const s = $("#stn2"); if (s) s.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+  if (!noAI && !AI.cfg.ready) { toast("请先配置 AI 服务，或勾选「不使用 AI」"); pipeKeep(); AI.back = p.path; return openAICfg(); }
+  if (!k.alive) { toast(k.hint || "Unity 尚未连接", 5000); const s = $("#stn1"); if (s) s.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
   pipeKeep();
   await aiRun({ mode: "dress", assets: picked.map(a => ({ folder: a.folder, kind: a.kind, name: a.name })), hierarchy, noAI });
 }
@@ -2327,15 +2330,15 @@ async function pipeAction(b) {
   if (what === "launch") {
     b.disabled = true;
     const r = await api("/api/pipe/launch", { what: b.dataset.what });
-    b.disabled = false; toast(r.ok ? "正在打开" : r.err || "没能打开", 4000); return;
+    b.disabled = false; toast(r.ok ? "正在打开…" : r.err || "打开失败", 4000); return;
   }
   if (what === "folder" && p) return openPath(p.path);
   if (what === "rescan") { b.disabled = true; await pipeRescan(false); b.disabled = false; return; }
   if (what === "add") {
     const inp = $("#pipe_add"), f = inp.value.trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
     if (!f) { inp.focus(); return; }
-    if (!/^Assets\//i.test(f)) { toast("位置要以 Assets/ 开头", 4000); inp.focus(); return; }
-    if (pipeRows().some(a => a.folder.toLowerCase() === f.toLowerCase())) { toast("已经在列表里了"); inp.value = ""; return; }
+    if (!/^Assets\//i.test(f)) { toast("路径须以 Assets/ 开头", 4000); inp.focus(); return; }
+    if (pipeRows().some(a => a.folder.toLowerCase() === f.toLowerCase())) { toast("该路径已在列表中"); inp.value = ""; return; }
     PIPE.extra.push({ folder: f, name: f.replace(/\.prefab$/i, "").split("/").pop(), kind: "衣服", prefabs: 0, pick: true });
     inp.value = ""; $("#pipe_assets").innerHTML = pipeAssetsHTML(); aiRenderLive(); return;
   }
@@ -2351,20 +2354,20 @@ async function aiAction(b) {
   if (what === "hierdef") { $("#pipe_hier").value = AI.cfg.defaultHierarchy; PIPE.hier = AI.cfg.defaultHierarchy; return; }
   if (what === "install") {
     const k = (AI.sess || {}).kit || {};
-    if (!k.pipeline && !confirm(`给「${p.name}」安装 AI 插件？\n\n会往这个工程的 Packages 里放两个编辑器插件：\n· MioVRCA 改模流水线：放素体、穿戴素材、生成菜单和图标\n· UnitySkills ${k.skills === "own" ? "（工程里已经有，用它自己的）" : "2.8.4（开源，MIT）：让 AI 能做更多 Unity 操作"}\n\n只在 Unity 编辑器里运行，不会跟模型一起上传。装完会打开 Unity，第一次要编译一两分钟。\n随时可以在这里点「移除」。`)) return;
+    if (!k.pipeline && !confirm(`为「${p.name}」安装 AI 插件？\n\n将在该工程的 Packages 中安装两个编辑器插件：\n· MioVRCA 改模流水线：放置素体、装配素材、生成菜单和图标\n· UnitySkills ${k.skills === "own" ? "（工程已自带，沿用现有版本）" : "2.8.4（开源，MIT）：为 AI 提供更多 Unity 操作能力"}\n\n插件仅在 Unity 编辑器中运行，不会随模型上传。安装后将打开 Unity，首次编译约需一至两分钟。\n可随时在此处点击「移除」。`)) return;
     b.disabled = true;
     const r = await api("/api/ai/setup", { project: p.path, on: true });
-    toast(r.ok ? r.note || "已安装" : r.err || "没能安装", 6000); return aiFresh();
+    toast(r.ok ? r.note || "已安装" : r.err || "安装失败", 6000); return aiFresh();
   }
   if (what === "remove") {
-    if (!confirm(`从「${p.name}」移除 AI 插件？\n\n会删掉软件放进去的插件（工程自带的 UnitySkills 不动）。已经穿好的衣服和生成的菜单都会留着，它们只依赖 Modular Avatar。`)) return;
+    if (!confirm(`从「${p.name}」移除 AI 插件？\n\n将移除由本软件安装的插件（工程自带的 UnitySkills 不受影响）。已装配的素材和已生成的菜单将保留，它们仅依赖 Modular Avatar。`)) return;
     const r = await api("/api/ai/setup", { project: p.path, on: false });
-    toast(r.ok ? r.note : r.err || "没能移除", 5000); return aiFresh();
+    toast(r.ok ? r.note : r.err || "移除失败", 5000); return aiFresh();
   }
   if (what === "unity") {
     b.disabled = true;
     const r = await api("/api/project/open", { path: p.path });
-    toast(r.ok ? "正在打开 Unity，连上后这里会变成「已连接」" : r.err || "没能打开", 5000); return aiFresh();
+    toast(r.ok ? "正在打开 Unity，连接后此处将显示「已连接」" : r.err || "打开失败", 5000); return aiFresh();
   }
   if (what === "dress") return pipeStart();
   if (what === "send") return aiSend();
@@ -2377,10 +2380,10 @@ async function aiAction(b) {
   if (what === "undo") {
     b.disabled = true;
     const r = await api("/api/ai/undo", { project: p.path });
-    toast(r.ok ? "已撤销：" + (r.undone || "上一步") : r.err || "没能撤销", 4000); return aiFresh();
+    toast(r.ok ? "已撤销：" + (r.undone || "上一步") : r.err || "撤销失败", 4000); return aiFresh();
   }
   if (what === "reset") {
-    if (!confirm("开始新对话？AI 不再记得前面说过什么。Unity 里已经做的改动不受影响。")) return;
+    if (!confirm("开始新对话？AI 将不保留此前的上下文，Unity 中已完成的改动不受影响。")) return;
     await api("/api/ai/reset", { project: p.path }); return aiFresh();
   }
   // the AI service form
@@ -2390,14 +2393,14 @@ async function aiAction(b) {
   if (what === "models" && (AI.cfgForm.models[AI.cfgForm.provider] || []).length && !b.dataset.again) return aiModelList(true, true);
   if (what === "models" || what === "test") {
     const out = $("#ai_test"), body = aiCfgBody();
-    b.disabled = true; out.className = "aitest"; out.textContent = what === "test" ? "正在连接…" : "正在读取模型…";
-    let r; try { r = await api("/api/ai/" + what, body); } catch (e) { r = { ok: false, err: "软件没有回应" }; }
+    b.disabled = true; out.className = "aitest"; out.textContent = what === "test" ? "正在连接…" : "正在获取模型列表…";
+    let r; try { r = await api("/api/ai/" + what, body); } catch (e) { r = { ok: false, err: "程序无响应" }; }
     b.disabled = false;
     if (!$("#ai_test")) return;
     if (!r.ok) { out.className = "aitest err"; out.textContent = r.err; return; }
     if (what === "test") { out.className = "aitest ok"; out.textContent = r.note; return; }
     AI.cfgForm.models[body.provider] = r.models;
-    out.className = "aitest ok"; out.textContent = `读到 ${r.models.length} 个模型，在列表里点一个`;
+    out.className = "aitest ok"; out.textContent = `已获取 ${r.models.length} 个模型，请在列表中选择`;
     return aiModelList(true, true);
   }
   if (what === "vpreset") {
@@ -2412,8 +2415,8 @@ async function aiAction(b) {
   if (what === "vtest") {
     const out = $("#ai_vtest"), body = aiCfgBody(), x = AI.cfgForm.vision;
     body.who = b.dataset.who; body.vision = aiVisionBody(); if (x.key.trim()) body.visionKey = x.key.trim();
-    b.disabled = true; out.className = "aitest"; out.textContent = "正在给它看一张写着数字的图…";
-    let r; try { r = await api("/api/ai/visiontest", body); } catch (e) { r = { ok: false, err: "软件没有回应" }; }
+    b.disabled = true; out.className = "aitest"; out.textContent = "正在发送测试图片…";
+    let r; try { r = await api("/api/ai/visiontest", body); } catch (e) { r = { ok: false, err: "程序无响应" }; }
     b.disabled = false;
     if (!$("#ai_vtest")) return;
     if (r.ok && r.ai) AI.cfg = r.ai;
@@ -2427,7 +2430,7 @@ async function aiAction(b) {
     const r = await api("/api/ai/save", body);
     if (!r.ok) { const out = $("#ai_test"); out.className = "aitest err"; out.textContent = r.err; return; }
     AI.cfg = r.ai;
-    if (what === "keyclear" || what === "vkeyclear") { AI.cfgForm = null; toast("已清除保存的 Key"); return openAICfg(); }
+    if (what === "keyclear" || what === "vkeyclear") { AI.cfgForm = null; toast("已清除保存的 API Key"); return openAICfg(); }
     toast("已保存");
     if (!AI.back && AI.cfg.ready && S.view !== "pipe") { AI.cfgForm = null; return openAIPick(); } // set up from the settings: which project is it for?
     return aiCfgDone();
@@ -2454,66 +2457,66 @@ function npKeep() {
   f.name = $("#np_name").value; f.parent = $("#np_parent").value; f.base = $("#np_base").value; f.aiKit = $("#np_kit").checked;
   for (const x of document.querySelectorAll("[data-npplug]")) f.plugins[x.dataset.npplug] = x.checked;
 }
-const NP_STAGES = [["prepare", "准备"], ["repos", "读取插件仓库"], ["packages", "下载插件"], ["settings", "写工程设置"], ["base", "导入素体"], ["kit", "装 AI 插件"]];
+const NP_STAGES = [["prepare", "准备"], ["repos", "读取插件仓库"], ["packages", "下载插件"], ["settings", "写入工程设置"], ["base", "导入素体"], ["kit", "安装 AI 插件"]];
 function renderNP() {
   const m = $("#modal"), t = PIPE.tool || { plugins: [], bases: [] }, f = PIPE.npForm, j = npJob();
   if (j) { // a job is running or just ended: its progress replaces the form
     const idx = NP_STAGES.findIndex(s => s[0] === j.stage);
     const list = NP_STAGES.map((s, i) => {
       const cls = j.stage === "done" || i < idx ? "done" : i === idx && j.stage !== "failed" ? "cur" : i === idx ? "bad" : "";
-      return `<li class="${cls}"><i>${cls === "done" ? "✓" : cls === "cur" ? "" : cls === "bad" ? "!" : ""}</i>${s[1]}${i === idx && j.stage !== "done" && j.stage !== "failed" ? `<span class="muted">　${esc(j.msg || "")}</span>` : ""}</li>`;
+      return `<li class="${cls}"><i>${cls === "done" ? "✓" : cls === "cur" ? "" : cls === "bad" ? "!" : ""}</i>${s[1]}${i === idx && j.stage !== "done" && j.stage !== "failed" && (j.msg || "").replace(/^正在/, "") !== s[1] ? `<span class="muted">　${esc(j.msg || "")}</span>` : ""}</li>`;
     }).join("");
     const imp = S.data.importJob, choose = j.stage === "base" && imp && imp.stage === "choose";
     const pct = j.total ? Math.round(j.done / j.total * 100) : 0;
     let tail = "";
-    if (j.stage === "done") tail = `<div class="impres ok"><div>工程建好了：<b>${esc(j.name)}</b></div><div class="small">${esc(j.path)}</div>
-        ${(j.packages || []).length ? `<div class="small">装了 ${j.packages.length} 个包：${j.packages.map(esc).join("、")}</div>` : ""}
-        ${(j.notes || []).map(n => `<div class="small${/没|失败|不了|出错|跳过/.test(n) ? " warnline" : ""}">${esc(n)}</div>`).join("")}</div>`;
-    else if (j.stage === "failed") tail = `<div class="impres err"><div>${esc(j.err || "没能建好")}</div>${(j.notes || []).map(n => `<div class="small">${esc(n)}</div>`).join("")}<div class="small">已经建出来的文件留在 ${esc(j.path)}，可以删掉重来。</div></div>`;
-    else if (choose) tail = `<div class="impchoose"><div>素体有不同的版本，选要导入的：</div>
+    if (j.stage === "done") tail = `<div class="impres ok"><div>工程创建完成：<b>${esc(j.name)}</b></div><div class="small">${esc(j.path)}</div>
+        ${(j.packages || []).length ? `<div class="small">已安装 ${j.packages.length} 个包：${j.packages.map(esc).join("、")}</div>` : ""}
+        ${(j.notes || []).map(n => `<div class="small${/未|没|失败|无法|不了|出错|跳过/.test(n) ? " warnline" : ""}">${esc(n)}</div>`).join("")}</div>`;
+    else if (j.stage === "failed") tail = `<div class="impres err"><div>${esc(j.err || "创建失败")}</div>${(j.notes || []).map(n => `<div class="small">${esc(n)}</div>`).join("")}<div class="small">已创建的文件保留在 ${esc(j.path)}，可删除后重试。</div></div>`;
+    else if (choose) tail = `<div class="impchoose"><div>该素体包含多个版本，请选择要导入的版本：</div>
         ${(imp.choices || []).map((c, i) => `<label class="check"><input type="checkbox" data-ipick="${i}"${c.pick ? " checked" : ""}><span class="n">${esc(c.name)}</span>${(c.bases || []).map(b => `<span class="base">${esc(b)}</span>`).join("")}<span class="s">${fmtSize(c.size)}</span></label>`).join("")}
         <div class="btnrow"><button class="btn small primary" data-np="impgo">导入所选</button><button class="btn small ghost" data-np="impskip">不导入素体</button></div></div>`;
     else tail = `<div class="bar wide"><i style="width:${pct}%"></i></div>`;
     m.innerHTML = `<div class="mhead">新建基础工程</div><div class="mbody"><ol class="npstages">${list}</ol>${tail}</div>
-      <div class="mfoot">${j.stage === "done" ? `<button class="btn ghost" data-np="dismiss">关闭</button><button class="btn primary" data-np="goto">去流水线</button>`
-        : j.stage === "failed" ? `<button class="btn ghost" data-np="dismiss">关闭</button><button class="btn" data-np="again">改一改再试</button>`
+      <div class="mfoot">${j.stage === "done" ? `<button class="btn ghost" data-np="dismiss">关闭</button><button class="btn primary" data-np="goto">前往流水线</button>`
+        : j.stage === "failed" ? `<button class="btn ghost" data-np="dismiss">关闭</button><button class="btn" data-np="again">返回修改</button>`
         : `<button class="btn ghost" data-np="cancel">取消</button>`}</div>`;
     return;
   }
-  const unity = t.unity ? `<span class="okline">Unity ${esc(t.unityWant)} 已安装</span>` : `<span class="warnline">这台电脑没有 Unity ${esc(t.unityWant)}</span>　<button class="linkbtn" data-url="${esc(t.hubInstallLink || "")}">用 Unity Hub 安装</button>`;
-  const alcom = t.alcom ? `<span class="okline">ALCOM 已安装，新工程会出现在它的列表里</span>` : t.alcomSeen ? `<span class="muted">有 ALCOM / VCC 的配置，新工程会加进它的列表</span>` : `<span class="muted">没有 ALCOM / VCC 也能建；插件直接从官方仓库下载</span>`;
+  const unity = t.unity ? `<span class="okline">Unity ${esc(t.unityWant)} 已安装</span>` : `<span class="warnline">本机未安装 Unity ${esc(t.unityWant)}</span>　<button class="linkbtn" data-url="${esc(t.hubInstallLink || "")}">通过 Unity Hub 安装</button>`;
+  const alcom = t.alcom ? `<span class="okline">已安装 ALCOM，新工程将自动加入其工程列表</span>` : t.alcomSeen ? `<span class="muted">检测到 ALCOM / VCC 配置，新工程将加入其工程列表</span>` : `<span class="muted">未安装 ALCOM / VCC 也可创建，插件将直接从官方仓库下载</span>`;
   m.innerHTML = `<div class="mhead">新建基础工程</div><div class="mbody">
-    <p class="lead">一键建一个 VRChat 改模工程：Unity ${esc(t.unityWant)} 的工程设置、VRChat SDK（Avatars）和常用改模插件都装好，还能顺手把素体导进去。</p>
-    <div class="row"><label for="np_name">工程名</label><input id="np_name" value="${esc(f.name)}" placeholder="例如 Kaguya_Mod" autocomplete="off" spellcheck="false"></div>
-    <div class="row"><label for="np_parent">放在哪个文件夹</label><div class="inline"><input id="np_parent" value="${esc(f.parent)}" placeholder="D:\\VRChat_Project" autocomplete="off" spellcheck="false"><button class="btn small" data-np="pick">选择…</button></div>
-      <div class="hint2">工程会建在这个文件夹下的「工程名」子文件夹里。</div></div>
-    <div class="row"><label for="np_base">素体</label><select id="np_base"><option value="">不导入（之后在素材库里一键导入）</option>${(t.bases || []).map(b => `<option value="${esc(b.key)}"${b.key === f.base ? " selected" : ""}>${esc(b.name)}${(b.bases || []).length ? "（" + esc(b.bases.join("、")) + "）" : ""}</option>`).join("")}</select>
-      <div class="hint2">素材库里分类是「素体」的素材。选了就在建好工程后直接导入，之后流水线能把它放进场景。</div></div>
+    <p class="lead">一键创建 VRChat 改模工程：自动完成 Unity ${esc(t.unityWant)} 工程设置，安装 VRChat SDK（Avatars）和常用改模插件，可同时导入素体。</p>
+    <div class="row"><label for="np_name">工程名称</label><input id="np_name" value="${esc(f.name)}" placeholder="例如 Kaguya_Mod" autocomplete="off" spellcheck="false"></div>
+    <div class="row"><label for="np_parent">保存位置</label><div class="inline"><input id="np_parent" value="${esc(f.parent)}" placeholder="D:\\VRChat_Project" autocomplete="off" spellcheck="false"><button class="btn small" data-np="pick">选择…</button></div>
+      <div class="hint2">工程将创建在该文件夹下以工程名称命名的子文件夹中。</div></div>
+    <div class="row"><label for="np_base">素体</label><select id="np_base"><option value="">不导入（可稍后在素材库中一键导入）</option>${(t.bases || []).map(b => `<option value="${esc(b.key)}"${b.key === f.base ? " selected" : ""}>${esc(b.name)}${(b.bases || []).length ? "（" + esc(b.bases.join("、")) + "）" : ""}</option>`).join("")}</select>
+      <div class="hint2">可选素材库中分类为「素体」的素材。选择后将在工程创建完成时导入，并可由流水线放入场景。</div></div>
     <div class="row"><label>插件</label><div class="plugs">${(t.plugins || []).map(pl => `<label class="check opt"><input type="checkbox" data-npplug="${esc(pl.pkg)}"${f.plugins[pl.pkg] ? " checked" : ""}${pl.fixed ? " disabled" : ""}><span><b>${esc(pl.label)}</b><span class="muted">　${esc(pl.note || "")}</span></span></label>`).join("")}</div>
-      <div class="hint2">都从各自的官方仓库下载最新稳定版（ALCOM / VCC 已经下载过的直接复用）。VRChat SDK 和 Modular Avatar 是流水线必需的。</div></div>
-    <label class="check opt"><input type="checkbox" id="np_kit"${f.aiKit ? " checked" : ""}><span>建好后装上 AI 插件并打开 Unity</span></label>
+      <div class="hint2">均从各自的官方仓库下载最新稳定版，ALCOM / VCC 已缓存的版本会直接复用。VRChat SDK 和 Modular Avatar 为流水线必需。</div></div>
+    <label class="check opt"><input type="checkbox" id="np_kit"${f.aiKit ? " checked" : ""}><span>创建完成后安装 AI 插件并打开 Unity</span></label>
     <div class="npenv">${unity}<br>${alcom}</div>
   </div><div class="mfoot"><button class="btn ghost" data-m="close">取消</button><button class="btn primary" data-np="create">创建</button></div>`;
 }
 function renderNPLive() { if ($("#modal").dataset.kind === "np" && $("#modal").classList.contains("on")) renderNP(); }
 async function npAction(b) {
   const what = b.dataset.np, j = npJob();
-  if (what === "pick") { npKeep(); const p = await pickInto("选择放工程的文件夹"); if (p) { PIPE.npForm.parent = p; renderNP(); } return; }
+  if (what === "pick") { npKeep(); const p = await pickInto("选择工程保存位置"); if (p) { PIPE.npForm.parent = p; renderNP(); } return; }
   if (what === "create") {
     npKeep();
     const f = PIPE.npForm, plugins = Object.keys(f.plugins).filter(k => f.plugins[k]);
-    if (!f.name.trim()) { toast("给工程起个名字"); $("#np_name").focus(); return; }
-    if (!f.parent.trim()) { toast("选一个放工程的文件夹"); $("#np_parent").focus(); return; }
+    if (!f.name.trim()) { toast("请输入工程名称"); $("#np_name").focus(); return; }
+    if (!f.parent.trim()) { toast("请选择工程保存位置"); $("#np_parent").focus(); return; }
     b.disabled = true;
     const r = await api("/api/pipe/create", { name: f.name.trim(), parent: f.parent.trim(), base: f.base, plugins, aiKit: f.aiKit });
-    if (!r.ok) { b.disabled = false; toast(r.err || "没能开始", 5000); return; }
+    if (!r.ok) { b.disabled = false; toast(r.err || "启动失败", 5000); return; }
     S.data.newProject = r.job; renderNP(); poll(true); return;
   }
   if (what === "cancel") { await api("/api/pipe/create/cancel", {}); toast("正在取消"); return poll(true); }
   if (what === "impgo") {
     const cs = (S.data.importJob || {}).choices || [];
     const paths = [...document.querySelectorAll("#modal [data-ipick]")].filter(x => x.checked).map(x => (cs[+x.dataset.ipick] || {}).path).filter(Boolean);
-    if (!paths.length) { toast("至少选一个"); return; }
+    if (!paths.length) { toast("请至少选择一项"); return; }
     await api("/api/import/choose", { paths }); return poll(true);
   }
   if (what === "impskip") { await api("/api/import/dismiss", {}); return poll(true); }
@@ -2529,13 +2532,13 @@ async function npAction(b) {
 // which project the AI is to work on
 function openAIPick() {
   const ps = (S.projs || (S.data || {}).projects || []).slice().sort((a, b) => ((b.running || 0) - (a.running || 0)) || (b.opened || 0) - (a.opened || 0) || a.name.localeCompare(b.name));
-  if (!ps.length) { closeModal(); toast("AI 服务已保存。到「流水线」页新建或添加 Unity 工程后就能用", 6000); return; }
+  if (!ps.length) { closeModal(); toast("AI 服务配置已保存。在「流水线」页新建或添加 Unity 工程后即可使用", 6000); return; }
   const m = $("#modal");
   m.dataset.kind = "aicfg"; m.classList.remove("wide");
-  m.innerHTML = `<div class="mhead">给哪个工程用 AI？</div><div class="mbody">
-    <p class="lead">选一个工程：下一步到「流水线」页给它装上 AI 插件并打开 Unity，连上后就能装素材、做菜单。</p>
-    <div class="aipick">${ps.map(p => `<button class="cand" data-ai="pick" data-path="${esc(p.path)}"><span class="p"><b>${esc(p.name)}</b><br><span class="muted small">${esc(p.path)}</span></span>${p.running ? `<span class="note okline">Unity 里开着</span>` : p.unity ? `<span class="note">Unity ${esc(p.unity)}</span>` : ""}</button>`).join("")}</div>
-  </div><div class="mfoot"><button class="btn ghost" data-m="close">以后再说</button></div>`;
+  m.innerHTML = `<div class="mhead">选择工程</div><div class="mbody">
+    <p class="lead">选择要使用流水线的工程。下一步将在「流水线」页为其安装 AI 插件并打开 Unity，连接后即可装配素材、生成菜单。</p>
+    <div class="aipick">${ps.map(p => `<button class="cand" data-ai="pick" data-path="${esc(p.path)}"><span class="p"><b>${esc(p.name)}</b><br><span class="muted small">${esc(p.path)}</span></span>${p.running ? `<span class="note okline">已在 Unity 中打开</span>` : p.unity ? `<span class="note">Unity ${esc(p.unity)}</span>` : ""}</button>`).join("")}</div>
+  </div><div class="mfoot"><button class="btn ghost" data-m="close">稍后</button></div>`;
   m.classList.add("on"); $("#scrim").classList.add("on");
   if (!S.projs) loadProjects().then(() => { if ($("#modal .aipick")) openAIPick(); });
 }
@@ -2549,7 +2552,7 @@ function aiModelList(open, all) {
   let list = all || ms.includes(cur) ? ms : ms.filter(m => m.toLowerCase().includes(q));
   if (!list.length) list = ms;
   box.innerHTML = list.map(m => `<button class="mopt${m === cur ? " on" : ""}" data-aimodel="${esc(m)}">${esc(m)}</button>`).join("") +
-    `<button class="mopt again" data-ai="models" data-again="1">重新读取列表</button>`;
+    `<button class="mopt again" data-ai="models" data-again="1">刷新列表</button>`;
   box.hidden = false; if (btn) btn.setAttribute("aria-expanded", "true");
   const on = box.querySelector(".mopt.on"); if (on) on.scrollIntoView({ block: "nearest" });
 }
@@ -2568,33 +2571,33 @@ function aiCfgBody() {
   const f = AI.cfgForm, v = f.vals[f.provider];
   return { provider: f.provider, baseUrl: v.base.trim(), model: v.model.trim(), key: v.key.trim() };
 }
-// the 看图 part of the service form: who looks at the screenshots the AI takes
-const VISION_MODES = [["", "自动"], ["main", "主模型自己看"], ["other", "用看图模型"], ["off", "不给 AI 看"]];
+// the 识图 part of the service form: who looks at the screenshots the AI takes
+const VISION_MODES = [["", "自动"], ["main", "主模型识别"], ["other", "视觉模型识别"], ["off", "不发送给 AI"]];
 function aiVisionHTML() {
   const c = AI.cfg, x = AI.cfgForm.vision, tail = c.visionKey;
   const say = {
-    "": "AI 拍照检查头像时：上面的模型能看图就把截图发给它；看不了（例如 deepseek-v4-pro）就请一个看图模型把画面描述给它——同一家有看图模型时自动用它（同一个 Key，不用填），否则用下面填的。",
-    main: "截图直接发给上面的模型。它其实看不了图的话，服务会拒绝，软件就改成只把截图显示给你。",
-    other: "截图总是交给下面的看图模型，由它把画面描述成文字再告诉 AI。",
-    off: "截图只显示在记录里给你看，不发给任何模型。",
+    "": "AI 截图检查装配效果时：主模型支持识图则直接发送截图；不支持（例如 deepseek-v4-pro）则由视觉模型将画面转述为文字。同服务商提供视觉模型时自动使用（共用 API Key，无需另填），否则使用下方配置的视觉模型。",
+    main: "截图直接发送给主模型。若主模型实际不支持识图，请求会被服务商拒绝，此时截图仅显示在记录中。",
+    other: "截图始终交由下方配置的视觉模型处理，由其将画面转述为文字后提供给 AI。",
+    off: "截图仅显示在记录中，不发送给任何模型。",
   }[x.mode];
   const other = x.mode === "" || x.mode === "other";
   // a provider with a saved key at the same address: its key serves the vision model too
   const host = u => { try { return new URL(u).host.toLowerCase(); } catch (e) { return ""; } };
   const same = !tail && host(x.base) ? c.providers.find(p => (c.keys || {})[p.id] && host((c.profiles[p.id] || {}).baseUrl || p.base) === host(x.base)) : null;
   const preset = (c.visionPresets || []).find(p => host(p.baseUrl) === host(x.base) && host(x.base));
-  return `<div class="visionbox"><div class="row"><label>看图</label>
+  return `<div class="visionbox"><div class="row"><label>识图</label>
       <div class="seg">${VISION_MODES.map(([id, label]) => `<button class="segbtn${id === x.mode ? " on" : ""}" data-ai="vmode" data-v="${id}" aria-pressed="${id === x.mode}">${label}</button>`).join("")}</div>
       <div class="hint2">${say}</div></div>
-    ${other ? `<div class="row"><label>看图模型用哪家</label><div class="seg">${(c.visionPresets || []).map(p => `<button class="segbtn${preset && preset.id === p.id ? " on" : ""}" data-ai="vpreset" data-v="${p.id}">${esc(p.label)}</button>`).join("")}</div>
-      <div class="hint2">点一下填好接口地址和模型名${preset ? "：" + esc(preset.note) : ""}。也可以在下面自己填别家的。</div></div>
-    <div class="row"><label>看图模型的接口</label><div class="seg">${[["openai", "ChatGPT 兼容"], ["claude", "Claude 兼容"]].map(([id, label]) => `<button class="segbtn${id === x.wire ? " on" : ""}" data-ai="vwire" data-v="${id}" aria-pressed="${id === x.wire}">${label}</button>`).join("")}</div></div>
-    <div class="row"><label for="aiv_base">看图模型的接口地址</label><input id="aiv_base" value="${esc(x.base)}" placeholder="例如 https://open.bigmodel.cn/api/paas/v4" autocomplete="off" spellcheck="false"></div>
-    <div class="row"><label for="aiv_key">看图模型的 API Key${tail ? `<span class="muted small">　已保存（${esc(tail)}）</span>` : ""}</label>
-      <div class="inline"><input id="aiv_key" type="password" value="${esc(x.key)}" placeholder="${tail ? "留空就继续用已保存的" : same ? "不填就用「" + esc(same.label) + "」的 Key（同一家）" : "粘贴 API Key"}" autocomplete="off" spellcheck="false">${tail ? `<button class="btn small" data-ai="vkeyclear">清除</button>` : ""}</div></div>
-    <div class="row"><label for="aiv_model">看图模型的模型名</label><input id="aiv_model" value="${esc(x.model)}" placeholder="例如 glm-4.6v-flash、qwen-vl-plus、kimi-k3、gpt-4o" autocomplete="off" spellcheck="false">
-      <div class="hint2">填任何能看图的模型，可以和上面不是同一家；模型名以服务商的文档为准。${x.mode === "" ? "上面的模型自己能看图、或者同一家有看图模型（DeepSeek、智谱、通义、Kimi 都有）时，这几项可以不填。" : ""}</div></div>` : `<input type="hidden" id="aiv_base" value="${esc(x.base)}"><input type="hidden" id="aiv_key" value="${esc(x.key)}"><input type="hidden" id="aiv_model" value="${esc(x.model)}">`}
-    ${x.mode === "off" ? "" : `<div class="btnrow">${x.mode !== "other" ? `<button class="btn small" data-ai="vtest" data-who="main">测试上面的模型能不能看图</button>` : ""}${other ? `<button class="btn small" data-ai="vtest" data-who="other">测试看图模型</button>` : ""}</div>
+    ${other ? `<div class="row"><label>视觉模型服务商</label><div class="seg">${(c.visionPresets || []).map(p => `<button class="segbtn${preset && preset.id === p.id ? " on" : ""}" data-ai="vpreset" data-v="${p.id}">${esc(p.label)}</button>`).join("")}</div>
+      <div class="hint2">选择后自动填写接口地址和模型名称${preset ? "：" + esc(preset.note) : ""}。也可在下方手动填写其他服务商。</div></div>
+    <div class="row"><label>视觉模型接口类型</label><div class="seg">${[["openai", "ChatGPT 兼容"], ["claude", "Claude 兼容"]].map(([id, label]) => `<button class="segbtn${id === x.wire ? " on" : ""}" data-ai="vwire" data-v="${id}" aria-pressed="${id === x.wire}">${label}</button>`).join("")}</div></div>
+    <div class="row"><label for="aiv_base">视觉模型接口地址</label><input id="aiv_base" value="${esc(x.base)}" placeholder="例如 https://open.bigmodel.cn/api/paas/v4" autocomplete="off" spellcheck="false"></div>
+    <div class="row"><label for="aiv_key">视觉模型 API Key${tail ? `<span class="muted small">　已保存（${esc(tail)}）</span>` : ""}</label>
+      <div class="inline"><input id="aiv_key" type="password" value="${esc(x.key)}" placeholder="${tail ? "留空则沿用已保存的 Key" : same ? "留空则使用「" + esc(same.label) + "」的 Key（同服务商）" : "粘贴 API Key"}" autocomplete="off" spellcheck="false">${tail ? `<button class="btn small" data-ai="vkeyclear">清除</button>` : ""}</div></div>
+    <div class="row"><label for="aiv_model">视觉模型名称</label><input id="aiv_model" value="${esc(x.model)}" placeholder="例如 glm-4.6v-flash、qwen-vl-plus、kimi-k3、gpt-4o" autocomplete="off" spellcheck="false">
+      <div class="hint2">可填写任意支持识图的模型，不必与主模型同服务商；模型名称以服务商文档为准。${x.mode === "" ? "主模型支持识图，或同服务商提供视觉模型（DeepSeek、智谱、通义、Kimi 均有）时，以上各项可留空。" : ""}</div></div>` : `<input type="hidden" id="aiv_base" value="${esc(x.base)}"><input type="hidden" id="aiv_key" value="${esc(x.key)}"><input type="hidden" id="aiv_model" value="${esc(x.model)}">`}
+    ${x.mode === "off" ? "" : `<div class="btnrow">${x.mode !== "other" ? `<button class="btn small" data-ai="vtest" data-who="main">测试主模型识图</button>` : ""}${other ? `<button class="btn small" data-ai="vtest" data-who="other">测试视觉模型</button>` : ""}</div>
     <div class="aitest" id="ai_vtest" role="status"></div>`}</div>`;
 }
 function aiCfgDone() {
@@ -2603,7 +2606,7 @@ function aiCfgDone() {
   if (AI.back) { const p = AI.back; AI.back = null; return openAI(p); } // opened from a project's line: back to it, with the new settings
 }
 async function openAICfg(keep) {
-  if (!keep) { try { await aiLoadCfg(); } catch (e) { toast("读不到 AI 设置"); return; } AI.cfgForm = null; }
+  if (!keep) { try { await aiLoadCfg(); } catch (e) { toast("无法读取 AI 服务配置"); return; } AI.cfgForm = null; }
   const c = AI.cfg;
   if (!AI.cfgForm) {
     const cv = c.vision || {};
@@ -2615,16 +2618,16 @@ async function openAICfg(keep) {
   const m = $("#modal");
   clearTimeout(AI.timer); m.dataset.kind = "aicfg"; m.classList.remove("wide");
   m.innerHTML = `<div class="mhead">AI 服务</div><div class="mbody">
-    <p class="lead">流水线用你自己的 AI 账号干活，费用由服务商按用量收。API Key 加密保存在这台电脑上，只会发给下面填的接口地址。</p>
+    <p class="lead">流水线调用自行配置的 AI 服务，费用由服务商按用量收取。API Key 加密保存在本机，仅发送至下方填写的接口地址。</p>
     <div class="row"><label>服务商</label><div class="seg">${c.providers.map(p => `<button class="segbtn${p.id === f.provider ? " on" : ""}" data-aiprov="${p.id}" aria-pressed="${p.id === f.provider}">${esc(p.label)}</button>`).join("")}</div>
       <div class="hint2">${esc(info.note)}</div></div>
     <div class="row"><label for="ai_base">接口地址</label><input id="ai_base" value="${esc(v.base)}" placeholder="${esc(info.base)}" autocomplete="off" spellcheck="false"></div>
     <div class="row"><label for="ai_key">API Key${tail ? `<span class="muted small">　已保存（${esc(tail)}）</span>` : ""}</label>
-      <div class="inline"><input id="ai_key" type="password" value="${esc(v.key)}" placeholder="${tail ? "留空就继续用已保存的" : "粘贴 API Key"}" autocomplete="off" spellcheck="false">${tail ? `<button class="btn small" data-ai="keyclear">清除</button>` : ""}</div></div>
+      <div class="inline"><input id="ai_key" type="password" value="${esc(v.key)}" placeholder="${tail ? "留空则沿用已保存的 Key" : "粘贴 API Key"}" autocomplete="off" spellcheck="false">${tail ? `<button class="btn small" data-ai="keyclear">清除</button>` : ""}</div></div>
     <div class="row"><label for="ai_model">模型</label>
-      <div class="inline"><input id="ai_model" value="${esc(v.model)}" placeholder="${esc(info.model || "点「选择模型」挑一个，或直接填模型名")}" autocomplete="off" spellcheck="false" aria-controls="ai_modelist"><button class="btn small" data-ai="models" aria-expanded="false">选择模型 ▾</button></div>
+      <div class="inline"><input id="ai_model" value="${esc(v.model)}" placeholder="${esc(info.model || "点击「选择模型」选取，或直接填写模型名称")}" autocomplete="off" spellcheck="false" aria-controls="ai_modelist"><button class="btn small" data-ai="models" aria-expanded="false">选择模型 ▾</button></div>
       <div class="modelist" id="ai_modelist" hidden></div>
-      <div class="hint2">点「选择模型」从服务商那里读出列表再点选，也可以直接填模型名。要选支持工具调用（function calling）的对话模型。</div></div>
+      <div class="hint2">点击「选择模型」可从服务商获取模型列表，也可直接填写模型名称。须选择支持工具调用（function calling）的对话模型。</div></div>
     ${aiVisionHTML()}
     <div class="aitest" id="ai_test" role="status"></div>
   </div><div class="mfoot"><button class="btn" data-ai="test">测试连接</button><span class="spacer"></span><button class="btn ghost" data-ai="cfgclose">取消</button><button class="btn primary" data-ai="cfgsave">保存</button></div>`;
@@ -2643,10 +2646,10 @@ document.addEventListener("click", async e => {
   if (t.closest("#btnBdLogin")) { baiduLogin(false); return; }
   if (t.closest("#btnDLMissing")) {
     const list = (S.data.assets || []).filter(a => a.virtual && matches(a));
-    if (!confirm(`下载这 ${list.length} 件已购商品？会下载到 ${S.data.dlDir}。`)) return;
+    if (!confirm(`下载这 ${list.length} 件已购商品？文件将保存到 ${S.data.dlDir}。`)) return;
     S.dlAsked = Date.now();
     const r = await api("/api/booth/download/missing", { items: list.map(a => a.boothId) });
-    toast(r.n ? `开始下载 ${r.n} 个文件` : "没有要下载的"); poll(true); return;
+    toast(r.n ? `开始下载 ${r.n} 个文件` : "没有可下载的文件"); poll(true); return;
   }
   if (t.closest("#vLib")) { if (S.view === "lib" && S.web.open.lib) closeWeb(); else setView("lib"); return; }
   if (t.closest("#vShop")) { if (S.view === "shop" && S.web.open.shop) closeWeb(); else setView("shop"); return; }
@@ -2741,7 +2744,7 @@ document.addEventListener("click", async e => {
   const pa = t.closest("[data-pa]");
   if (pa) return projAction(pa.dataset.pa, pa.closest("[data-proj]").dataset.proj, pa);
   if (t.closest("#btnProjAdd")) return addProject();
-  if (t.closest("#btnProjUsage")) { await api("/api/scan", { scan: false, usage: true, booth: false }); toast("正在统计"); poll(true); return; }
+  if (t.closest("#btnProjUsage")) { await api("/api/scan", { scan: false, usage: true, booth: false }); toast("正在统计使用情况"); poll(true); return; }
   if (t.closest("#btnScan")) { const r = await api("/api/scan", { scan: true, usage: true, booth: S.data.settings.autoBooth }); toast(r.ok ? "开始扫描" : "正在扫描"); poll(true); return; }
 
   if (t.closest("#btnBulk")) { S.bulk = { keys: new Set(), last: null }; closeDrawer(); return renderGrid(); }
@@ -2751,13 +2754,13 @@ document.addEventListener("click", async e => {
   const bk = t.closest("[data-bulk]");
   if (bk && S.bulk) {
     const n = S.bulk.keys.size, what = bk.dataset.bulk;
-    if (what === "hide") return bulkApply({ hidden: true }, () => `已隐藏 ${n} 个，左边勾「显示隐藏的」可以找回来`);
+    if (what === "hide") return bulkApply({ hidden: true }, () => `已隐藏 ${n} 个，可在左侧勾选「显示已隐藏」查看`);
     if (what === "show") return bulkApply({ hidden: false }, () => `已取消隐藏 ${n} 个`);
     if (what === "ignore") {
       const local = bulkAssets().filter(isLocal).length;
-      if (!local) { toast("选中的都不是本地文件夹里的素材"); return; }
-      if (!confirm(`以后扫描时跳过这 ${local} 个素材所在的文件夹？文件不会被删除，可以在设置的「手动调整」里撤销。`)) return;
-      return bulkApply({ ignore: true }, r => `${r.ignored} 个不再收录，正在重新扫描`);
+      if (!local) { toast("所选素材均不在本地文件夹中"); return; }
+      if (!confirm(`排除这 ${local} 个素材所在的文件夹？后续扫描将跳过这些文件夹，文件不会被删除，可在设置的「手动调整」中恢复。`)) return;
+      return bulkApply({ ignore: true }, r => `已排除 ${r.ignored} 个，正在重新扫描`);
     }
     return;
   }
@@ -2775,7 +2778,7 @@ document.addEventListener("click", async e => {
     else if (what === "dl") startDownload(a.boothId);
     else if (what === "import") { renderDrawer(a.key); const sec = $("#impsec"); if (sec) { sec.scrollIntoView({ block: "start" }); $("#imp_proj").focus(); } }
     else if (what === "pandl") {
-      if (!(S.data.baidu || {}).loggedIn) { renderDrawer(a.key); const sec = $("#pansec"); if (sec) sec.scrollIntoView({ block: "start" }); toast("先登录百度网盘"); }
+      if (!(S.data.baidu || {}).loggedIn) { renderDrawer(a.key); const sec = $("#pansec"); if (sec) sec.scrollIntoView({ block: "start" }); toast("请先登录百度网盘"); }
       else startPanDL(a, false);
     }
     else if (what === "buypage") openBuyPage(a);
@@ -2830,7 +2833,7 @@ document.addEventListener("click", async e => {
       case "impgo": {
         const cs = (S.data.importJob || {}).choices || [];
         const paths = [...dr.querySelectorAll("[data-ipick]")].filter(x => x.checked).map(x => (cs[+x.dataset.ipick] || {}).path).filter(Boolean);
-        if (!paths.length) { toast("至少选一个"); return; }
+        if (!paths.length) { toast("请至少选择一项"); return; }
         await api("/api/import/choose", { paths }); return poll(true);
       }
       case "impcancel": await api("/api/import/dismiss", {}); return poll(true);
@@ -2839,8 +2842,8 @@ document.addEventListener("click", async e => {
         const importTo = chosenProject(); if (!importTo) return;
         setProject(importTo); S.dlAsked = Date.now();
         const r = await api("/api/booth/download", { item: a.purchase.id, ids: [], importTo });
-        if (!r.ok) { toast(r.err || "没能开始下载", 3500); return; }
-        toast("开始下载，下载完会自动导入"); await load(); return poll(true);
+        if (!r.ok) { toast(r.err || "无法开始下载", 3500); return; }
+        toast("开始下载，完成后自动导入"); await load(); return poll(true);
       }
       case "pandl": return startPanDL(a, "", null);
       case "pandlimp": return startPanDL(a, true, null);
@@ -2853,22 +2856,22 @@ document.addEventListener("click", async e => {
       case "bdlogin": return baiduLogin(false);
       case "bdswitch": return baiduLogin(true);
       case "bdlogout": if (!confirm("退出百度网盘登录？")) return;
-        await api("/api/baidu/logout", {}); toast("已退出百度网盘"); return load();
+        await api("/api/baidu/logout", {}); toast("已退出百度网盘登录"); return load();
       case "open": { const l = (a.locations || [])[0]; if (l) openPath(l.path); return; }
       case "pan": return openPan(a);
       case "booth": return openLink(boothURL(a));
       case "buypage": return openBuyPage(a);
       case "dlall": return startDownload(a.purchase.id);
-      case "panrefresh": await api("/api/pan/refresh", { key: a.key }); toast("重新读取中"); poll(true); return;
-      case "pandelete": if (!confirm("从素材库移除？网盘里的文件不受影响。")) return;
+      case "panrefresh": await api("/api/pan/refresh", { key: a.key }); toast("正在刷新"); poll(true); return;
+      case "pandelete": if (!confirm("从素材库移除该素材？网盘中的文件不受影响。")) return;
         await api("/api/user", { key: a.key, delete: true }); closeDrawer(); toast("已移除"); load(); return;
       case "bsearch": return runBoothSearch(a, ($("#bs_q").value || "").trim());
       case "bopen": return openLink(boothSearchURL(($("#bs_q") || {}).value || a.boothQuery || a.name));
       case "bchange": return runBoothSearch(a, a.boothQuery || a.name);
-      case "bconfirm": { const u = collectUser(a); u.boothUrl = boothItemURL(a.boothId); u.noBooth = false; return saveUser(a, u, "已确认"); }
+      case "bconfirm": { const u = collectUser(a); u.boothUrl = boothItemURL(a.boothId); u.noBooth = false; return saveUser(a, u, "已确认匹配"); }
       case "breject": { const u = collectUser(a); u.boothUrl = ""; u.noBooth = true; S.bs = { key: a.key, q: a.boothQuery || a.name, hits: (a.boothHits || []).filter(h => h.id !== a.boothId) }; return saveUser(a, u, "已取消匹配"); }
       case "bunlink": { const u = collectUser(a); u.boothUrl = ""; u.noBooth = true; return saveUser(a, u, "已取消关联"); }
-      case "bnone": { const u = collectUser(a); u.noBooth = true; return saveUser(a, u, "已标记"); }
+      case "bnone": { const u = collectUser(a); u.noBooth = true; return saveUser(a, u, "已标记为非 Booth 商品"); }
       case "dtrans": {
         const dd = S.desc[a.key] = S.desc[a.key] || {}; dd.open = true;
         if (dd.zh) { dd.showZh = !dd.showZh; return renderDrawer(a.key, true); }
@@ -2877,19 +2880,19 @@ document.addEventListener("click", async e => {
         dd.loading = false; if (r.ok) { dd.zh = r.text; dd.showZh = true; } else toast(r.err || "翻译失败", 3500);
         return renderDrawer(a.key, true);
       }
-      case "copypwd": { const v = $("#f_sharePwd").value.trim(); if (v) copyText(v, "提取码已复制"); return; }
+      case "copypwd": { const v = $("#f_sharePwd").value.trim(); if (v) copyText(v, "已复制提取码"); return; }
       case "openpanpath": { const v = $("#f_panPath").value.trim(); if (v) openURL(panPathURL(v)); return; }
       case "save": return saveGroup(a, collectUser(a));
-      case "stauto": { S.stylePick = null; const u = collectUser(a); u.styles = null; u.stylesSet = false; return saveGroup(a, u, "已恢复自动"); }
-      case "nosplit": { const u = collectUser(a); u.noSplit = !!a.splitInto; await saveUser(a, u, u.noSplit ? "已合并显示" : "已拆开");
+      case "stauto": { S.stylePick = null; const u = collectUser(a); u.styles = null; u.stylesSet = false; return saveGroup(a, u, "已恢复自动识别"); }
+      case "nosplit": { const u = collectUser(a); u.noSplit = !!a.splitInto; await saveUser(a, u, u.noSplit ? "已合并显示" : "已拆分显示");
         if (u.noSplit) renderDrawer(a.key); return; }
-      case "nogroup": { const u = collectUser(a); u.noGroup = !a.user.noGroup; return saveUser(a, u, u.noGroup ? "已单独显示" : "已允许合并同款"); }
+      case "nogroup": { const u = collectUser(a); u.noGroup = !a.user.noGroup; return saveUser(a, u, u.noGroup ? "已取消版本合并" : "已恢复版本合并"); }
       case "hide": { const u = collectUser(a); u.hidden = !a.user.hidden; return saveUser(a, u, u.hidden ? "已隐藏" : "已取消隐藏"); }
-      case "rebooth": { await api("/api/booth", { keys: [a.key], force: true }); toast("重新读取中"); poll(true); return; }
+      case "rebooth": { await api("/api/booth", { keys: [a.key], force: true }); toast("正在刷新"); poll(true); return; }
       case "split": case "ignore": {
         const dirLoc = (a.locations || []).find(l => l.kind === "dir") || a.locations[0];
-        const verb = btn.dataset.d === "split" ? "拆成多个素材" : "以后不再收录";
-        if (!confirm(`把「${dirLoc.path}」${verb}？可以在设置里撤销。`)) return;
+        const ask = btn.dataset.d === "split" ? `将「${dirLoc.path}」拆分为多个素材？` : `排除「${dirLoc.path}」？后续扫描将跳过该文件夹，文件不会被删除。`;
+        if (!confirm(ask + "可在设置的「手动调整」中恢复。")) return;
         await api("/api/override", { path: dirLoc.path, mode: btn.dataset.d });
         closeDrawer(); toast("正在重新扫描"); poll(true); return;
       }
@@ -2900,21 +2903,21 @@ document.addEventListener("click", async e => {
   const m = t.closest(".modal");
   if (m && S.setup) {
     const pk = t.closest("[data-spick]");
-    if (pk) { const p = await pickInto(pk.dataset.spick === "roots" ? "选择放素材的文件夹" : "选择 Unity 工程或工程所在的文件夹"); if (p) setupAdd(pk.dataset.spick, p); return; }
+    if (pk) { const p = await pickInto(pk.dataset.spick === "roots" ? "选择素材文件夹" : "选择 Unity 工程或工程所在的文件夹"); if (p) setupAdd(pk.dataset.spick, p); return; }
     if (t.closest("[data-setup]")) { finishSetup(); return; }
     return;
   }
   if (m) {
     const po = t.closest("[data-pickone]");
-    if (po) { const p = await pickInto("选择 Booth 下载位置"); if (p) $("#" + po.dataset.pickone).value = p; return; }
+    if (po) { const p = await pickInto("选择下载位置"); if (p) $("#" + po.dataset.pickone).value = p; return; }
     const pt = t.closest("[data-pickto]");
     if (pt) {
-      const p = await pickInto(pt.dataset.pickto === "s_roots" ? "选择放素材的文件夹" : "选择 Unity 工程或工程所在的文件夹");
+      const p = await pickInto(pt.dataset.pickto === "s_roots" ? "选择素材文件夹" : "选择 Unity 工程或工程所在的文件夹");
       if (p) { const ta = $("#" + pt.dataset.pickto); ta.value = (ta.value.trim() ? ta.value.trim() + "\n" : "") + p; }
       return;
     }
     const ov = t.closest("[data-ov]");
-    if (ov) { await api("/api/override", { path: ov.dataset.ov, mode: "" }); toast("已撤销，正在重新扫描"); closeModal(); poll(true); return; }
+    if (ov) { await api("/api/override", { path: ov.dataset.ov, mode: "" }); toast("已恢复，正在重新扫描"); closeModal(); poll(true); return; }
     const fk = t.closest("[data-fbkind]");
     if (fk) { fbKeep(); S.fb.kind = fk.dataset.fbkind; renderFeedback(); return; }
     const ab = t.closest("[data-aimodel], [data-ai], [data-aiprov]");
@@ -2924,26 +2927,26 @@ document.addEventListener("click", async e => {
     if (b.dataset.m === "feedback") { closeModal(); return openFeedback(); }
     if (b.dataset.m === "aicfg") { AI.back = null; return openAICfg(); }
     if (b.dataset.m === "fbsend") return sendFeedback();
-    if (b.dataset.m === "fbcopy") { fbKeep(); return copyText(fbPlain(), "已复制，粘贴到邮件正文里发送就行"); }
+    if (b.dataset.m === "fbcopy") { fbKeep(); return copyText(fbPlain(), "已复制，请粘贴到邮件正文后发送"); }
     if (b.dataset.m === "fbaddr") return copyText(fbMail(), "已复制邮箱地址");
     if (b.dataset.m === "fbmail") {
       fbKeep(); const f = S.fb;
       return openURL(`mailto:${fbMail()}?subject=${encodeURIComponent(`[${S.data.appName || "MioVRCA"} ${S.data.version}] ${f.kind}`)}&body=${encodeURIComponent(fbPlain().slice(0, 1800))}`);
     }
     if (b.dataset.m === "uppage") { openURL((S.upd && S.upd.info && S.upd.info.url) || (S.data.update && S.data.update.url) || S.data.releases); return; }
-    if (b.dataset.m === "upskip") { await api("/api/update/skip", { version: (S.data.update || {}).version || "" }); closeModal(); toast("已跳过 " + ((S.data.update || {}).version || "")); load(); return; }
+    if (b.dataset.m === "upskip") { await api("/api/update/skip", { version: (S.data.update || {}).version || "" }); closeModal(); toast("已跳过版本 " + ((S.data.update || {}).version || "")); load(); return; }
     if (b.dataset.m === "upgo") {
       const r = await api("/api/update/apply", {});
-      if (!r.ok) { toast(r.err || "没能开始更新", 4000); return; }
+      if (!r.ok) { toast(r.err || "无法开始更新", 4000); return; }
       S.updWatch = true; poll(true); renderUpdateModal(); return;
     }
     if (b.dataset.m === "checkupd") { closeModal(); return openUpdate(true); }
     if (b.dataset.m === "allnotes") { closeModal(); return openUpdate(false); }
     if (b.dataset.m === "panadd") {
       const r0 = parseShareText($("#pa_text").value);
-      if (!r0.url) { toast("没有识别到 pan.baidu.com/s/ 链接"); return; }
+      if (!r0.url) { toast("未识别到百度网盘分享链接（pan.baidu.com/s/…）"); return; }
       const r = await api("/api/pan/add", { url: r0.url, pwd: $("#pa_pwd").value.trim() || r0.pwd || "", name: $("#pa_name").value.trim() });
-      if (!r.ok) { toast(r.err || "没添加成功"); return; }
+      if (!r.ok) { toast(r.err || "添加失败"); return; }
       const dl = $("#pa_dl") && $("#pa_dl").checked;
       closeModal(); toast("已添加"); await load(); renderDrawer(r.key); poll(true);
       if (dl) { const a = findAsset(r.key); if (a) startPanDL(a, false); }
@@ -2953,21 +2956,21 @@ document.addEventListener("click", async e => {
     if (b.dataset.m === "bdlogin" || b.dataset.m === "bdswitch") { closeModal(); closeDrawer(); return baiduLogin(b.dataset.m === "bdswitch"); }
     if (b.dataset.m === "bdlogout") {
       if (!confirm("退出百度网盘登录？")) return;
-      await api("/api/baidu/logout", {}); toast("已退出百度网盘"); await load(); return openSettings("s_baidu");
+      await api("/api/baidu/logout", {}); toast("已退出百度网盘登录"); await load(); return openSettings("s_baidu");
     }
-    if (b.dataset.m === "shortcut") { const r = await api("/api/shortcut", {}); toast(r.ok ? "已创建" : "创建失败：" + (r.err || ""), 3500); return; }
+    if (b.dataset.m === "shortcut") { const r = await api("/api/shortcut", {}); toast(r.ok ? "已创建桌面快捷方式" : "创建失败：" + (r.err || ""), 3500); return; }
     if (b.dataset.m === "gumsync") { closeModal(); return gumSync(); }
     if (b.dataset.m === "gumlogout" || b.dataset.m === "gumclear") {
       const clear = b.dataset.m === "gumclear";
-      if (!confirm(clear ? "清空 Gumroad 已购记录并退出登录？已经下载的素材不受影响。" : "退出 Gumroad 登录？已读到的已购记录会留着。")) return;
+      if (!confirm(clear ? "清空 Gumroad 已购记录并退出登录？已下载的素材不受影响。" : "退出 Gumroad 登录？已同步的已购记录将保留。")) return;
       const r = await api("/api/gumroad/logout", { clear });
-      toast(r.ok ? (clear ? "已清空并退出" : "已退出 Gumroad") : r.err || "没能退出", 3500); await load(); return openSettings();
+      toast(r.ok ? (clear ? "已清空记录并退出登录" : "已退出 Gumroad 登录") : r.err || "退出失败", 3500); await load(); return openSettings();
     }
     if (b.dataset.m === "forget" || b.dataset.m === "clearp") {
       const clear = b.dataset.m === "clearp";
       if (!confirm(clear ? "清空已购记录并退出 Booth 登录？本地素材不受影响。" : "退出 Booth 登录？")) return;
       const r = await api("/api/purchases/forget", { clear });
-      toast(r.ok ? (clear ? "已清空" : "已退出 Booth 登录") : (r.err || "没成功"));
+      toast(r.ok ? (clear ? "已清空已购记录" : "已退出 Booth 登录") : (r.err || "操作失败"));
       closeModal(); load(); return;
     }
     if (b.dataset.m === "save") {
@@ -3001,7 +3004,7 @@ document.addEventListener("change", e => {
   if (e.target.id === "showHidden") { S.showHidden = e.target.checked; renderSide(); renderGrid(); }
   if (e.target.id === "bulkCat" && S.bulk && e.target.value) {
     const v = e.target.value, n = S.bulk.keys.size;
-    return bulkApply({ category: v === "__auto" ? "" : v }, () => v === "__auto" ? `${n} 个已恢复自动分类` : `已把 ${n} 个移到「${v}」`);
+    return bulkApply({ category: v === "__auto" ? "" : v }, () => v === "__auto" ? `已恢复 ${n} 个的自动分类` : `已将 ${n} 个移至「${v}」`);
   }
   if (e.target.id === "sort") { S.sort = e.target.value; saveUI(); renderGrid(); }
   if (e.target.id === "shopSort") { S.shop.sort = e.target.value; saveUI(); shopSearch(true); }

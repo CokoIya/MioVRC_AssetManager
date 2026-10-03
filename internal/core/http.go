@@ -39,9 +39,9 @@ func FriendlyNetErr(err error) string {
 	s := err.Error()
 	switch {
 	case strings.Contains(s, "timeout") || strings.Contains(s, "deadline"):
-		return "连接 Booth 超时（可能需要代理）"
+		return "连接超时，可能需要代理"
 	case strings.Contains(s, "refused") || strings.Contains(s, "no such host") || strings.Contains(s, "reset"):
-		return "连不上 Booth（可能需要代理）"
+		return "连接失败，可能需要代理"
 	}
 	return s
 }

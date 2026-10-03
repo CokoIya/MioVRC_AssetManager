@@ -30,14 +30,14 @@ func registerPipe(st *core.Store, post func(string, func(http.ResponseWriter, ma
 	post("/api/pipe/assets", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		p, ok := unity.KnownProject(st, str(b, "project"))
 		if !ok {
-			fail(w, errors.New("不在工程列表里"))
+			fail(w, errors.New("该工程不在工程列表中"))
 			return
 		}
 		var fresh bool
 		_ = json.Unmarshal(b["fresh"], &fresh)
 		list, ok := ai.ProjectAssetsOf(st, p, fresh)
 		if !ok {
-			fail(w, errors.New("这不是 Unity 工程（找不到 Assets 和 ProjectSettings 文件夹）"))
+			fail(w, errors.New("该文件夹不是 Unity 工程（未找到 Assets 和 ProjectSettings 文件夹）"))
 			return
 		}
 		if list == nil {
@@ -74,11 +74,11 @@ func registerPipe(st *core.Store, post func(string, func(http.ResponseWriter, ma
 		case "hub":
 			exe, name = unity.FindUnityHub(), "Unity Hub"
 		default:
-			fail(w, errors.New("不认识要打开的程序"))
+			fail(w, errors.New("无法识别要打开的程序"))
 			return
 		}
 		if exe == "" {
-			fail(w, errors.New("这台电脑上没找到 "+name))
+			fail(w, errors.New("本机未找到 "+name))
 			return
 		}
 		if err := unity.LaunchApp(exe); err != nil {

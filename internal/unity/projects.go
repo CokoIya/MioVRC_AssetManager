@@ -228,20 +228,20 @@ func findEditors(v any, out map[string]string) {
 // OpenInUnity starts the project in the Unity version it is on.
 func OpenInUnity(p string) error {
 	if ProjectRunning(p) {
-		return errors.New("这个工程已经在 Unity 里打开了")
+		return errors.New("该工程已在 Unity 中打开")
 	}
 	ver := projectUnityVersion(p)
 	if ver == "" {
-		return errors.New("读不到这个工程用的 Unity 版本（ProjectSettings/ProjectVersion.txt）")
+		return errors.New("无法读取该工程的 Unity 版本（ProjectSettings/ProjectVersion.txt）")
 	}
 	exe := unityEditors()[ver]
 	if exe == "" {
-		return fmt.Errorf("这台电脑上没找到 Unity %s：在 Unity Hub 里装上这个版本，或者从 Unity Hub、VCC 打开", ver)
+		return fmt.Errorf("本机未安装 Unity %s，请通过 Unity Hub 安装该版本，或从 Unity Hub / VCC 打开工程", ver)
 	}
 	cmd := exec.Command(exe, "-projectPath", p)
 	cmd.Dir = filepath.Dir(exe)
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("Unity 没能启动：%v", err)
+		return fmt.Errorf("Unity 启动失败：%v", err)
 	}
 	core.Logf("打开工程 %s（Unity %s）", p, ver)
 	return cmd.Process.Release()
@@ -263,12 +263,12 @@ func SetCoverHelper(p string, on bool) error {
 		return err == nil && json.Unmarshal(b, &m) == nil && m.Name == coverPkg && m.Author.Name == "MioVRC"
 	}
 	if core.StatOK(dir) && !ours() {
-		return errors.New("工程的 Packages 里已经有一个 " + coverPkg + "，不是本软件放的，没有动它")
+		return errors.New("工程的 Packages 中已存在 " + coverPkg + "，但不是由本软件安装，未作改动")
 	}
 	if !on {
 		if core.StatOK(dir) {
 			if err := os.RemoveAll(dir); err != nil {
-				return fmt.Errorf("没能删掉封面插件：%v（Unity 开着的话，关掉再试）", err)
+				return fmt.Errorf("封面插件移除失败：%v（如 Unity 正在运行，请关闭后重试）", err)
 			}
 		}
 		// its pictures; what else is in the folder (the AI assistant's) stays
@@ -281,7 +281,7 @@ func SetCoverHelper(p string, on bool) error {
 		return nil
 	}
 	if err := putPackage(p, coverPkg, writeEmbeddedPackage(coverPkg)); err != nil {
-		return fmt.Errorf("没能放进封面插件：%v", err)
+		return fmt.Errorf("封面插件安装失败：%v", err)
 	}
 	core.Logf("工程封面插件已放进 %s", p)
 	return nil

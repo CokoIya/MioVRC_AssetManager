@@ -49,7 +49,7 @@ namespace MioVRCA.Pipeline
             CheckSchema(c);
 
             List<object> items = J.Arr(J.Get(args, "items"));
-            if (items.Count == 0) throw new PipelineException("计划里没有菜单项（items 是空的）");
+            if (items.Count == 0) throw new PipelineException("计划中没有菜单项（items 为空）");
             // everything is looked up before anything is changed: a plan with a wrong path changes nothing
             var plan = new List<Entry>();
             foreach (object o in items) plan.Add(ReadEntry(c, J.Obj(o)));
@@ -108,7 +108,7 @@ namespace MioVRCA.Pipeline
                     }
 
                     var defs = defaults[g];
-                    if (defs.Count > 1) c.warnings.Add("计划里有 " + defs.Count + " 个默认" + what + "（" + g + "），只用了最后一个");
+                    if (defs.Count > 1) c.warnings.Add("计划中有 " + defs.Count + " 个默认" + what + "（" + g + "），仅采用最后一个");
                     // the scene shows what a visitor sees first: the default one on, the others off
                     Transform def = null;
                     if (defs.Count > 0)
@@ -132,7 +132,7 @@ namespace MioVRCA.Pipeline
                         }
                     }
                     else if (all.Count > 0)
-                        c.warnings.Add("还没有哪一件是默认" + what + "（" + g + "）：进游戏时保持场景里现在的显示状态。可以把常用的那件设成默认（default）");
+                        c.warnings.Add("尚未指定默认" + what + "（" + g + "），进入游戏时将保持场景中当前的显示状态，可将常用的一件设为默认（default）");
                 }
 
                 // an independent switch: the scene shows its first state
@@ -154,14 +154,14 @@ namespace MioVRCA.Pipeline
             {
                 int n = 0;
                 foreach (Transform k in m) if (k.GetComponent(c.item) != null) n++;
-                if (n > 8) c.warnings.Add("「" + m.name + "」里有 " + n + " 项，超过一页 8 项，游戏里会自动多出「More」翻页；可以再分一层");
+                if (n > 8) c.warnings.Add("「" + m.name + "」中有 " + n + " 项，超过每页 8 项的上限，游戏中将自动出现「More」翻页，可再分一层");
             }
             int bits = CurrentBits(desc);
             if (bits >= 0)
             {
                 res["parameterBitsBefore"] = bits;
                 res["parameterBitsAdded"] = c.newBits;
-                if (bits + c.newBits > 256) c.warnings.Add("同步参数大约 " + (bits + c.newBits) + " / 256 位，超了会上传失败（装了 VRCFury 的话它可能压缩得下来）；可以少做几个部件开关");
+                if (bits + c.newBits > 256) c.warnings.Add("同步参数约 " + (bits + c.newBits) + " / 256 位，超出上限将导致上传失败（如已安装 VRCFury，或可压缩至上限内），可减少部件开关的数量");
             }
             Undo.CollapseUndoOperations(undoGroup);
             res["root"] = Refl.RelPath(c.avatar, root);
@@ -201,12 +201,12 @@ namespace MioVRCA.Pipeline
             e.kind = J.Str(d, "kind").Trim();
             if (e.kind == "pick" || e.kind == "hair") e.kind = "outfit";
             e.label = J.Str(d, "label").Trim();
-            if (Array.IndexOf(Kinds, e.kind) < 0) throw new PipelineException("菜单项的 kind 只能是 outfit、part、toggle、strip，这里是「" + e.kind + "」");
-            if (e.label == "") throw new PipelineException("有一个菜单项没有名字（label）");
+            if (Array.IndexOf(Kinds, e.kind) < 0) throw new PipelineException("菜单项的 kind 只能是 outfit、part、toggle、strip，当前为「" + e.kind + "」");
+            if (e.label == "") throw new PipelineException("有菜单项缺少名称（label）");
             e.parameter = J.Str(d, "parameter", c.parameter).Trim();
             if (e.parameter == "") e.parameter = c.parameter;
             foreach (char ch in e.parameter)
-                if (char.IsWhiteSpace(ch) || ch == '"' || ch == '\'') throw new PipelineException("「" + e.label + "」的参数名「" + e.parameter + "」里不能有空格或引号");
+                if (char.IsWhiteSpace(ch) || ch == '"' || ch == '\'') throw new PipelineException("「" + e.label + "」的参数名「" + e.parameter + "」不能包含空格或引号");
             foreach (string s in J.Strs(d, "path"))
             {
                 string n = s.Trim();
@@ -215,19 +215,19 @@ namespace MioVRCA.Pipeline
             foreach (string p in J.Strs(d, "objects"))
             {
                 Transform t = Refl.FindUnder(c.avatar, p);
-                if (t == c.avatar) throw new PipelineException("不能把头像本身当成衣服开关");
+                if (t == c.avatar) throw new PipelineException("不能将模型本身作为衣服开关");
                 if (!e.objects.Contains(t)) e.objects.Add(t);
             }
-            if (e.kind != "strip" && e.objects.Count == 0) throw new PipelineException("「" + e.label + "」没有写它管哪些物体（objects）");
+            if (e.kind != "strip" && e.objects.Count == 0) throw new PipelineException("「" + e.label + "」未指定所控制的物体（objects）");
             e.isDefault = J.Bool(d, "default");
             e.show = J.Bool(d, "show");
             if (e.kind == "toggle" && e.isDefault && !c.toggleInverse)
-                throw new PipelineException("「" + e.label + "」要默认显示，但这个版本的 Modular Avatar 的 Object Toggle 没有「反转条件」（需要 1.10 以上）；可以升级 MA，或把它做成默认隐藏的开关");
+                throw new PipelineException("「" + e.label + "」需默认显示，但当前版本 Modular Avatar 的 Object Toggle 不支持「反转条件」（需要 1.10 以上），可升级 Modular Avatar，或改为默认隐藏的开关");
             e.materialsFrom = J.Str(d, "materialsFrom").Replace('\\', '/').Trim();
             if (e.materialsFrom != "")
             {
-                if (e.kind != "outfit") throw new PipelineException("「" + e.label + "」：只有衣服（outfit）能写 materialsFrom");
-                if (c.setter == null) throw new PipelineException("这个版本的 Modular Avatar 没有 Material Setter（需要 1.12 以上），做不了共用模型的配色");
+                if (e.kind != "outfit") throw new PipelineException("「" + e.label + "」：仅衣服（outfit）可使用 materialsFrom");
+                if (c.setter == null) throw new PipelineException("当前版本的 Modular Avatar 不含 Material Setter（需要 1.12 以上），无法生成共用模型的配色");
                 e.swaps = ReadSwaps(e);
             }
             return e;
@@ -238,7 +238,7 @@ namespace MioVRCA.Pipeline
         static List<Swap> ReadSwaps(Entry e)
         {
             var asset = AssetDatabase.LoadAssetAtPath<GameObject>(e.materialsFrom);
-            if (asset == null) throw new PipelineException("「" + e.label + "」的配色 prefab 不在工程里：" + e.materialsFrom);
+            if (asset == null) throw new PipelineException("「" + e.label + "」的配色 prefab 不在工程中：" + e.materialsFrom);
             var o = new List<Swap>();
             int matched = 0;
             foreach (Transform outfit in e.objects)
@@ -261,7 +261,7 @@ namespace MioVRCA.Pipeline
                         if (want[i] != null && want[i] != have[i]) o.Add(new Swap { renderer = dst, index = i, material = want[i] });
                 }
             }
-            if (matched == 0) throw new PipelineException("「" + e.label + "」：配色 prefab「" + asset.name + "」和已经穿上的那件对不上（没有同名的网格），它们不是同一件衣服的不同颜色");
+            if (matched == 0) throw new PipelineException("「" + e.label + "」：配色 prefab「" + asset.name + "」与已装配的衣服不匹配（没有同名网格），两者不是同一件衣服的不同配色");
             return o;
         }
 
@@ -270,7 +270,7 @@ namespace MioVRCA.Pipeline
             Component ms = item.GetComponent(c.setter);
             if (e.swaps.Count == 0)
             {
-                if (ms == null) c.warnings.Add("「" + e.label + "」的配色 prefab 和已经穿上的那件材质一样，没有要换的");
+                if (ms == null) c.warnings.Add("「" + e.label + "」的配色 prefab 与已装配的衣服材质相同，无需替换");
                 return;
             }
             if (ms == null) ms = Undo.AddComponent(item.gameObject, c.setter);
@@ -284,7 +284,7 @@ namespace MioVRCA.Pipeline
                 SerializedProperty obj = n.FindPropertyRelative("Object.targetObject");
                 SerializedProperty mat = n.FindPropertyRelative("Material");
                 SerializedProperty idx = n.FindPropertyRelative("MaterialIndex");
-                if (rp == null || mat == null || idx == null) throw new PipelineException("这个版本的 MA Material Setter 结构不一样，Modular Avatar 可能太旧");
+                if (rp == null || mat == null || idx == null) throw new PipelineException("当前版本的 MA Material Setter 结构不兼容，Modular Avatar 版本可能过旧");
                 rp.stringValue = Refl.RelPath(c.avatar, e.swaps[i].renderer.transform);
                 if (obj != null) obj.objectReferenceValue = e.swaps[i].renderer.gameObject;
                 mat.objectReferenceValue = e.swaps[i].material;
@@ -361,7 +361,7 @@ namespace MioVRCA.Pipeline
                     so.ApplyModifiedProperties();
                 }
                 else if (Refl.GetEnum(new SerializedObject(next.GetComponent(c.item)), "Control.type") != "SubMenu")
-                    throw new PipelineException("「" + level + "」已经是一个开关，不是子菜单，不能往里放东西");
+                    throw new PipelineException("「" + level + "」已是开关而非子菜单，无法在其中添加菜单项");
                 at = next;
                 c.touchedMenus.Add(at);
             }
@@ -391,7 +391,7 @@ namespace MioVRCA.Pipeline
             Component mi = t.GetComponent(c.item);
             var so = new SerializedObject(mi);
             if (!isNew && Refl.GetEnum(so, "Control.type") == "SubMenu")
-                throw new PipelineException("「" + e.label + "」已经是一个子菜单，不能改成开关；换个名字");
+                throw new PipelineException("「" + e.label + "」已是子菜单，无法改为开关，请更换名称");
             Refl.SetEnum(so, "Control.type", "Toggle");
             if (e.kind == "outfit")
             {
@@ -473,7 +473,7 @@ namespace MioVRCA.Pipeline
             SerializedProperty nrp = n.FindPropertyRelative("Object.referencePath");
             SerializedProperty nobj = n.FindPropertyRelative("Object.targetObject");
             SerializedProperty nact = n.FindPropertyRelative("Active");
-            if (nrp == null || nact == null) throw new PipelineException("这个版本的 MA Object Toggle 结构不一样，Modular Avatar 可能太旧（需要 1.12 以上）");
+            if (nrp == null || nact == null) throw new PipelineException("当前版本的 MA Object Toggle 结构不兼容，Modular Avatar 版本可能过旧（需要 1.12 以上）");
             nrp.stringValue = path;
             if (nobj != null) nobj.objectReferenceValue = target.gameObject;
             nact.boolValue = active;
@@ -608,7 +608,7 @@ namespace MioVRCA.Pipeline
                 string file = folder + "/" + IconShot.SafeName(name) + "_icon.png";
                 Texture2D tex;
                 try { tex = IconShot.Capture(c.avatar, e.objects, file, e.swaps); }
-                catch (Exception ex) { c.warnings.Add("「" + e.label + "」的图标没拍成：" + ex.Message); continue; }
+                catch (Exception ex) { c.warnings.Add("「" + e.label + "」的图标生成失败：" + ex.Message); continue; }
                 if (tex == null) continue;
                 icon.objectReferenceValue = tex;
                 so.ApplyModifiedProperties();

@@ -402,7 +402,7 @@ func launchDebugBrowser(browser, profile, startURL string, extra []string) (int,
 			}
 		}
 	}
-	return 0, errors.New("浏览器没有打开调试端口")
+	return 0, errors.New("浏览器未开启调试端口")
 }
 
 func CloseDebugBrowser(port int) {

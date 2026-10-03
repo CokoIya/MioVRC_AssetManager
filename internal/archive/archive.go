@@ -33,7 +33,7 @@ var (
 	reVolRnn   = regexp.MustCompile(`(?i)^(.+)\.r(\d{2})$`)                  // x.r00 (with x.rar)
 	reArchive  = regexp.MustCompile(`(?i)\.(zip|7z|rar)$`)
 	ErrArcPwd  = errors.New("压缩包有密码")
-	errNoTool  = errors.New("电脑上没找到解压软件（7-Zip、Bandizip、WinRAR 等），rar、7z、分卷和带密码的压缩包解不开")
+	errNoTool  = errors.New("本机未检测到解压软件（7-Zip、Bandizip、WinRAR 等），无法解压 rar、7z、分卷和带密码的压缩包")
 	reWrongPwd = regexp.MustCompile(`(?i)wrong password|password is incorrect|密码错误|incorrect password|can not open encrypted`)
 )
 
@@ -417,11 +417,11 @@ func runArcTool(t arcTool, archive, out, pwd string, sjis bool) error {
 	b, err := cmd.CombinedOutput()
 	if ctx.Err() != nil {
 		core.Logf("解压超时（%s）%s", t.Name, archive)
-		return fmt.Errorf("%s 解压没有完成（超时）", t.Name)
+		return fmt.Errorf("%s 解压超时", t.Name)
 	}
 	if err == nil {
 		if ents, _ := os.ReadDir(out); len(ents) == 0 {
-			return errors.New("解压后什么也没有")
+			return errors.New("解压结果为空")
 		}
 		return nil
 	}

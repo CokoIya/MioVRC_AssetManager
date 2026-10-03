@@ -22,7 +22,7 @@ namespace MioVRCA.Pipeline
     [InitializeOnLoad]
     internal static class Bridge
     {
-        public const string Version = "1.2.0";
+        public const string Version = "1.2.1";
         const string Dir = "UserSettings/MioVRCA/bridge";
 
         const string SkillsAsked = "MioVRCA.Pipeline.SkillsAsked";
@@ -179,7 +179,7 @@ namespace MioVRCA.Pipeline
         {
             if (cmd == "ping") return new Dictionary<string, object> { { "bridge", Version } };
             if (EditorApplication.isCompiling || EditorApplication.isUpdating)
-                throw new PipelineException("Unity 正在编译或导入，等它忙完再试");
+                throw new PipelineException("Unity 正在编译或导入，请稍后重试");
             switch (cmd)
             {
                 case "inspect": return AvatarInspect.Overview(args);
@@ -191,7 +191,7 @@ namespace MioVRCA.Pipeline
                     return new Dictionary<string, object> { { "refreshed", true } };
             }
             if (EditorApplication.isPlayingOrWillChangePlaymode)
-                throw new PipelineException("Unity 正在 Play 模式里，先退出 Play 再让我改场景");
+                throw new PipelineException("Unity 处于 Play 模式，请先退出 Play 模式再修改场景");
             switch (cmd)
             {
                 case "dress": return Dresser.Dress(args);
@@ -223,16 +223,16 @@ namespace MioVRCA.Pipeline
         static object PlaceAvatar(Dictionary<string, object> args)
         {
             string prefab = J.Str(args, "prefab").Replace('\\', '/').Trim();
-            if (prefab == "") throw new PipelineException("没有说放哪个 prefab（prefab）");
+            if (prefab == "") throw new PipelineException("未指定要放置的 prefab（prefab）");
             var go = AssetDatabase.LoadAssetAtPath<GameObject>(prefab);
-            if (go == null) throw new PipelineException("工程里没有这个 prefab：" + prefab);
-            if (Refl.DescriptorType == null) throw new PipelineException("工程里没有装 VRChat SDK（Avatars）");
+            if (go == null) throw new PipelineException("工程中未找到该 prefab：" + prefab);
+            if (Refl.DescriptorType == null) throw new PipelineException("工程未安装 VRChat SDK（Avatars）");
             if (go.GetComponentInChildren(Refl.DescriptorType, true) == null)
-                throw new PipelineException("「" + go.name + "」不是一个完整的头像（上面没有 VRC Avatar Descriptor），应该挑素体自带的头像 prefab");
+                throw new PipelineException("「" + go.name + "」不是完整的模型（缺少 VRC Avatar Descriptor），应选择素体自带的模型 prefab");
             for (int i = 0; i < UnityEngine.SceneManagement.SceneManager.sceneCount; i++)
             {
                 var s = UnityEngine.SceneManagement.SceneManager.GetSceneAt(i);
-                if (s.isDirty) throw new PipelineException("现在打开的场景「" + (s.name == "" ? "Untitled" : s.name) + "」有没保存的改动。先在 Unity 里按 Ctrl+S 保存（或者放弃），再让我新建场景");
+                if (s.isDirty) throw new PipelineException("当前打开的场景「" + (s.name == "" ? "Untitled" : s.name) + "」有未保存的改动。请先在 Unity 中按 Ctrl+S 保存（或放弃改动），再新建场景");
             }
             string project = Path.GetFileName(Path.GetDirectoryName(Application.dataPath.TrimEnd('/')));
             string folderName = IconShot.SafeName(J.Str(args, "folder", project));
@@ -248,8 +248,8 @@ namespace MioVRCA.Pipeline
             }
             else
             {
-                if (!scenePath.StartsWith("Assets/") || !scenePath.EndsWith(".unity")) throw new PipelineException("场景路径要在 Assets/ 下、以 .unity 结尾：" + scenePath);
-                if (File.Exists(scenePath)) throw new PipelineException("场景已经存在：" + scenePath);
+                if (!scenePath.StartsWith("Assets/") || !scenePath.EndsWith(".unity")) throw new PipelineException("场景路径须位于 Assets/ 下并以 .unity 结尾：" + scenePath);
+                if (File.Exists(scenePath)) throw new PipelineException("场景已存在：" + scenePath);
                 string dir = Path.GetDirectoryName(scenePath).Replace('\\', '/');
                 if (!AssetDatabase.IsValidFolder(dir)) Directory.CreateDirectory(dir);
             }
@@ -258,7 +258,7 @@ namespace MioVRCA.Pipeline
             inst.name = go.name;
             inst.transform.position = Vector3.zero;
             inst.transform.rotation = Quaternion.identity;
-            if (!EditorSceneManager.SaveScene(scene, scenePath)) throw new PipelineException("场景没保存成：" + scenePath);
+            if (!EditorSceneManager.SaveScene(scene, scenePath)) throw new PipelineException("场景保存失败：" + scenePath);
             AssetDatabase.Refresh();
             Selection.activeGameObject = inst;
             EditorGUIUtility.PingObject(inst);

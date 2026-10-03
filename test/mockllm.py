@@ -14,7 +14,7 @@ def plan(n_results, last_user, last_tool=""):
         return [("我找一下删除用的操作。", [("unity_find_skills", {"intent": "delete asset"})]),
                 ("", [("unity_skill", {"name": "asset_delete", "args": {"assetPath": "Assets/Old"}})]),
                 ("处理完了。", [])][min(n_results, 2)]
-    if "穿到头像上" not in last_user and "装到头像上" not in last_user:
+    if "穿到头像上" not in last_user and "装配到模型上" not in last_user:
         return ("好的，已经记下：" + last_user[:30], [])
     steps = [
      ("先看看头像现在的样子。", [("inspect_avatar", {})]),
@@ -28,9 +28,9 @@ def plan(n_results, last_user, last_tool=""):
     done = [0, 1, 2, 4, 5, 6, 7]  # tool results seen so far → which step is next
     text, calls = steps[done.index(n_results)] if n_results in done else steps[-1]
     if not calls:
-        if "看图模型（" in last_tool: text += "\n\n截图我自己看不了，看图模型的描述是：整体正常，左肩有一小块身体穿出来——建议你放大截图确认一下。"
+        if "视觉模型（" in last_tool: text += "\n\n截图我自己看不了，视觉模型的描述是：整体正常，左肩有一小块身体穿出来——建议你放大截图确认一下。"
         elif "截图附在后面" in last_tool: text += "\n\n我看了正面和背面的截图：水手服位置正常，没有洋红色；左肩有一小块身体穿出来。"
-        elif "没有看到画面" in last_tool: text += "\n\n这次我看不了图：截图在上面的记录里，请你自己看一眼。想让我也能检查画面，可以在「AI 服务」的「看图」里设置一个看图模型。"
+        elif "没有看到画面" in last_tool: text += "\n\n这次我看不了图：截图在上面的记录里，请你自己看一眼。想让我也能检查画面，可以在「AI 服务」的「识图」里设置一个视觉模型。"
     return text, calls
 def read_digits(raw):
     import base64, io, re

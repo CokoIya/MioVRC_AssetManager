@@ -72,7 +72,7 @@ func sub(re *regexp.Regexp, s string) string {
 func SearchBooth(c *http.Client, q string) ([]core.BoothHit, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
-		return nil, errors.New("没有可以搜索的关键词")
+		return nil, errors.New("搜索关键词为空")
 	}
 	urls := []string{
 		core.BoothWebBase() + "/ja/browse/3D%E3%83%A2%E3%83%87%E3%83%AB?q=" + url.QueryEscape(q),
@@ -91,7 +91,7 @@ func SearchBooth(c *http.Client, q string) ([]core.BoothHit, error) {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 6<<20))
 		resp.Body.Close()
 		if resp.StatusCode != 200 {
-			lastErr = fmt.Errorf("Booth 返回 %d", resp.StatusCode)
+			lastErr = fmt.Errorf("Booth 返回错误（HTTP %d）", resp.StatusCode)
 			continue
 		}
 		if hits := ParseBoothSearch(string(b)); len(hits) > 0 {
@@ -276,7 +276,7 @@ func ScoreHits(hits []core.BoothHit, name, cat string, bases []naming.BaseDef) (
 
 // ---------- background matching for assets without any picture ----------
 
-var TaskMatch = &core.Task{Name: "match", Label: "在 Booth 上找封面"}
+var TaskMatch = &core.Task{Name: "match", Label: "匹配 Booth 封面"}
 
 type MatchJob struct {
 	Key, Name, Cat string

@@ -13,7 +13,7 @@ Target amd64-unicode
 !define MIDNAME "MioVRC素材托管工具"
 ; builds between 1.7.1 and 1.7.2
 !define PREVNAME "MioVRCA素材托管Tools"
-!define VERSION "1.7.3"
+!define VERSION "1.7.4"
 ; registry keys keep their pre-1.6 names, so installing over an older version updates it
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\VRCAssetLibrary"
 !define DIRKEY "Software\VRCAssetLibrary"
@@ -26,7 +26,7 @@ RequestExecutionLevel user
 SetCompressor /SOLID lzma
 BrandingText "${APPNAME} ${VERSION}"
 
-VIProductVersion "1.7.3.0"
+VIProductVersion "1.7.4.0"
 VIAddVersionKey /LANG=2052 "ProductName" "${APPNAME}"
 VIAddVersionKey /LANG=2052 "FileDescription" "${APPNAME} 安装程序"
 VIAddVersionKey /LANG=2052 "CompanyName" "Coko_Iya"
@@ -38,7 +38,7 @@ VIAddVersionKey /LANG=2052 "LegalCopyright" "Coko_Iya"
 !define MUI_UNICON "app.ico"
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "安装 ${APPNAME} ${VERSION}"
-!define MUI_WELCOMEPAGE_TEXT "VRChat 素材管理工具。$\r$\n$\r$\n不需要管理员权限，数据只保存在本机。"
+!define MUI_WELCOMEPAGE_TEXT "VRChat 素材管理工具。$\r$\n$\r$\n无需管理员权限，数据仅保存在本机。"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${EXENAME}"
 !define MUI_FINISHPAGE_RUN_TEXT "打开 ${APPNAME}"
 !define MUI_FINISHPAGE_SHOWREADME "$INSTDIR\使用说明.txt"
@@ -168,14 +168,14 @@ Function ${UN}CheckRunning
   ${If} $0 == ""
     Return
   ${EndIf}
-  MessageBox MB_YESNO|MB_ICONQUESTION "${APPNAME} 正在运行。$\r$\n$\r$\n要关闭它并继续$R0吗？" /SD IDYES IDYES close
+  MessageBox MB_YESNO|MB_ICONQUESTION "${APPNAME} 正在运行。$\r$\n$\r$\n是否关闭并继续$R0？" /SD IDYES IDYES close
   Abort
   close:
   Call ${UN}CloseApp
   again:
   Call ${UN}IsRunning
   ${If} $0 == "1"
-    MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "没能关闭 ${APPNAME}，请手动关闭后点「重试」。" /SD IDCANCEL IDRETRY again
+    MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "无法关闭 ${APPNAME}，请手动关闭后点击「重试」。" /SD IDCANCEL IDRETRY again
     Abort
   ${EndIf}
 FunctionEnd
@@ -342,7 +342,7 @@ Section "Uninstall"
   IfFileExists "$LOCALAPPDATA\${APPID}\library.json" askdata
   IfFileExists "$LOCALAPPDATA\${OLDNAME}\library.json" askdata done
   askdata:
-    MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "同时删除素材库数据吗？$\r$\n（网盘链接、备注、Booth 已购记录和封面缓存）$\r$\n$\r$\n选「否」会保留，重新安装后可以继续使用。" /SD IDNO IDNO done
+    MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "是否同时删除素材库数据？$\r$\n（网盘链接、备注、Booth 已购记录和封面缓存）$\r$\n$\r$\n选择「否」将保留数据，重新安装后可继续使用。" /SD IDNO IDNO done
     RMDir /r "$LOCALAPPDATA\${APPID}"
     RMDir /r "$LOCALAPPDATA\${OLDNAME}"
   done:

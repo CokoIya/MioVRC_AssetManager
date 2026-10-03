@@ -7,10 +7,12 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"vrclib/internal/core"
 	"vrclib/internal/library"
 	"vrclib/internal/testkit"
+	"vrclib/internal/translate"
 )
 
 func postJSON(t *testing.T, srv *httptest.Server, path string, body any) map[string]any {
@@ -53,6 +55,16 @@ func TestBulkEdit(t *testing.T) {
 	apiToken = "t"
 	srv := httptest.NewServer(NewMux(st))
 	defer srv.Close()
+	defer func() {
+		deadline := time.Now().Add(10 * time.Second)
+		for library.PipelineBusy() || translate.TransBusy.Load() {
+			if time.Now().After(deadline) {
+				t.Error("background tasks did not stop before test cleanup")
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
 	keys := []string{as["Alpha Coat"].Key, as["Beta Hair"].Key, "name:nosuchthing"}
 	if r := postJSON(t, srv, "/api/user/bulk", map[string]any{"keys": keys, "category": "配饰"}); r["ok"] != true || r["n"] != float64(2) {
 		t.Fatalf("category: %v", r)

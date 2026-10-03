@@ -34,7 +34,7 @@ namespace MioVRCA.ProjectCard
                 Later(5);
         }
 
-        [MenuItem("Tools/MioVRCA/拍工程封面")]
+        [MenuItem("Tools/MioVRCA/截取工程封面")]
         static void TakeNow()
         {
             string err = Take();
