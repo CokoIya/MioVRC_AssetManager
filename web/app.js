@@ -95,8 +95,10 @@ async function load() {
   else if (!S.data && d.updatedFrom && d.updatedFrom !== d.version) setTimeout(() => toast(`已更新到 ${d.version}`, 4000), 600);
   const prev = S.data ? new Map((S.data.assets || []).map(a => [a.key, a])) : null;
   const bdWas = S.data && S.data.baidu && S.data.baidu.loggedIn;
+  const gumWas = S.data && S.data.gumroad && S.data.gumroad.loggedIn;
   S.data = d; S.rev = d.rev;
   if (prev && !bdWas && d.baidu && d.baidu.loggedIn) baiduLoggedIn();
+  if (prev && !gumWas && d.gumroad && d.gumroad.loggedIn) gumLoggedIn();
   if (d.xyBase) { XY_BASE = d.xyBase; XY_HOME = XY_BASE + "/"; }
   S.groups = new Map();
   for (const a of d.assets || []) if (a.group) { if (!S.groups.has(a.group)) S.groups.set(a.group, []); S.groups.get(a.group).push(a); }
@@ -270,14 +272,17 @@ function renderSide() {
   const pb = all.filter(a => matches(a, "purchase"));
   const nU = f => countUnits(pb.filter(f));
   const syncing = d.purchaseBusy;
-  if (!d.purchaseSync) {
-    h += `<h3>Booth 已购</h3><div class="cta">
-      ${syncing ? `<button class="btn small" id="btnSyncCancel">取消同步</button>` : `<button class="btn small" id="btnSync">同步 Booth 已购</button>`}</div>`;
-  } else {
+  const gum = d.gumroad || {}, hasBought = d.purchaseSync || gum.count;
+  h += d.purchaseSync
+    ? `<h3 class="withact">Booth 已购${syncing ? `<button class="h3act" id="btnSyncCancel">取消同步</button>` : `<button class="h3act" id="btnSync" title="上次同步：${esc(fmtTime(d.purchaseSync))}">重新同步</button>`}</h3>`
+    : `<h3>Booth 已购</h3><div class="cta">${syncing ? `<button class="btn small" id="btnSyncCancel">取消同步</button>` : `<button class="btn small" id="btnSync">同步 Booth 已购</button>`}</div>`;
+  h += gum.loggedIn || gum.count
+    ? `<h3 class="withact">Gumroad 已购${gum.busy ? `<button class="h3act" id="btnGumCancel">取消同步</button>` : `<button class="h3act" id="btnGumSync" title="${gum.loggedIn ? (gum.lastSync ? "上次同步：" + esc(fmtTime(gum.lastSync)) : "读取已购") : "登录已失效，重新登录"}">${gum.loggedIn ? "重新同步" : "登录"}</button>`}</h3>`
+    : `<h3>Gumroad 已购</h3><div class="cta">${gum.waiting ? `<span class="muted small">在打开的页面里登录…</span>` : `<button class="btn small" id="btnGumSync">登录并同步 Gumroad</button>`}</div>`;
+  if (hasBought) {
     const local = nU(a => a.purchase && !a.virtual), miss = nU(a => a.virtual);
     const other = nU(a => !a.purchase && !a.virtual), localAll = nU(a => !a.virtual), bought = nU(a => a.purchase);
-    h += `<h3 class="withact">Booth 已购${syncing ? `<button class="h3act" id="btnSyncCancel">取消同步</button>` : `<button class="h3act" id="btnSync" title="上次同步：${esc(fmtTime(d.purchaseSync))}">重新同步</button>`}</h3>` +
-      navItem("本地全部", localAll, S.purchase === "all", `data-purchase="all"`) +
+    h += navItem("本地全部", localAll, S.purchase === "all", `data-purchase="all"`) +
       navItem("已购已下载", local, S.purchase === "local", `data-purchase="local"`, "#ff5a6a") +
       navItem("已购未下载", miss, S.purchase === "missing", `data-purchase="missing"`, "#ffb547") +
       navItem("全部已购", bought, S.purchase === "bought", `data-purchase="bought"`) +
@@ -324,6 +329,7 @@ function usedBadge(a) {
 }
 
 function orderLine(p) {
+  if (p.source === "gumroad") { const o = (p.orders || [])[0]; return o && o.date ? o.date + " 在 Gumroad 购入" : "Gumroad 已购"; }
   const o = (p.orders || [])[0];
   return o ? (o.date ? o.date + " 购入" : "订单 #" + o.id) : (p.gift ? "收到的礼物" : "Booth 已购");
 }
@@ -349,7 +355,7 @@ function groupCardHTML(u) {
     <div class="cover">${coverHTML(a)}${bought ? boughtBadge(bought) : ""}${used.length ? usedBadge({ usage: used }) : ""}
       <div class="where"><div class="path" title="${esc(labels.join("\n"))}">${esc(labels.join("、"))}</div>
         <div class="acts">
-          <button class="act booth${a.boothId ? "" : " nobooth"}" data-act="booth" title="${a.boothId ? "打开 Booth 商品页" : "在 Booth 上搜"}">${a.boothId ? ICON.bag : ICON.search}</button>
+          <button class="act booth${a.boothId ? "" : " nobooth"}" data-act="booth" title="${isGum(a) ? "打开 Gumroad 商品页" : a.boothId ? "打开 Booth 商品页" : "在 Booth 上搜"}">${a.boothId ? ICON.bag : ICON.search}</button>
           <button class="act edit" data-act="edit" title="查看全部版本">${ICON.edit}<span>${ms.length} 个版本</span></button>
         </div></div>
     </div>
@@ -381,7 +387,7 @@ function cardHTML(a) {
           ${canImport(a) ? `<button class="act imp" data-act="import" title="一键导入 Unity 工程">${ICON.cube}<span>导入</span></button>` : ""}
           ${pan ? `<button class="act pan" data-act="pan" title="${a.panOnly ? "打开网盘分享（自动复制提取码）" : "打开网盘"}">${ICON.cloud}${a.panOnly ? "<span>网盘</span>" : ""}</button>` : ""}
           ${p && !a.virtual ? `<button class="act buy" data-act="buypage" title="购买页">${ICON.receipt}</button>` : ""}
-          <button class="act booth${a.boothId ? "" : " nobooth"}" data-act="booth" title="${a.boothId ? "打开 Booth 商品页" : "在 Booth 上搜「" + esc(a.boothQuery || a.name) + "」"}">${a.boothId ? ICON.bag : ICON.search}</button>
+          <button class="act booth${a.boothId ? "" : " nobooth"}" data-act="booth" title="${isGum(a) ? "打开 Gumroad 商品页" : a.boothId ? "打开 Booth 商品页" : "在 Booth 上搜「" + esc(a.boothQuery || a.name) + "」"}">${a.boothId ? ICON.bag : ICON.search}</button>
           <button class="act edit${canImport(a) ? " bare" : ""}" data-act="edit" title="详情">${ICON.edit}<span>详情</span></button>
         </div></div>
     </div>
@@ -390,7 +396,7 @@ function cardHTML(a) {
       <div class="sub">${esc(a.panOnly && !shop ? "百度网盘" : subline)}</div>
       ${(a.bases || []).length || (a.styles || []).length ? `<div class="bases">${(a.bases || []).slice(0, 4).map(b => `<span class="base">${esc(b)}</span>`).join("")}${(a.bases || []).length > 4 ? `<span class="base more">+${a.bases.length - 4}</span>` : ""}${styleTags(a)}</div>` : ""}
       <div class="meta"><span class="cat"><i style="background:${CAT_COLOR[a.category] || "#8b8fa6"}"></i>${esc(a.category)}</span>${a.psd ? `<span class="psdtag" title="仅 PSD">PSD</span>` : ""}${groupAll(a).length > 1 ? `<button class="vcount link" data-act="edit">共 ${groupAll(a).length} 个版本</button>` : ""}<span>${a.virtual ? "未下载" : a.panOnly && !a.size ? "—" : fmtSize(a.size)}</span>
-        <span class="flags">${hasNews(a) ? `<span class="flag upd" title="${esc(newsTitle(a))}">${ICON.upd}</span>` : ""}${pan ? `<span class="flag pan" title="网盘">${ICON.cloud}</span>` : ""}${a.boothId ? `<span class="flag booth" title="Booth #${esc(a.boothId)}">${ICON.bag}</span>` : ""}</span></div>
+        <span class="flags">${hasNews(a) ? `<span class="flag upd" title="${esc(newsTitle(a))}">${ICON.upd}</span>` : ""}${pan ? `<span class="flag pan" title="网盘">${ICON.cloud}</span>` : ""}${a.boothId ? `<span class="flag booth" title="${isGum(a) ? "Gumroad" : "Booth #" + esc(a.boothId)}">${ICON.bag}</span>` : ""}</span></div>
     </div></article>`;
 }
 
@@ -402,9 +408,12 @@ function renderGrid() {
   let rb = `<b>${list.length}</b><span>个${S.purchase === "missing" || S.purchase === "bought" ? "商品" : "素材"}${filtered ? `（共 ${total} 个）` : ""}</span>`;
   if (filtered) rb += `<button class="clear" id="clearFilters">清除筛选</button>`;
   if (S.purchase === "missing" && list.length) rb += `<button class="btn small" id="btnDLMissing">${ICON.download}<span>全部下载</span></button>`;
+  if (S.bulk) rb = bulkBarHTML(list);
+  else if (list.length && S.purchase !== "missing") rb += `<button class="btn small ghost" id="btnBulk" title="一次选中多个素材：移到别的分类、隐藏、不再收录">批量整理</button>`;
   for (const w of (d.warnings || [])) rb += `<span class="warnline">${esc(w)}</span>`;
   $("#resultbar").innerHTML = rb;
   const g = $("#grid");
+  g.classList.toggle("bulk", !!S.bulk);
   if (!list.length) {
     const scanning = d.busy;
     g.innerHTML = `<div class="empty">${!(d.assets || []).some(a => !a.virtual) && S.purchase === "all"
@@ -415,6 +424,44 @@ function renderGrid() {
     return;
   }
   g.innerHTML = list.map(u => u.members.length > 1 ? groupCardHTML(u) : cardHTML(u.primary)).join("");
+  if (S.bulk) bulkMark();
+}
+
+// ---------- 批量整理: several cards at once ----------
+// S.bulk = { keys: the picked cards (unitKey), last: the one clicked last, for Shift ranges }
+function bulkUnits() { return sorted(unitsOf((S.data.assets || []).filter(a => matches(a)))); }
+function bulkBarHTML(list) {
+  const n = S.bulk.keys.size, dis = n ? "" : " disabled";
+  return `<span class="bulkbar"><b>${n}</b><span>个已选</span>
+    <button class="clear" id="bulkAll">全选这 ${list.length} 个</button>${n ? `<button class="clear" id="bulkNone">清空</button>` : ""}
+    <select id="bulkCat"${dis} title="把选中的素材移到这个分类"><option value="">移到分类…</option>${S.data.categories.map(c => `<option>${esc(c)}</option>`).join("")}<option value="__auto">恢复自动分类</option></select>
+    <button class="btn small" data-bulk="hide"${dis}>隐藏</button><button class="btn small" data-bulk="show"${dis}>取消隐藏</button>
+    <button class="btn small" data-bulk="ignore"${dis} title="扫描时跳过这些文件夹，可以在设置里撤销">不再收录</button>
+    <button class="btn small primary" id="bulkDone">完成</button></span>
+    <span class="muted small">点卡片选中，按住 Shift 再点可以连选一片</span>`;
+}
+function bulkMark() {
+  document.querySelectorAll("#grid .card").forEach(c => {
+    const a = findAsset(c.dataset.key); c.classList.toggle("sel", !!a && S.bulk.keys.has(unitKey(a)));
+  });
+}
+function bulkRefresh() { $("#resultbar").innerHTML = bulkBarHTML(bulkUnits()); bulkMark(); }
+function bulkToggle(a, range) {
+  const k = unitKey(a), b = S.bulk;
+  if (range && b.last && b.last !== k) {
+    const order = bulkUnits().map(u => unitKey(u.primary)), i = order.indexOf(b.last), j = order.indexOf(k);
+    if (i >= 0 && j >= 0) { for (const x of order.slice(Math.min(i, j), Math.max(i, j) + 1)) b.keys.add(x); b.last = k; return bulkRefresh(); }
+  }
+  b.keys.has(k) ? b.keys.delete(k) : b.keys.add(k); b.last = k; bulkRefresh();
+}
+// every asset behind the picked cards (a card of several versions stands for all of them)
+function bulkAssets() { return (S.data.assets || []).filter(a => S.bulk.keys.has(unitKey(a))); }
+async function bulkApply(body, done) {
+  const list = bulkAssets(); if (!list.length) return;
+  const r = await api("/api/user/bulk", Object.assign({ keys: list.map(a => a.key) }, body));
+  if (!r.ok) { toast(r.err || "没能保存", 4000); return; }
+  S.bulk.keys.clear(); S.bulk.last = null;
+  toast(done(r)); await load();
 }
 
 function renderStatus() {
@@ -434,6 +481,8 @@ function renderStatus() {
     if (dt && dt.msg && dt.ended && Date.now() / 1000 - dt.ended < 600 && !d.dlNeedLogin) h += `<span class="okline">${esc(dt.msg)}</span>`;
     const pt = (d.tasks || []).find(t => t.name === "purchase");
     if (pt && pt.msg && pt.ended && Date.now() / 1000 - pt.ended < 600) h += `<span class="${pt.msg.startsWith("完成") ? "okline" : "err"}">Booth 已购：${esc(pt.msg)}</span>`;
+    const gt = (d.tasks || []).find(t => t.name === "gumroad");
+    if (gt && gt.msg && gt.ended && Date.now() / 1000 - gt.ended < 600) h += `<span class="${gt.msg.startsWith("完成") ? "okline" : "err"}">${gt.msg.startsWith("完成") ? "" : "Gumroad 已购："}${esc(gt.msg)}</span>`;
   }
   if (d.dlNeedLogin) h += `<span class="err">下载需要登录 Booth <button class="verbtn linkish" id="btnDLLogin">登录</button></span>`;
   if (running.some(t => t.name === "download")) h += `<button class="verbtn linkish" id="btnDLCancel">取消下载</button>`;
@@ -623,16 +672,25 @@ function renderShopDrawer() {
 // app window driven from the toolbar; "": no built-in browser, links go to the default browser).
 let XY_BASE = "https://www.goofish.com", XY_HOME = XY_BASE + "/";
 function boothHome() { return (S.data.boothWeb || "https://booth.pm") + "/ja"; }
+// a Gumroad purchase or product (its id starts with "gr_"): the Booth-only things on a card do not apply
+function isGum(a) { return !!a && ((a.purchase && a.purchase.source === "gumroad") || String(a.boothId || "").startsWith("gr_")); }
+function gumPageURL(a) { return (a.purchase && a.purchase.productUrl) || (a.booth && a.booth.url) || (a.purchase && a.purchase.pageUrl) || ""; }
+function isGumURL(u) {
+  const g = (S.data && S.data.gumroad) || {};
+  if (g.libraryUrl && u.startsWith(g.libraryUrl.replace(/\/library$/, "/"))) return true;
+  return /^https?:\/\/([^/]*\.)?gumroad\.com(\/|$)/i.test(u);
+}
 function webKind(u) {
   if (S.data && S.data.xyBase && u.startsWith(S.data.xyBase)) return "xianyu";
   if (isPanURL(u)) return "pan";
+  if (isGumURL(u)) return "gumroad";
   return /^https?:\/\/([^/]*\.)?(goofish\.com|taobao\.com|tmall\.com|alipay\.com|xianyu\.com)(\/|$)/i.test(u) ? "xianyu" : "booth";
 }
 function isPanURL(u) {
   if (S.data && [S.data.panWeb, S.data.baiduLogin].some(b => b && u.startsWith(b))) return true;
   return /^https?:\/\/([^/]*\.)?baidu\.com(\/|$)/i.test(u);
 }
-function webView(kind) { return kind === "xianyu" ? "xianyu" : kind === "pan" ? "lib" : "shop"; }
+function webView(kind) { return kind === "xianyu" ? "xianyu" : kind === "pan" || kind === "gumroad" ? "lib" : "shop"; }
 function isBoothURL(u) {
   if (S.data && [S.data.boothWeb, S.data.boothAccounts].some(b => b && u.startsWith(b))) return true;
   return /^https?:\/\/([^/]*\.)?(booth\.pm|pixiv\.net)(\/|$)/i.test(u);
@@ -667,6 +725,7 @@ async function openWeb(u, kind) {
 }
 // a library card's Booth button: the item in the Booth tab
 function goBooth(a) {
+  if (isGum(a)) { const u = gumPageURL(a); if (u) openLink(u); return; }
   S.web.open.shop = false;
   if (S.view !== "shop") setView("shop"); else { closeDrawer(); renderAll(); }
   if (a.boothId) { openShopItem(a.boothId); return; }
@@ -790,12 +849,13 @@ function renderWeb() {
 function renderWebBar() {
   const st = S.web.st || {}, xy = S.view === "xianyu", pan = S.view === "lib", back = S.web.back;
   const backLabel = back ? (back.key ? "返回素材" : back.view === "lib" ? "返回素材库" : back.view === "xianyu" ? "返回闲鱼" : "返回") : pan ? "返回素材库" : "返回列表";
-  const bd = S.data.baidu || {};
+  const bd = S.data.baidu || {}, gm = S.data.gumroad || {};
   const html = `<button class="wb" data-w="back" title="后退"${st.back ? "" : " disabled"}>${ICON.back}</button>
     <button class="wb" data-w="forward" title="前进"${st.fwd ? "" : " disabled"}>${ICON.fwd}</button>
     <button class="wb" data-w="${st.loading ? "stop" : "reload"}" title="${st.loading ? "停止" : "刷新"}">${st.loading ? ICON.x : ICON.upd}</button>
     <div class="wtitle" title="${esc(st.url || "")}"><b>${esc(st.title || (st.loading ? "正在打开…" : st.url || ""))}</b><span>${esc(st.url || "")}</span></div>
     ${xy ? `<button class="btn small" data-w="grab" title="把聊天里选中的网盘分享收进素材库">收录网盘链接</button>`
+      : pan && S.web.loaded === "gumroad" ? `<span class="wnote">${gm.loggedIn ? "Gumroad：" + esc(gm.name || "已登录") : gm.waiting ? "登录后会自动读取已购" : ""}</span>`
       : pan ? `<span class="wnote">${bd.loggedIn ? "百度网盘：" + esc(bd.name || "已登录") : bd.waiting ? "登录后会自动保存" : ""}</span>`
       : `<button class="btn small" data-w="sync"${S.data.purchaseBusy ? " disabled" : ""}>${S.data.purchaseBusy ? "正在同步…" : "同步已购"}</button>`}
     <button class="wb" data-w="copy" title="复制链接"${st.url ? "" : " disabled"}>${ICON.copy}</button>
@@ -812,6 +872,7 @@ async function webAction(w) {
     case "copy": try { await navigator.clipboard.writeText(st.url || ""); toast("已复制链接"); } catch (e) { toast("复制失败"); } return;
     case "reopen":
       if (!S.data.paneMode) return openURL(S.web.last.xianyu || XY_HOME);
+      if (S.view === "lib" && S.web.loaded === "gumroad") return openWeb(S.web.last.gumroad || S.data.gumroad.libraryUrl, "gumroad");
       if (S.view === "lib") return openWeb(S.web.last.pan || S.data.panWeb + "/disk/main", "pan");
       return openWeb(S.view === "xianyu" ? S.web.last.xianyu || XY_HOME : S.web.last.booth || boothHome(), S.view === "xianyu" ? "xianyu" : "booth");
     case "grab": {
@@ -1150,6 +1211,11 @@ function styleField(a) {
 }
 function boothSec(a) {
   const b = a.booth, src = a.boothSrc;
+  if (isGum(a)) return `<div class="sec"><h4>Gumroad 商品</h4><div class="bitem">
+      <div class="bname">${esc((b && b.name) || a.name)}</div>
+      <div class="muted small">${esc((b && b.shop) || "")}</div>
+      <div class="hint bsrc">来自 Gumroad 已购记录</div>
+      <div class="btnrow">${gumPageURL(a) ? `<button class="btn small" data-d="booth">打开商品页</button>` : ""}</div></div></div>`;
   let h = `<div class="sec"><h4>Booth 商品</h4>`;
   if (a.boothId) {
     const imgs = (b && b.images || []).slice(0, 6);
@@ -1178,19 +1244,19 @@ function boothImg(u, big) {
   if (!m) return u;
   return big ? u.replace(m[0], m[1] + "/") : u.replace(m[0], m[1] + "/c/300x300_a2_g5/");
 }
-function showBig(list, i) {
+function showBig(list, i, direct) {
   let lb = $("#lightbox");
   if (!lb) { lb = document.createElement("div"); lb.id = "lightbox"; document.body.appendChild(lb); }
   const n = list.length; i = (i + n) % n;
-  lb.innerHTML = `<img src="/rthumb?u=${encodeURIComponent(list[i])}" alt="">${n > 1 ? `<button class="lbnav prev" aria-label="上一张">‹</button><button class="lbnav next" aria-label="下一张">›</button><div class="lbcount">${i + 1} / ${n}</div>` : ""}`;
+  lb.innerHTML = `<img src="${direct ? esc(list[i]) : "/rthumb?u=" + encodeURIComponent(list[i])}" alt="">${n > 1 ? `<button class="lbnav prev" aria-label="上一张">‹</button><button class="lbnav next" aria-label="下一张">›</button><div class="lbcount">${i + 1} / ${n}</div>` : ""}`;
   lb.classList.add("on");
   lb.onclick = e => {
     e.stopPropagation();
-    if (e.target.classList.contains("prev")) return showBig(list, i - 1);
-    if (e.target.classList.contains("next")) return showBig(list, i + 1);
+    if (e.target.classList.contains("prev")) return showBig(list, i - 1, direct);
+    if (e.target.classList.contains("next")) return showBig(list, i + 1, direct);
     lb.classList.remove("on");
   };
-  lb.dataset.i = i; S.lb = { list, i };
+  lb.dataset.i = i; S.lb = { list, i, direct };
 }
 function searchPanel(a) {
   const bs = S.bs && S.bs.key === a.key ? S.bs : { key: a.key, q: a.boothQuery || a.name, hits: a.boothHits || null };
@@ -1231,6 +1297,12 @@ function purchaseSec(a) {
   const p = a.purchase;
   const orders = (p.orders || []).map(o => `<div class="order"><span class="d">${esc(o.date || "日期未知")}</span><span class="muted">订单 #${esc(o.id)}</span>
     <button class="btn small" data-url="${esc(o.url)}">订单页</button></div>`).join("");
+  if (p.source === "gumroad") return `<div class="sec" id="dlsec"><h4 class="withact">Gumroad 已购${p.variant ? "（" + esc(p.variant) + "）" : ""}${(p.dls || []).length > 1 ? `<button class="h4act" data-d="dlall">全部下载</button>` : ""}</h4>
+    ${dlRows(p)}
+    <div class="order"><span class="d">${esc(((p.orders || [])[0] || {}).date || "")}</span><span></span>
+      <button class="btn small" data-url="${esc(p.pageUrl)}">下载页</button>${p.productUrl ? `<button class="btn small" data-url="${esc(p.productUrl)}">商品页</button>` : ""}<button class="btn small" data-url="${esc(p.libraryUrl)}">已购列表</button></div>
+    ${p.matched ? `<div class="hint" style="margin-top:6px">按下载位置或文件名对应</div>` : ""}
+  </div>`;
   return `<div class="sec" id="dlsec"><h4 class="withact">Booth 已购${p.gift ? "（礼物）" : ""}${(p.dls || []).length > 1 ? `<button class="h4act" data-d="dlall">全部下载</button>` : ""}</h4>
     ${dlRows(p)}
     ${orders}
@@ -1424,6 +1496,24 @@ async function baiduLogin(switching) {
   S.web.forLogin = true;
   openWeb(S.data.baiduLogin, "pan");
 }
+// ---------- Gumroad: log in inside the program, then the purchases are read ----------
+function gumLogin() {
+  if (!S.data.paneMode) { toast("这台电脑没有内置浏览器（WebView2 / Edge），没法在软件里登录 Gumroad", 5000); return; }
+  S.web.forLogin = true;
+  toast("在下面的页面里登录 Gumroad，登录后会自动读取已购", 5000);
+  openWeb(S.data.gumroad.loginUrl, "gumroad");
+}
+function gumLoggedIn() {
+  const g = S.data.gumroad || {};
+  toast("Gumroad 已登录" + (g.name ? "：" + g.name : "") + "，正在读取已购", 4000);
+  if (S.web.forLogin && S.view === "lib" && S.web.open.lib) closeWeb();
+}
+async function gumSync() {
+  if (!(S.data.gumroad || {}).loggedIn) return gumLogin();
+  const r = await api("/api/gumroad/sync", {});
+  if (r.login) return gumLogin();
+  toast(r.ok ? "开始读取 Gumroad 已购" : "正在同步"); poll(true);
+}
 function baiduLoggedIn() {
   const b = S.data.baidu || {};
   toast("百度网盘已登录" + (b.name ? "：" + b.name : ""), 3500);
@@ -1443,7 +1533,7 @@ function jobText(j) {
 }
 function dlRows(p) {
   const files = p.files || [], dls = p.dls || [];
-  if (!dls.length) return `<div class="muted small">没有读到可下载的文件，重新同步一次 Booth 已购试试。</div>`;
+  if (!dls.length) return `<div class="muted small">${p.source === "gumroad" ? esc(p.note || "这件商品没有可以直接下载的文件（可能只能在线看，或文件在别的网站）") + "。点「下载页」到 Gumroad 上看" : "没有读到可下载的文件，重新同步一次 Booth 已购试试。"}</div>`;
   return `<div class="dlrows">${dls.map((id, i) => {
     const j = jobFor(id), got = (j && j.status === "done" && j.path) || (p.got || [])[i];
     const busy = j && ["queued", "running", "unpacking"].includes(j.status);
@@ -1535,7 +1625,7 @@ function renderDrawer(key, keepScroll) {
           : `<button class="btn primary" data-d="open">${ICON.folder}<span style="margin-left:6px">打开文件夹</span></button>`}
         ${hasShare(a) && !a.panOnly ? `<button class="btn" data-d="pan">打开网盘</button>` : ""}
         ${a.purchase && !a.virtual ? `<button class="btn" data-d="buypage">购买页</button>` : ""}
-        <button class="btn" data-d="booth">${a.boothId ? "Booth 商品页" : "在 Booth 搜索"}</button>
+        <button class="btn" data-d="booth">${isGum(a) ? "Gumroad 商品页" : a.boothId ? "Booth 商品页" : "在 Booth 搜索"}</button>
       </div>
     </div>
   </div>
@@ -1561,7 +1651,7 @@ function renderDrawer(key, keepScroll) {
       ${u.bases ? `<div class="field"><span></span><span class="hint">自动识别：${esc((a.autoBases || []).join(", ") || "无")}</span></div>` : ""}
       ${styleField(a)}
       <div class="field"><label>标签</label><input id="f_tags" value="${esc((u.tags || []).join(", "))}" placeholder="用逗号分隔"></div>
-      ${a.virtual ? `<input id="f_booth" type="hidden" value="">` : `<div class="field"><label>Booth 链接</label><input id="f_booth" value="${esc(u.boothUrl || "")}" placeholder="${a.boothId ? "已识别 #" + esc(a.boothId) : "https://booth.pm/ja/items/..."}"></div>`}
+      ${a.virtual ? `<input id="f_booth" type="hidden" value="">` : `<div class="field"><label>Booth 链接</label><input id="f_booth" value="${esc(u.boothUrl || "")}" placeholder="${isGum(a) ? "这是 Gumroad 的商品；填 Booth 链接会改成关联 Booth" : a.boothId ? "已识别 #" + esc(a.boothId) : "https://booth.pm/ja/items/..."}"></div>`}
       <div class="field"><label>备注</label><textarea id="f_notes">${esc(u.notes || "")}</textarea></div>
       ${(a.localCovers || []).length > 1 || u.cover ? `<div class="field"><label>封面</label><div class="covers">${(a.localCovers || []).map(c => `<img src="/thumb?w=160&p=${encodeURIComponent(c)}" data-cover="${esc(c)}" class="${u.cover === c ? "on" : ""}" title="${esc(c)}">`).join("")}</div></div>` : ""}
     </div>
@@ -1577,7 +1667,7 @@ function renderDrawer(key, keepScroll) {
         <button class="btn" data-d="hide">${u.hidden ? "取消隐藏" : "隐藏"}</button>
         <button class="btn" data-d="ignore" title="扫描时跳过">不再收录</button>
         ${a.group || u.noGroup ? `<button class="btn" data-d="nogroup">${u.noGroup ? "允许合并同款" : "不和同款合并"}</button>` : ""}
-        ${a.boothId ? `<button class="btn" data-d="rebooth">重新读取 Booth</button>` : ""}
+        ${a.boothId && !isGum(a) ? `<button class="btn" data-d="rebooth">重新读取 Booth</button>` : ""}
       </div>
     </div>`}
   </div>
@@ -1789,6 +1879,9 @@ function openSettings(focusId) {
       <div class="muted small" style="margin-top:6px">登录后可以在软件里直接下载网盘分享。登录信息加密保存在这台电脑上。下载速度取决于账号的会员等级，普通账号会被百度限速。</div></div>
     <div class="row"><label>Booth 已购${S.data.purchaseSync ? `<span class="muted small">　已同步 ${S.data.purchaseCount} 件（${esc(fmtTime(S.data.purchaseSync))}）</span>` : ""}</label>
       <div class="btnrow" style="margin-top:0"><button class="btn small" data-m="sync">同步</button><button class="btn small" data-m="forget">退出登录</button>${S.data.purchaseSync ? `<button class="btn small" data-m="clearp">清空记录</button>` : ""}</div></div>
+    <div class="row"><label>Gumroad 已购<span class="muted small">　${(S.data.gumroad || {}).loggedIn ? "已登录" + ((S.data.gumroad || {}).name ? "：" + esc(S.data.gumroad.name) : "") : "未登录"}${(S.data.gumroad || {}).count ? `，已读到 ${S.data.gumroad.count} 件` : ""}</span></label>
+      <div class="btnrow" style="margin-top:0"><button class="btn small" data-m="gumsync">${(S.data.gumroad || {}).loggedIn ? "同步" : "登录"}</button>${(S.data.gumroad || {}).loggedIn ? `<button class="btn small" data-m="gumlogout">退出登录</button>` : ""}${(S.data.gumroad || {}).count ? `<button class="btn small" data-m="gumclear">清空记录</button>` : ""}</div>
+      <div class="muted small" style="margin-top:6px">在软件里登录 Gumroad 后读取已购，没下载的可以直接下载。登录信息加密保存在这台电脑上，只发给 gumroad.com。</div></div>
     <div class="row"><label>流水线的 AI<span class="muted small">　${AI.cfg && AI.cfg.ready ? esc(aiProvLabel(AI.cfg)) : "还没有设置 AI 服务"}</span></label>
       <div class="btnrow" style="margin-top:0"><button class="btn small" data-m="aicfg">设置 AI 服务</button></div>
       <div class="muted small" style="margin-top:6px">「流水线」页把导入的素材装到模型上、生成菜单；设置了 AI 服务后还能让 AI 接着改模。不设置也能跑（按网格名字分组）。</div></div>
@@ -2128,6 +2221,17 @@ function aiStatHTML() {
   h += row(ok ? "ok" : "warn", "Unity", k.hint ? `${conn ? conn + "<br>" : ""}<span class="warnline">${esc(k.hint)}</span>` : conn,
     !k.running && k.editor ? `<button class="btn small${pri("unity")}" data-ai="unity">打开 Unity</button>` : "");
   if (!c.ready) h += row("warn", "AI 服务", "还没设置。不用 AI 也能跑流水线（按网格名字分组）", `<button class="btn small${pri("cfg")}" data-ai="cfg">设置</button>`);
+  else {
+    const vm = esc(c.eyeModel || ""), set = `<button class="btn small ghost" data-ai="cfg">设置</button>`;
+    const looks = {
+      main: ["ok", "AI 自己看截图", set],
+      other: ["ok", `这个模型看不了图，由${c.eyeOwn ? "同一家的" : "看图模型"} ${vm} 把截图描述给它`, set],
+      unknown: ["", `第一次拍照时会测一下这个模型能不能看图<span class="sub">　截图也会显示在下面的记录里</span>`, set],
+      none: ["warn", "这个模型看不了图，这一家也没有现成的看图模型：截图只显示给你看。另设一个看图模型，AI 就能检查画面", set],
+      off: ["", "已关闭：截图只显示给你看", set],
+    }[c.looks || "unknown"];
+    h += row(looks[0], "看图", looks[1], looks[2] || "");
+  }
   return h;
 }
 function aiLogHTML() {
@@ -2142,7 +2246,8 @@ function aiLogHTML() {
     }
     if (s.kind === "tool") {
       const mark = s.busy ? `<i class="spin"></i>` : s.ok ? `<i class="mk ok">✓</i>` : `<i class="mk bad">!</i>`;
-      return `<div class="aistep tool${s.busy ? " busy" : ""}">${mark}<span><b>${esc(s.text)}</b>${s.out ? `<span class="out">　${esc(s.out)}</span>` : ""}</span></div>`;
+      const shots = (s.imgs || []).length ? `<span class="shots">${s.imgs.map((n, i) => `<img src="/shot?f=${encodeURIComponent(n)}" data-shot="${i}" data-shots="${esc(s.imgs.join("|"))}" alt="截图 ${i + 1}" title="点击放大" loading="lazy">`).join("")}</span>` : "";
+      return `<div class="aistep tool${s.busy ? " busy" : ""}">${mark}<span><b>${esc(s.text)}</b>${s.out ? `<span class="out">　${esc(s.out)}</span>` : ""}${shots}</span></div>`;
     }
     return `<div class="aistep ${s.kind === "error" ? "err" : s.kind}">${esc(s.text)}</div>`;
   }).join("") + ((AI.sess || {}).busy && !busyTool ? `<div class="aistep tool busy"><i class="spin"></i><span class="out">AI 正在想下一步…</span></div>` : "");
@@ -2182,6 +2287,8 @@ async function aiPoll() {
   const s = AI.sess || {};
   // a run just ended: the asset list may know more now (what is on the avatar)
   if (wasBusy && !s.busy && (s.steps || []).length >= hadSteps) pipeRescan(true);
+  // … and so may the 看图 row: the first look finds out whether the model reads pictures
+  if (wasBusy && !s.busy) aiLoadCfg().then(() => { if (AI.proj && AI.proj.path === path) aiRenderLive(); }).catch(() => {});
   AI.timer = setTimeout(aiPoll, s.busy || !(s.kit || {}).alive ? 900 : 3000);
 }
 async function pipeRescan(quiet) {
@@ -2293,13 +2400,34 @@ async function aiAction(b) {
     out.className = "aitest ok"; out.textContent = `读到 ${r.models.length} 个模型，在列表里点一个`;
     return aiModelList(true, true);
   }
-  if (what === "cfgsave" || what === "keyclear") {
-    const body = aiCfgBody();
+  if (what === "vpreset") {
+    aiCfgKeep(); const p = (AI.cfg.visionPresets || []).find(x => x.id === b.dataset.v); if (!p) return;
+    Object.assign(AI.cfgForm.vision, { wire: p.wire, base: p.baseUrl, model: p.model });
+    const top = $("#modal .mbody").scrollTop; await openAICfg(true); $("#modal .mbody").scrollTop = top; return;
+  }
+  if (what === "vmode" || what === "vwire") {
+    aiCfgKeep(); AI.cfgForm.vision[what === "vmode" ? "mode" : "wire"] = b.dataset.v;
+    const top = $("#modal .mbody").scrollTop; await openAICfg(true); $("#modal .mbody").scrollTop = top; return;
+  }
+  if (what === "vtest") {
+    const out = $("#ai_vtest"), body = aiCfgBody(), x = AI.cfgForm.vision;
+    body.who = b.dataset.who; body.vision = aiVisionBody(); if (x.key.trim()) body.visionKey = x.key.trim();
+    b.disabled = true; out.className = "aitest"; out.textContent = "正在给它看一张写着数字的图…";
+    let r; try { r = await api("/api/ai/visiontest", body); } catch (e) { r = { ok: false, err: "软件没有回应" }; }
+    b.disabled = false;
+    if (!$("#ai_vtest")) return;
+    if (r.ok && r.ai) AI.cfg = r.ai;
+    out.className = "aitest " + (r.ok && r.sees ? "ok" : "err"); out.textContent = r.ok ? r.note : r.err; return;
+  }
+  if (what === "cfgsave" || what === "keyclear" || what === "vkeyclear") {
+    const body = aiCfgBody(), x = AI.cfgForm.vision;
     if (what === "keyclear") body.key = ""; else if (!body.key) delete body.key;
+    body.vision = aiVisionBody();
+    if (what === "vkeyclear") body.visionKey = ""; else if (x.key.trim()) body.visionKey = x.key.trim();
     const r = await api("/api/ai/save", body);
     if (!r.ok) { const out = $("#ai_test"); out.className = "aitest err"; out.textContent = r.err; return; }
     AI.cfg = r.ai;
-    if (what === "keyclear") { AI.cfgForm = null; toast("已清除保存的 Key"); return openAICfg(); }
+    if (what === "keyclear" || what === "vkeyclear") { AI.cfgForm = null; toast("已清除保存的 Key"); return openAICfg(); }
     toast("已保存");
     if (!AI.back && AI.cfg.ready && S.view !== "pipe") { AI.cfgForm = null; return openAIPick(); } // set up from the settings: which project is it for?
     return aiCfgDone();
@@ -2429,21 +2557,58 @@ function aiModelList(open, all) {
 function aiCfgKeep() {
   const f = AI.cfgForm; if (!f || !$("#ai_base")) return;
   f.vals[f.provider] = { base: $("#ai_base").value, model: $("#ai_model").value, key: $("#ai_key").value };
+  if ($("#aiv_base")) Object.assign(f.vision, { base: $("#aiv_base").value, model: $("#aiv_model").value, key: $("#aiv_key").value });
+}
+function aiVisionBody() {
+  const x = AI.cfgForm.vision;
+  return { mode: x.mode, wire: x.wire, baseUrl: x.base.trim(), model: x.model.trim() };
 }
 function aiCfgBody() {
   aiCfgKeep();
   const f = AI.cfgForm, v = f.vals[f.provider];
   return { provider: f.provider, baseUrl: v.base.trim(), model: v.model.trim(), key: v.key.trim() };
 }
+// the 看图 part of the service form: who looks at the screenshots the AI takes
+const VISION_MODES = [["", "自动"], ["main", "主模型自己看"], ["other", "用看图模型"], ["off", "不给 AI 看"]];
+function aiVisionHTML() {
+  const c = AI.cfg, x = AI.cfgForm.vision, tail = c.visionKey;
+  const say = {
+    "": "AI 拍照检查头像时：上面的模型能看图就把截图发给它；看不了（例如 deepseek-v4-pro）就请一个看图模型把画面描述给它——同一家有看图模型时自动用它（同一个 Key，不用填），否则用下面填的。",
+    main: "截图直接发给上面的模型。它其实看不了图的话，服务会拒绝，软件就改成只把截图显示给你。",
+    other: "截图总是交给下面的看图模型，由它把画面描述成文字再告诉 AI。",
+    off: "截图只显示在记录里给你看，不发给任何模型。",
+  }[x.mode];
+  const other = x.mode === "" || x.mode === "other";
+  // a provider with a saved key at the same address: its key serves the vision model too
+  const host = u => { try { return new URL(u).host.toLowerCase(); } catch (e) { return ""; } };
+  const same = !tail && host(x.base) ? c.providers.find(p => (c.keys || {})[p.id] && host((c.profiles[p.id] || {}).baseUrl || p.base) === host(x.base)) : null;
+  const preset = (c.visionPresets || []).find(p => host(p.baseUrl) === host(x.base) && host(x.base));
+  return `<div class="visionbox"><div class="row"><label>看图</label>
+      <div class="seg">${VISION_MODES.map(([id, label]) => `<button class="segbtn${id === x.mode ? " on" : ""}" data-ai="vmode" data-v="${id}" aria-pressed="${id === x.mode}">${label}</button>`).join("")}</div>
+      <div class="hint2">${say}</div></div>
+    ${other ? `<div class="row"><label>看图模型用哪家</label><div class="seg">${(c.visionPresets || []).map(p => `<button class="segbtn${preset && preset.id === p.id ? " on" : ""}" data-ai="vpreset" data-v="${p.id}">${esc(p.label)}</button>`).join("")}</div>
+      <div class="hint2">点一下填好接口地址和模型名${preset ? "：" + esc(preset.note) : ""}。也可以在下面自己填别家的。</div></div>
+    <div class="row"><label>看图模型的接口</label><div class="seg">${[["openai", "ChatGPT 兼容"], ["claude", "Claude 兼容"]].map(([id, label]) => `<button class="segbtn${id === x.wire ? " on" : ""}" data-ai="vwire" data-v="${id}" aria-pressed="${id === x.wire}">${label}</button>`).join("")}</div></div>
+    <div class="row"><label for="aiv_base">看图模型的接口地址</label><input id="aiv_base" value="${esc(x.base)}" placeholder="例如 https://open.bigmodel.cn/api/paas/v4" autocomplete="off" spellcheck="false"></div>
+    <div class="row"><label for="aiv_key">看图模型的 API Key${tail ? `<span class="muted small">　已保存（${esc(tail)}）</span>` : ""}</label>
+      <div class="inline"><input id="aiv_key" type="password" value="${esc(x.key)}" placeholder="${tail ? "留空就继续用已保存的" : same ? "不填就用「" + esc(same.label) + "」的 Key（同一家）" : "粘贴 API Key"}" autocomplete="off" spellcheck="false">${tail ? `<button class="btn small" data-ai="vkeyclear">清除</button>` : ""}</div></div>
+    <div class="row"><label for="aiv_model">看图模型的模型名</label><input id="aiv_model" value="${esc(x.model)}" placeholder="例如 glm-4.6v-flash、qwen-vl-plus、kimi-k3、gpt-4o" autocomplete="off" spellcheck="false">
+      <div class="hint2">填任何能看图的模型，可以和上面不是同一家；模型名以服务商的文档为准。${x.mode === "" ? "上面的模型自己能看图、或者同一家有看图模型（DeepSeek、智谱、通义、Kimi 都有）时，这几项可以不填。" : ""}</div></div>` : `<input type="hidden" id="aiv_base" value="${esc(x.base)}"><input type="hidden" id="aiv_key" value="${esc(x.key)}"><input type="hidden" id="aiv_model" value="${esc(x.model)}">`}
+    ${x.mode === "off" ? "" : `<div class="btnrow">${x.mode !== "other" ? `<button class="btn small" data-ai="vtest" data-who="main">测试上面的模型能不能看图</button>` : ""}${other ? `<button class="btn small" data-ai="vtest" data-who="other">测试看图模型</button>` : ""}</div>
+    <div class="aitest" id="ai_vtest" role="status"></div>`}</div>`;
+}
 function aiCfgDone() {
   AI.cfgForm = null;
-  if (AI.back) { const p = AI.back; AI.back = null; return openAI(p); }
   closeModal();
+  if (AI.back) { const p = AI.back; AI.back = null; return openAI(p); } // opened from a project's line: back to it, with the new settings
 }
 async function openAICfg(keep) {
   if (!keep) { try { await aiLoadCfg(); } catch (e) { toast("读不到 AI 设置"); return; } AI.cfgForm = null; }
   const c = AI.cfg;
-  if (!AI.cfgForm) AI.cfgForm = { provider: c.provider || "deepseek", vals: {}, models: {} };
+  if (!AI.cfgForm) {
+    const cv = c.vision || {};
+    AI.cfgForm = { provider: c.provider || "deepseek", vals: {}, models: {}, vision: { mode: cv.mode || "", wire: cv.wire === "claude" ? "claude" : "openai", base: cv.baseUrl || "", model: cv.model || "", key: "" } };
+  }
   const f = AI.cfgForm, info = c.providers.find(x => x.id === f.provider), saved = c.profiles[f.provider] || {};
   const v = f.vals[f.provider] || (f.vals[f.provider] = { base: saved.baseUrl || info.base, model: saved.model || "", key: "" });
   const tail = (c.keys || {})[f.provider];
@@ -2460,6 +2625,7 @@ async function openAICfg(keep) {
       <div class="inline"><input id="ai_model" value="${esc(v.model)}" placeholder="${esc(info.model || "点「选择模型」挑一个，或直接填模型名")}" autocomplete="off" spellcheck="false" aria-controls="ai_modelist"><button class="btn small" data-ai="models" aria-expanded="false">选择模型 ▾</button></div>
       <div class="modelist" id="ai_modelist" hidden></div>
       <div class="hint2">点「选择模型」从服务商那里读出列表再点选，也可以直接填模型名。要选支持工具调用（function calling）的对话模型。</div></div>
+    ${aiVisionHTML()}
     <div class="aitest" id="ai_test" role="status"></div>
   </div><div class="mfoot"><button class="btn" data-ai="test">测试连接</button><span class="spacer"></span><button class="btn ghost" data-ai="cfgclose">取消</button><button class="btn primary" data-ai="cfgsave">保存</button></div>`;
   m.classList.add("on"); $("#scrim").classList.add("on");
@@ -2468,7 +2634,10 @@ async function openAICfg(keep) {
 // ---------- events ----------
 document.addEventListener("click", async e => {
   const t = e.target;
+  if (t.matches("[data-shot]")) return showBig(t.dataset.shots.split("|").map(n => "/shot?f=" + encodeURIComponent(n)), +t.dataset.shot, true);
   if (t.closest("#btnSync") || t.closest("#btnDLLogin")) { startSync(); return; }
+  if (t.closest("#btnGumSync")) return gumSync();
+  if (t.closest("#btnGumCancel")) { await api("/api/gumroad/cancel", {}); toast("正在取消"); poll(true); return; }
   if (t.closest("#btnDLCancel")) { await api("/api/booth/download/cancel", {}); toast("已取消下载"); poll(true); return; }
   if (t.closest("#btnPanCancel")) { await api("/api/pan/download/cancel", {}); toast("已取消网盘下载"); poll(true); return; }
   if (t.closest("#btnBdLogin")) { baiduLogin(false); return; }
@@ -2575,7 +2744,29 @@ document.addEventListener("click", async e => {
   if (t.closest("#btnProjUsage")) { await api("/api/scan", { scan: false, usage: true, booth: false }); toast("正在统计"); poll(true); return; }
   if (t.closest("#btnScan")) { const r = await api("/api/scan", { scan: true, usage: true, booth: S.data.settings.autoBooth }); toast(r.ok ? "开始扫描" : "正在扫描"); poll(true); return; }
 
+  if (t.closest("#btnBulk")) { S.bulk = { keys: new Set(), last: null }; closeDrawer(); return renderGrid(); }
+  if (t.closest("#bulkDone")) { S.bulk = null; return renderGrid(); }
+  if (t.closest("#bulkAll")) { for (const u of bulkUnits()) S.bulk.keys.add(unitKey(u.primary)); return bulkRefresh(); }
+  if (t.closest("#bulkNone")) { S.bulk.keys.clear(); S.bulk.last = null; return bulkRefresh(); }
+  const bk = t.closest("[data-bulk]");
+  if (bk && S.bulk) {
+    const n = S.bulk.keys.size, what = bk.dataset.bulk;
+    if (what === "hide") return bulkApply({ hidden: true }, () => `已隐藏 ${n} 个，左边勾「显示隐藏的」可以找回来`);
+    if (what === "show") return bulkApply({ hidden: false }, () => `已取消隐藏 ${n} 个`);
+    if (what === "ignore") {
+      const local = bulkAssets().filter(isLocal).length;
+      if (!local) { toast("选中的都不是本地文件夹里的素材"); return; }
+      if (!confirm(`以后扫描时跳过这 ${local} 个素材所在的文件夹？文件不会被删除，可以在设置的「手动调整」里撤销。`)) return;
+      return bulkApply({ ignore: true }, r => `${r.ignored} 个不再收录，正在重新扫描`);
+    }
+    return;
+  }
+
   const card = t.closest(".card");
+  if (card && S.bulk && !t.closest(".drawer") && card.dataset.key) {
+    const a = findAsset(card.dataset.key); if (a) bulkToggle(a, e.shiftKey);
+    return;
+  }
   if (card && !t.closest(".drawer") && card.dataset.key) {
     const a = findAsset(card.dataset.key); if (!a) return;
     const act = t.closest("[data-act]");
@@ -2765,6 +2956,13 @@ document.addEventListener("click", async e => {
       await api("/api/baidu/logout", {}); toast("已退出百度网盘"); await load(); return openSettings("s_baidu");
     }
     if (b.dataset.m === "shortcut") { const r = await api("/api/shortcut", {}); toast(r.ok ? "已创建" : "创建失败：" + (r.err || ""), 3500); return; }
+    if (b.dataset.m === "gumsync") { closeModal(); return gumSync(); }
+    if (b.dataset.m === "gumlogout" || b.dataset.m === "gumclear") {
+      const clear = b.dataset.m === "gumclear";
+      if (!confirm(clear ? "清空 Gumroad 已购记录并退出登录？已经下载的素材不受影响。" : "退出 Gumroad 登录？已读到的已购记录会留着。")) return;
+      const r = await api("/api/gumroad/logout", { clear });
+      toast(r.ok ? (clear ? "已清空并退出" : "已退出 Gumroad") : r.err || "没能退出", 3500); await load(); return openSettings();
+    }
     if (b.dataset.m === "forget" || b.dataset.m === "clearp") {
       const clear = b.dataset.m === "clearp";
       if (!confirm(clear ? "清空已购记录并退出 Booth 登录？本地素材不受影响。" : "退出 Booth 登录？")) return;
@@ -2801,6 +2999,10 @@ document.addEventListener("change", e => {
   if (e.target.id === "pipe_hier") { PIPE.hier = e.target.value; return; }
   if (e.target.dataset && e.target.dataset.sk && S.setup) { S.setup[e.target.dataset.sk][+e.target.dataset.si].checked = e.target.checked; return; }
   if (e.target.id === "showHidden") { S.showHidden = e.target.checked; renderSide(); renderGrid(); }
+  if (e.target.id === "bulkCat" && S.bulk && e.target.value) {
+    const v = e.target.value, n = S.bulk.keys.size;
+    return bulkApply({ category: v === "__auto" ? "" : v }, () => v === "__auto" ? `${n} 个已恢复自动分类` : `已把 ${n} 个移到「${v}」`);
+  }
   if (e.target.id === "sort") { S.sort = e.target.value; saveUI(); renderGrid(); }
   if (e.target.id === "shopSort") { S.shop.sort = e.target.value; saveUI(); shopSearch(true); }
   if (e.target.dataset && e.target.dataset.shf) { S.shop[e.target.dataset.shf] = e.target.checked; saveUI(); if (e.target.dataset.shf === "adult") shopSearch(true); else renderShopGrid(); }
@@ -2830,17 +3032,19 @@ document.addEventListener("keydown", e => {
   const lb = $("#lightbox");
   if (lb && lb.classList.contains("on")) {
     if (e.key === "Escape") lb.classList.remove("on");
-    else if (e.key === "ArrowLeft" || e.key === "ArrowRight") showBig(S.lb.list, S.lb.i + (e.key === "ArrowLeft" ? -1 : 1));
+    else if (e.key === "ArrowLeft" || e.key === "ArrowRight") showBig(S.lb.list, S.lb.i + (e.key === "ArrowLeft" ? -1 : 1), S.lb.direct);
     return;
   }
   if (e.key === "Escape") {
     if ($("#modal").classList.contains("on")) closeModal();
     else if ($("#drawer").classList.contains("on")) closeDrawer();
+    else if (S.bulk && S.view === "lib") { S.bulk = null; renderGrid(); }
     else if (S.view === "shop" && S.web.open.shop) closeWeb();
   }
   if (e.key === "Enter" && document.activeElement.classList.contains("shopcard")) { openShopItem(document.activeElement.dataset.shop); return; }
   if (e.key === "Enter" && document.activeElement.classList.contains("card")) {
     const a = findAsset(document.activeElement.dataset.key); if (!a) return;
+    if (S.bulk) return bulkToggle(a, e.shiftKey);
     if (document.activeElement.dataset.group) { renderDrawer(a.key); return; }
     if (a.virtual || a.panOnly) renderDrawer(a.key); else if ((a.locations || [])[0]) openPath(a.locations[0].path);
   }

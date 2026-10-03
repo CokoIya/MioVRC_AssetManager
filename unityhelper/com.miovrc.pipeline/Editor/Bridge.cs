@@ -22,7 +22,7 @@ namespace MioVRCA.Pipeline
     [InitializeOnLoad]
     internal static class Bridge
     {
-        public const string Version = "1.1.0";
+        public const string Version = "1.2.0";
         const string Dir = "UserSettings/MioVRCA/bridge";
 
         const string SkillsAsked = "MioVRCA.Pipeline.SkillsAsked";
@@ -185,6 +185,7 @@ namespace MioVRCA.Pipeline
                 case "inspect": return AvatarInspect.Overview(args);
                 case "inspect_object": return AvatarInspect.ObjectDetail(args);
                 case "prefabs": return AvatarInspect.Prefabs(args);
+                case "snapshot": return Snapshot.Run(args);
                 case "refresh":
                     AssetDatabase.Refresh();
                     return new Dictionary<string, object> { { "refreshed", true } };

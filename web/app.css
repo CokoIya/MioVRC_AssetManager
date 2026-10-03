@@ -474,6 +474,15 @@ select, .btn {
 .chip.more { color: var(--muted); border-style: dashed; }
 .side .check + .check { margin-top: -4px; }
 .resultbar .picked { color: var(--text); }
+/* 批量整理 */
+.bulkbar { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 10px; border: 1px solid var(--accent); border-radius: 10px; background: var(--accent-soft); color: var(--text); }
+.bulkbar select { height: 28px; border-radius: var(--r-ctl); border: 1px solid var(--line); background: var(--card); color: var(--text); padding: 0 6px; }
+.bulkbar select:disabled, .bulkbar .btn:disabled { opacity: .45; cursor: default; }
+.grid.bulk .card { cursor: pointer; }
+.grid.bulk .card .acts { display: none; }
+.grid.bulk .card.sel { outline: 2px solid var(--accent); outline-offset: 1px; }
+.grid.bulk .card .cover::after { content: ""; position: absolute; top: 8px; left: 8px; width: 20px; height: 20px; border-radius: 6px; border: 2px solid rgba(255, 255, 255, .85); background: rgba(12, 13, 20, .55); z-index: 3; }
+.grid.bulk .card.sel .cover::after { content: "✓"; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; font-weight: 700; background: var(--accent); border-color: var(--accent); }
 
 /* Booth result cards */
 .sbadges { position: absolute; top: 8px; left: 8px; display: flex; gap: 5px; flex-wrap: wrap; }
@@ -647,6 +656,11 @@ body.paneon .toast.on { transform: translate(-50%, 0); }
 .aistep.tool b { font-weight: 500; }
 .aistep.tool .out { color: var(--faint); }
 .aistep.err { color: var(--accent); }
+.aistep .shots { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
+.aistep .shots img { height: 132px; max-width: 100%; border-radius: 6px; border: 1px solid var(--line); background: #33363f; cursor: zoom-in; display: block; }
+.aistep .shots img:hover, .aistep .shots img:focus-visible { border-color: var(--accent); }
+.visionbox { margin: 4px 0 12px; padding: 14px 14px 2px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+.visionbox .btnrow { margin: 0 0 8px; }
 .mk { flex: none; width: 16px; height: 16px; margin-top: 3px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 11px; font-weight: 700; color: var(--bg); }
 .mk.ok { background: var(--ok); }
 .mk.bad { background: var(--warn); }

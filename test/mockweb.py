@@ -265,6 +265,63 @@ class H(http.server.BaseHTTPRequestHandler):
             return self.send(200, json.dumps([{"detectedLanguage": {"language": "ja"}, "translations": [{"text": out, "to": "zh-Hans"}]}]), "application/json")
         self.send(404, "")
 
+    def gumroad(self, u, q):
+        def inertia(component, props, title="Gumroad"):
+            props.setdefault("logged_in_user", {"name": "Mio", "email": "mio@example.com"} if self.cookies().get("_gumroad_app_session") == "gumok" else None)
+            page = json.dumps({"component": component, "props": props, "url": u.path, "version": None})
+            if self.headers.get("X-Inertia") == "true":
+                return self.send(200, page, "application/json; charset=utf-8", {"X-Inertia": "true"})
+            body = ""
+            if component == "Library/Index":
+                body = "<h1>Library</h1>" + "".join(f'<p><a href="{html.escape(c["purchase"]["download_url"])}">{html.escape(c["product"]["name"])}</a></p>' for c in props["results"])
+            elif component == "Logins/New":
+                body = '<h1>Log in to Gumroad</h1><p>mock: logs in by itself</p><script>setTimeout(()=>location.href="/gum/login/do",1500)</script>'
+            return self.send(200, f'<!DOCTYPE html><html><head><title>{title}</title></head><body><div id="app" data-page="{html.escape(page)}"></div>{body}</body></html>')
+        if u.path.startswith("/gumfiles/"):
+            if u.path.startswith("/gumfiles/thumb"):
+                im = Image.new("RGB", (300, 300), (230, 120, 170)); bio = io.BytesIO(); im.save(bio, "JPEG")
+                return self.send(200, bio.getvalue(), "image/jpeg")
+            if self.headers.get("Cookie"):
+                return self.send(400, "the login was sent to the file host")
+            bio = io.BytesIO()
+            with zipfile.ZipFile(bio, "w") as zf:
+                zf.writestr("Gum Dress/Gum Dress.unitypackage", b"x" * 5000)
+                zf.writestr("Gum Dress/readme.txt", "hello")
+            return self.send(200, bio.getvalue(), "application/zip")
+        sub = u.path[4:]
+        if sub == "/login":
+            return inertia("Logins/New", {}, "Log in to Gumroad")
+        if sub == "/login/do":
+            self.send_response(302); self.send_header("Set-Cookie", "_gumroad_app_session=gumok; Path=/; Max-Age=2592000")
+            self.send_header("Location", "/gum/library"); self.end_headers(); return
+        if self.cookies().get("_gumroad_app_session") != "gumok":
+            self.send_response(302); self.send_header("Location", "/gum/login?next=" + urllib.parse.quote(sub)); self.end_headers(); return
+        files_host = f"http://localhost:{PORT}"  # another host than the site: the login must not travel there
+        names = ["Gum Dress Kaguya", "Fluffy Tail Set", "Neon Jacket"] + [f"Gum Item {i:02d}" for i in range(4, 18)]
+        if sub == "/library":
+            page = int(q.get("page", ["1"])[0]); arch = q.get("show_archived_only", [""])[0] == "true"
+            all_ = [] if arch else names
+            res = [{"product": {"name": n, "creator": {"name": "Atelier Gum", "profile_url": "https://ateliergum.gumroad.com/", "avatar_url": ""}, "thumbnail_url": f"{files_host}/gumfiles/thumb{i}.jpg", "native_type": "digital"},
+                    "purchase": {"id": f"gp{i:02d}==", "is_archived": arch, "download_url": f"{B}/gum/d/tok{i:02d}", "variants": "Kaguya" if i == 0 else ""}}
+                   for i, n in list(enumerate(all_))[(page - 1) * 15: page * 15]]
+            return inertia("Library/Index", {"results": res, "pagination": {"page": page, "pages": max(1, (len(all_) + 14) // 15), "count": len(all_)}}, "Library")
+        if sub.startswith("/d/tok"):
+            i = sub[6:]
+            if i == "02":
+                return inertia("UrlRedirects/MembershipInactive", {})
+            f = lambda fid, name, ext, size, dl=True: {"type": "file", "file_name": name, "extension": ext, "file_size": size, "id": fid,
+                 "download_url": f"/gum/r/tok{i}/product_files?product_file_ids%5B%5D={fid}" if dl else None, "external_link_url": None}
+            items = [{"type": "folder", "id": "fo", "name": "Unity", "children": [f(f"gf{i}a", names[int(i)].replace(" ", "_"), "ZIP", 5200)]},
+                     f(f"gf{i}b", names[int(i)].replace(" ", "_") + "_PSD", "ZIP", 9000), f(f"gf{i}c", "Preview", "MP4", 100, False)]
+            return inertia("UrlRedirects/DownloadPage", {"token": "tok" + i, "content": {"content_items": items},
+                "purchase": {"id": f"gp{i}==", "product_permalink": "perm" + i, "product_name": names[int(i)], "product_long_url": f"https://ateliergum.gumroad.com/l/perm{i}", "created_at": "2026-09-0%dT10:00:00Z" % (1 + int(i) % 9)}}, names[int(i)])
+        if sub.startswith("/r/tok"):
+            fid = q.get("product_file_ids[]", [""])[0]
+            name = names[int(sub[6:8])].replace(" ", "_") + ("_PSD" if fid.endswith("b") else "") + ".zip"
+            self.send_response(302); self.send_header("Location", f"{files_host}/gumfiles/{fid}.zip?response-content-disposition=" + urllib.parse.quote(f'attachment; filename="{name}"') + "&X-Amz-Signature=abc")
+            self.end_headers(); return
+        return self.send(404, "not found")
+
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
         q = urllib.parse.parse_qs(u.query)
@@ -280,7 +337,7 @@ class H(http.server.BaseHTTPRequestHandler):
             if not assets:
                 return self.send(404, '{"message":"Not Found"}', "application/json")
             tag = os.environ.get("MOCK_TAG", "v9.9.9")
-            return self.send(200, json.dumps({"tag_name": tag, "name": "MioVRCA " + tag[1:], "draft": False, "prerelease": False,
+            return self.send(200, json.dumps({"tag_name": tag, "name": "MioVRC素材托管工具 " + tag[1:], "draft": False, "prerelease": False,
                 "published_at": "2026-10-05T03:00:00Z", "html_url": "https://github.com/CokoIya/MioVRC_AssetManager/releases/tag/" + tag,
                 "body": "## 更新内容\n- 新功能：**测试**\n- 修复：`library.json` 测试\n\n**下载**：[发布页](https://example.com)", "assets": assets}), "application/json")
         if u.path == "/mock/browselog":
@@ -293,6 +350,8 @@ class H(http.server.BaseHTTPRequestHandler):
             return self.send(200, bio.getvalue(), "image/jpeg")
         if u.path == "/translator":
             return self.send(200, '<html><script>var _G={IG:"ABCDEF0123"};params_AbusePreventionHelper = [1790000000,"TOK",3600000];</script><div id="rich_tta" data-iid="translator.5023"></div></html>')
+        if u.path.startswith("/gum/") or u.path.startswith("/gumfiles/"):  # a stand-in for gumroad.com (Inertia pages, shapes from its source)
+            return self.gumroad(u, q)
         logged = self.cookies().get("BDUSS") == BDUSS
         if u.path == "/mock/bdlogin":  # Baidu's login page: logs in by itself after a moment (the player typing)
             return self.send(200, '<html><head><title>百度帐号登录</title></head><body><h1>登录百度帐号</h1><script>setTimeout(()=>location.href="/mock/bdlogin/do",1500)</script></body></html>')
