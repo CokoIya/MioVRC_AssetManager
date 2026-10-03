@@ -2,13 +2,13 @@
 # Cross-build on Linux / WSL: exe + installer + portable zip into dist/.
 # Needs Go 1.24+, NSIS 3 (makensis) and zip. Run from the repository root.
 set -e
-VERSION=$(sed -n 's/^var appVersion = "\([^"]*\)".*/\1/p' main.go)
+VERSION=$(sed -n 's/^var AppVersion = "\([^"]*\)".*/\1/p' internal/core/version.go)
 APP=MioVRC_AssetManager
 CN=MioVRCA
 mkdir -p dist
-go test .
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-H windowsgui -s -w" -o "dist/$APP.exe" .
-cp packaging/installer.nsi packaging/使用说明.txt app.ico dist/
+go test ./...
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-H windowsgui -s -w" -o "dist/$APP.exe" ./cmd/miovrca
+cp packaging/installer.nsi packaging/使用说明.txt cmd/miovrca/app.ico dist/
 (cd dist && LC_ALL=C.UTF-8 makensis -INPUTCHARSET UTF8 installer.nsi && rm installer.nsi app.ico)
 rm -rf dist/port && mkdir -p "dist/port/$APP" && cp "dist/$APP.exe" "dist/使用说明.txt" "dist/port/$APP/"
 (cd dist/port && zip -qr "../$APP-portable-$VERSION.zip" "$APP") && rm -rf dist/port

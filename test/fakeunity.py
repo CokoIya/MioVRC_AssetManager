@@ -17,6 +17,22 @@ def prefabs(folders=None):
         low = [f.lower().rstrip('/') for f in folders]
         out = [x for x in out if any(x["path"].lower() == f or x["path"].lower().startswith(f + '/') for f in low)]
     return out
+BRIDGE = os.environ.get("FAKE_BRIDGE", "1.2.0")
+def doll(path, view, dressed):
+    # a paper doll, so the pictures in the log look like something
+    from PIL import Image, ImageDraw
+    im = Image.new("RGB", (420, 768), (51, 54, 64)); d = ImageDraw.Draw(im)
+    skin, hair = (244, 214, 196), (120, 88, 150) if view != "back" else (96, 70, 122)
+    d.ellipse((150, 60, 270, 190), fill=skin); d.pieslice((140, 46, 280, 200), 180, 360, fill=hair)
+    if view == "back": d.ellipse((146, 56, 274, 250), fill=hair)
+    d.rounded_rectangle((165, 190, 255, 430), 30, fill=skin)
+    d.rectangle((120, 205, 165, 225), fill=skin); d.rectangle((255, 205, 300, 225), fill=skin)
+    d.rectangle((172, 420, 205, 720), fill=skin); d.rectangle((215, 420, 248, 720), fill=skin)
+    if dressed:
+        d.polygon([(160, 200), (260, 200), (290, 470), (130, 470)], fill=(40, 44, 78)); d.rectangle((160, 200, 260, 230), fill=(230, 230, 240))
+        d.rectangle((168, 690, 208, 730), fill=(20, 20, 30)); d.rectangle((212, 690, 252, 730), fill=(20, 20, 30))
+        if view != "back": d.polygon([(196, 228), (224, 228), (210, 262)], fill=(196, 48, 80))
+    im.save(path, quality=88)
 state = {"prefabOf": {}, "dressed": [], "menu": [], "log": [], "placed": os.environ.get("FAKE_EMPTY") != "1"}
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -34,6 +50,11 @@ class SK(BaseHTTPRequestHandler):
     def do_POST(self):
         body = self.rfile.read(int(self.headers.get('Content-Length') or 0)).decode()
         open(os.path.join(proj, 'skills_calls.log'), 'a').write(self.path + ' ' + body + '\n')
+        if 'screenshot' in self.path:
+            import base64, io
+            from PIL import Image
+            im = Image.new("RGB", (1280, 720), (70, 74, 90)); b = io.BytesIO(); im.save(b, "PNG")
+            return self.out({"status": "success", "result": {"path": "Assets/Screenshots/shot.png", "imageWidth": 1280, "imageHeight": 720, "imageBytes": len(b.getvalue()), "imageBase64": base64.b64encode(b.getvalue()).decode()}})
         self.out({"status": "success", "result": {"deleted": json.loads(body or '{}').get("assetPath")}})
 threading.Thread(target=lambda: ThreadingHTTPServer(('127.0.0.1', 47993), SK).serve_forever(), daemon=True).start()
 def answer(cmd, a):
@@ -69,9 +90,18 @@ def answer(cmd, a):
         open(os.path.join(proj, 'last_menu.json'), 'w', encoding='utf-8').write(json.dumps(a, ensure_ascii=False))
         return {"created": ["Avatar Menu"] + ["Avatar Menu/" + "/".join(it["path"] + [it["label"]]) for it in a["items"]], "warnings": ["「衣服」里有 9 项，超过一页 8 项"] if len(a["items"]) > 12 else [], "icons": len(a["items"]), "root": a.get("root") or "Avatar Menu", "parameter": a.get("parameter") or "Clothtoggle", "menu": {}}, ""
     if cmd == "undo": return {"undone": "MioVRCA 生成菜单"}, ""
+    if cmd == "snapshot" and BRIDGE >= "1.2.0":
+        time.sleep(0.4)
+        sd = os.path.join(proj, 'UserSettings', 'MioVRCA', 'shots'); os.makedirs(sd, exist_ok=True)
+        shots = []
+        for i, v in enumerate(a.get("views") or ["front"]):
+            f = os.path.join(sd, 'f%d_%d_%s.jpg' % (len(state["log"]), i, v)); doll(f, v, state["dressed"])
+            shots.append({"view": v, "file": f.replace(os.sep, '/'), "width": 420, "height": 768})
+        return {"avatar": "Kaguya_Test", "shots": shots, "visible": ["Body", "Hair"] + state["dressed"], "hidden": a.get("hide") or [], "playing": False,
+                "note": "编辑模式里的画面：是场景里现在显示着的东西，菜单开关的效果没有算进去"}, ""
     return None, "不认识的操作：" + cmd
 while True:
-    open(os.path.join(d, 'alive.tmp'), 'w').write(json.dumps({"bridge": "1.1.0", "pid": 1, "ma": "1.18.3", "sdk": True, "skills": {"installed": True, "running": True, "port": 47993, "version": "2.8.4", "mode": "Auto"}}))
+    open(os.path.join(d, 'alive.tmp'), 'w').write(json.dumps({"bridge": BRIDGE, "pid": 1, "ma": "1.18.3", "sdk": True, "skills": {"installed": True, "running": True, "port": 47993, "version": "2.8.4", "mode": "Auto"}}))
     os.replace(os.path.join(d, 'alive.tmp'), os.path.join(d, 'alive.json'))
     for r in sorted(glob.glob(os.path.join(d, 'req_*.json'))):
         run = os.path.join(d, 'run_' + os.path.basename(r)[4:])
