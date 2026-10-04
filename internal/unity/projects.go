@@ -31,6 +31,7 @@ type ProjectCard struct {
 	Cover   string `json:"cover,omitempty"`   // the newest picture the cover package took
 	CoverAt int64  `json:"coverAt,omitempty"`
 	Helper  bool   `json:"helper,omitempty"` // the cover package is in the project
+	Studio  bool   `json:"studio,omitempty"` // the studio package (摄影棚) is in the project
 	Editor  bool   `json:"editor"`           // its Unity version is installed on this computer
 
 	Checkup *CheckupBrief `json:"checkup,omitempty"` // its last check-up, in short
@@ -46,6 +47,7 @@ func ProjectCards(st *core.Store) []ProjectCard {
 		c := ProjectCard{ProjectInfo: p, Unity: projectUnityVersion(p.Path), Opened: projectOpened(p.Path), Running: ProjectRunning(p.Path)}
 		c.Cover, c.CoverAt = projectCover(p.Path)
 		c.Helper = core.StatOK(filepath.Join(p.Path, "Packages", coverPkg, "package.json"))
+		c.Studio = StudioInstalled(p.Path)
 		c.Editor = c.Unity != "" && eds[c.Unity] != ""
 		c.Checkup = lastCheckupBrief(p.Path)
 		out = append(out, c)
@@ -228,6 +230,23 @@ func findEditors(v any, out map[string]string) {
 	}
 }
 
+// Unity started by the program, by project (core.PathKey). An editor takes a while (splash, licence, loading) to lock
+// its project, and one started again in the meantime only reports the project as in use.
+var (
+	startMu   sync.Mutex
+	startedAt = map[string]time.Time{}
+)
+
+const unityStartWait = 90 * time.Second
+
+// unityStarting: the program started Unity for the project moments ago and it has not opened the project yet.
+func unityStarting(p string) bool {
+	startMu.Lock()
+	at, ok := startedAt[core.PathKey(p)]
+	startMu.Unlock()
+	return ok && time.Since(at) < unityStartWait && !ProjectRunning(p)
+}
+
 // OpenInUnity starts the project in the Unity version it is on.
 func OpenInUnity(p string) error {
 	if ProjectRunning(p) {
@@ -246,6 +265,9 @@ func OpenInUnity(p string) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("Unity 启动失败：%v", err)
 	}
+	startMu.Lock()
+	startedAt[core.PathKey(p)] = time.Now()
+	startMu.Unlock()
 	core.Logf("打开工程 %s（Unity %s）", p, ver)
 	return cmd.Process.Release()
 }

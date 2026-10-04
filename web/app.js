@@ -23,6 +23,7 @@ const ICON = {
   spark: '<svg viewBox="0 0 24 24"><path d="M11 3l1.9 5.1L18 10l-5.1 1.9L11 17l-1.9-5.1L4 10l5.1-1.9z"/><path d="M18.5 15l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z"/></svg>',
   play: '<svg viewBox="0 0 24 24"><path d="M7 5v14l11-7z"/></svg>',
   belt: '<svg viewBox="0 0 24 24"><rect x="3" y="14" width="18" height="5" rx="2.5"/><circle cx="6" cy="16.5" r="1"/><circle cx="12" cy="16.5" r="1"/><circle cx="18" cy="16.5" r="1"/><rect x="6" y="6" width="5" height="6" rx="1"/><rect x="13" y="6" width="5" height="6" rx="1"/></svg>',
+  camera: '<svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>',
 };
 
 // where the brand, the status bar and the settings lead
@@ -867,6 +868,9 @@ function renderXySide() {
     <p class="sidenote">卖家发送网盘分享后，在聊天中选中完整的分享文本（含链接和提取码），再点击页面上方的「收录网盘链接」。</p>`);
 }
 // ---------- 工程 ----------
+// a 摄影棚 request on its way, by project: "on" (installing, opening) or "off" (removing); the card and the
+// details read it, so a redraw in the meantime keeps the button waiting
+const STUDIO_BUSY = {};
 async function loadProjects() {
   let r;
   try { r = await api("/api/projects", {}); } catch (e) { return; }
@@ -889,7 +893,10 @@ function renderProjSide() {
     <div class="sidelinks"><button class="navitem" id="btnNewProj"><span>新建基础工程…</span></button><button class="navitem" id="btnAICfg"><span>配置 AI 服务…</span></button></div>
     <h3>封面</h3>
     <p class="sidenote">点击卡片上的「开启封面」，将在该工程的 Packages 中安装封面插件，每次打开工程或保存场景时自动截取模型正面图作为封面。</p>
-    <p class="sidenote">插件仅在 Unity 编辑器中运行，不修改场景，也不会随模型上传。关闭封面时将一并移除插件和截图。</p>`);
+    <p class="sidenote">插件仅在 Unity 编辑器中运行，不修改场景，也不会随模型上传。关闭封面时将一并移除插件和截图。</p>
+    <h3>摄影棚</h3>
+    <p class="sidenote">点击卡片上的「摄影棚」，将在该工程的 Packages 中安装摄影棚插件，并在 Unity 中进入 Play 模式：拖动骨骼摆姿势，调整手势、表情和视线，布光后拍照。照片保存在「图片」文件夹的 MioVRCA 中。</p>
+    <p class="sidenote">插件仅在 Unity 编辑器中运行，不修改场景，也不会随模型上传。如需移除，可在工程详情中点击「移除摄影棚」。</p>`);
 }
 function relDay(t) {
   if (!t) return "";
@@ -901,6 +908,7 @@ function projCardHTML(p) {
     : `<div class="pph">${ICON.cube}<span>${p.helper ? "打开工程或保存场景后，将在此显示模型正面截图" : "开启封面后，将自动截取模型正面图作为封面"}</span></div>`;
   const ver = p.unity ? `<span class="uver${p.editor ? "" : " missing"}" title="${p.editor ? "" : esc(`本机未检测到 Unity ${p.unity}`)}">Unity ${esc(p.unity)}</span>` : "";
   const opened = p.running ? `<span class="okline">已在 Unity 中打开</span>` : p.opened ? `<span>上次打开：${relDay(p.opened)}</span>` : "";
+  const sb = STUDIO_BUSY[p.path];
   return `<article class="pcard" data-proj="${esc(p.path)}">
     <div class="pcover${p.cover ? "" : " empty"}">${cover}${p.running ? `<span class="badge-run">已打开</span>` : ""}</div>
     <div class="pbody">
@@ -911,6 +919,7 @@ function projCardHTML(p) {
         <button class="btn small primary" data-pa="unity"${p.running ? ` disabled title="已在 Unity 中打开"` : ""}>${ICON.cube}<span>打开 Unity</span></button>
         <button class="btn small" data-pa="folder">${ICON.folder}<span>文件夹</span></button>
         <button class="btn small" data-pa="ai" title="前往流水线：为该工程的模型装配素材并生成菜单">${ICON.belt}<span>流水线</span></button>
+        <button class="btn small" data-pa="studio" title="在 Unity 中打开摄影棚：给模型摆姿势、布光并拍照"${sb ? " disabled" : ""}>${ICON.camera}<span>${sb === "on" ? "正在准备…" : "摄影棚"}</span></button>
         <button class="btn small ghost" data-pa="cover" title="${p.helper ? "移除封面插件和已生成的截图" : "在该工程的 Packages 中安装封面插件（包名 com.miovrc.projectcard）"}">${p.helper ? "关闭封面" : "开启封面"}</button>
       </div>
       ${p.assets ? `<button class="puse" data-pa="assets">使用了素材库中的 ${esc(p.assets)} 个素材</button>` : `<div class="puse none">未使用素材库中的素材</div>`}
@@ -952,6 +961,24 @@ async function projAction(what, path, btn) {
     toast(on ? (r.running ? "封面已开启，切换到 Unity 并等待编译完成后自动生成" : "封面已开启，下次打开该工程时自动生成") : "封面已关闭", 4500);
     loadProjects();
   }
+  if (what === "studio" || what === "studio-off") {
+    if (STUDIO_BUSY[p.path]) return;
+    const on = what === "studio";
+    if (on && !p.studio && !confirm(`为「${p.name}」打开摄影棚？\n\n将在该工程的 Packages 中安装摄影棚插件（com.miovrc.studio），然后在 Unity 中进入 Play 模式：拖动骨骼摆姿势、调整手势和表情、布光并拍照。\n插件仅在 Unity 编辑器中运行，不修改场景，也不会随模型上传。`)) return;
+    if (!on && !confirm(`移除「${p.name}」的摄影棚插件？\n\n保存的姿势和设置会一起删除，拍好的照片仍在「图片」文件夹的 MioVRCA 中。`)) return;
+    STUDIO_BUSY[p.path] = on ? "on" : "off"; projRedraw();
+    let r;
+    try { r = await api("/api/project/studio", { path: p.path, on }); } finally { delete STUDIO_BUSY[p.path]; projRedraw(); }
+    if (!r.ok) { toast(r.err || "操作失败", 6000); return; }
+    if (!on) toast("摄影棚插件已移除", 4500);
+    else if (r.note) toast(r.note, 6000);
+    loadProjects();
+  }
+}
+// the cards and the open project's details, after something only this page knows (a request on its way) changed
+function projRedraw() {
+  if (S.view === "proj") renderProjGrid();
+  ckDrawDrawer();
 }
 function renderWeb() {
   const mode = S.data.paneMode, host = $("#webhost");

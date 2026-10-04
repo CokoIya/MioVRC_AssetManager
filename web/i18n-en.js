@@ -11,7 +11,7 @@
 //   装配 fit (onto the avatar) · 菜单 menu · 开关 toggle · 互斥 one at a time · 部件 part · 配色 color
 //   装配方案 preset · 验收 review · 体检 check (pre-upload check) · 同步参数 synced parameters · 位 bits
 //   已购 purchased / purchases · 网盘 netdisk · 百度网盘 Baidu Netdisk · 分享 share · 提取码 access code
-//   封面 cover · 愿望单 wish list · 闲鱼 Xianyu · 识图 vision · 视觉模型 vision model · 服务商 provider
+//   封面 cover · 摄影棚 Photo studio · 愿望单 wish list · 闲鱼 Xianyu · 识图 vision · 视觉模型 vision model · 服务商 provider
 //   Names stay as they are: Booth, Gumroad, Jinxxy, Modular Avatar, lilToon, ALCOM, VCC, UnitySkills, VRChat SDK.
 //   Sentence case; no full stop on labels, buttons and one-line notices.
 I18N.add("en", {
@@ -300,6 +300,16 @@ I18N.add("en", {
     "封面已开启，切换到 Unity 并等待编译完成后自动生成": "Cover turned on. Switch to Unity; it is made once compiling finishes",
     "封面已开启，下次打开该工程时自动生成": "Cover turned on. It is made the next time the project opens",
     "封面已关闭": "Cover turned off",
+    "摄影棚": "Photo studio",
+    "点击卡片上的「摄影棚」，将在该工程的 Packages 中安装摄影棚插件，并在 Unity 中进入 Play 模式：拖动骨骼摆姿势，调整手势、表情和视线，布光后拍照": "“Photo studio” on a card installs the studio plugin into the project's Packages and enters Play mode in Unity: drag the bones to pose the avatar, set its hands, face and gaze, light it and take pictures",
+    "照片保存在「图片」文件夹的 MioVRCA 中": "Pictures are saved under MioVRCA in your Pictures folder",
+    "如需移除，可在工程详情中点击「移除摄影棚」": "To remove it, click “Remove photo studio” in the project's details",
+    "在 Unity 中打开摄影棚：给模型摆姿势、布光并拍照": "Open the photo studio in Unity: pose the avatar, light it and take pictures",
+    "将在该工程的 Packages 中安装摄影棚插件（com.miovrc.studio），然后在 Unity 中进入 Play 模式：拖动骨骼摆姿势、调整手势和表情、布光并拍照": "This installs the studio plugin into the project's Packages (com.miovrc.studio), then enters Play mode in Unity: drag the bones to pose the avatar, set its hands and face, light it and take pictures",
+    "保存的姿势和设置会一起删除，拍好的照片仍在「图片」文件夹的 MioVRCA 中": "Saved poses and settings are deleted with it. The pictures you took stay under MioVRCA in your Pictures folder",
+    "摄影棚插件已移除": "Photo studio plugin removed",
+    "移除摄影棚": "Remove photo studio",
+    "正在移除…": "Removing…",
     // --- an asset's details: netdisk ---
     "百度网盘分享": "Baidu Netdisk share",
     "说明": "Docs",
@@ -1516,6 +1526,12 @@ I18N.add("en", {
     "Unity 已打开，请切换到 Unity 窗口，待插件导入并编译完成后将自动连接": "Unity is open. Switch to its window; it connects once the plugin is imported and compiled",
     "正在打开 Unity": "Opening Unity",
     "首次打开需导入插件并编译，约一至两分钟后自动连接": "The first time, the plugin is imported and compiled; it connects in a minute or two",
+    "切换到 Unity 窗口即可进入摄影棚": "Switch to the Unity window to enter the photo studio",
+    "摄影棚插件已放进工程，Unity 将自动导入并进入摄影棚": "The studio plugin is in the project. Unity imports it and enters the photo studio by itself",
+    "摄影棚插件已放进工程。切换到 Unity 窗口，导入并编译完成后会自动进入摄影棚": "The studio plugin is in the project. Switch to the Unity window; the photo studio opens once the plugin is imported and compiled",
+    "正在打开 Unity，首次需导入插件并编译（约一至两分钟），之后自动进入摄影棚": "Opening Unity. The first time, the plugin is imported and compiled (a minute or two); then the photo studio opens by itself",
+    "正在打开 Unity，打开后自动进入摄影棚": "Opening Unity. The photo studio opens once it is up",
+    "摄影棚正在 Unity 中打开，请先退出 Play 模式再移除": "The photo studio is open in Unity. Leave Play mode before removing it",
     "该工程未安装 UnitySkills，请先点击「安装并打开 Unity」": "UnitySkills is not installed in this project. Click “Install and open Unity” first",
     "UnitySkills 服务未启动，请在 Unity 中打开 Window > UnitySkills 并点击 Start Server": "UnitySkills is not running. In Unity, open Window > UnitySkills and click Start Server",
     "无法连接 Unity 中的 UnitySkills（可能正在重新编译），请稍后重试": "Can't reach UnitySkills in Unity (it may be recompiling). Try again later",
@@ -2273,6 +2289,8 @@ I18N.add("en", {
     ["正在使用 Unity {v} 打开 {p}", "Opening {p|raw} with Unity {v|raw}"],
     ["为「{p}」开启封面？", "Turn on the cover for “{p|raw}”?"],
     ["关闭「{p}」的封面？将移除插件和已生成的截图。", "Turn off the cover for “{p|raw}”? The plugin and its pictures will be removed."],
+    ["为「{p}」打开摄影棚？", "Open the photo studio for “{p|raw}”?"],
+    ["移除「{p}」的摄影棚插件？", "Remove the photo studio plugin from “{p|raw}”?"],
     // --- an asset's details: netdisk ---
     ["百度网盘，{#n} 个文件，{s}", "Baidu Netdisk, {n} file{n|s}, {s|raw}"],
     ["选择 {x}", "Select {x|raw}"],
@@ -2629,6 +2647,10 @@ I18N.add("en", {
     ["工程的 Packages 中已存在 {p}，但不是由本软件安装，未作改动", "The project's Packages already has {p|raw}, but this app did not install it, so nothing was changed"],
     ["封面插件移除失败：{e}（如 Unity 正在运行，请关闭后重试）", "Couldn't remove the cover plugin: {e} (if Unity is running, close it and try again)"],
     ["封面插件安装失败：{e}", "Couldn't install the cover plugin: {e}"],
+    ["摄影棚插件安装失败：{e}（文件可能被 Unity 占用，请关闭 Unity 后重试）", "Couldn't install the studio plugin: {e} (Unity may be holding the files; close Unity and try again)"],
+    ["摄影棚插件已安装，但无法打开 Unity：{e}", "The studio plugin is installed, but Unity couldn't be opened: {e}"],
+    ["无法写入摄影棚请求：{e}", "Couldn't write the request for the photo studio: {e}"],
+    ["摄影棚插件移除失败：{e}（如 Unity 正在运行，请关闭后重试）", "Couldn't remove the studio plugin: {e} (if Unity is running, close it and try again)"],
     ["无法写入工程的 UserSettings 文件夹：{e}", "Can't write to the project's UserSettings folder: {e}"],
     ["本机未安装 Unity {v}，请从 Unity Hub 或 VCC 打开该工程", "Unity {v|raw} is not installed on this computer. Open the project from Unity Hub or VCC"],
     ["Unity 插件安装失败：{e}（文件可能被 Unity 占用，请关闭 Unity 后重试）", "Couldn't install the Unity plugin: {e} (Unity may be holding the files; close Unity and try again)"],

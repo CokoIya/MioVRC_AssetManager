@@ -13,7 +13,7 @@ Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth �
 - 衣服风格标签：按 Booth 标签自动分类（JK、Sexy、H、可爱、女仆、成熟……），可自定义
 - PSD 源文件：列出 PSD / CLIP / SAI 等文件和尺寸
 - 工程使用：分析 Unity 工程，标出素材在哪些工程里用到
-- 工程页：每个 Unity 工程一张卡片（Unity 版本、上次打开、用到的素材），用对应版本的 Unity 一键打开；可选的封面插件（`com.miovrc.projectcard`，只在编辑器里运行）在打开工程、保存场景时给模型拍正面照当封面。工程里的插件管理交给 VCC / ALCOM
+- 工程页：每个 Unity 工程一张卡片（Unity 版本、上次打开、用到的素材），用对应版本的 Unity 一键打开；可选的封面插件（`com.miovrc.projectcard`，只在编辑器里运行）在打开工程、保存场景时给模型拍正面照当封面；卡片上的「摄影棚」装上摄影棚插件（`com.miovrc.studio`）并让 Unity 进入 Play 模式：拖骨骼摆姿势、调手势表情和视线、布光、取景拍照，照片存到「图片」文件夹的 `MioVRCA/<工程名>`，不改场景也不随模型上传。工程里的插件管理交给 VCC / ALCOM
 - 一键导入 Unity 工程：自动解压素材里的压缩包（PSD 包、分卷、嵌套、带密码），解压完压缩包移到回收站，再把 unitypackage 直接写进工程（按 GUID 就地更新已有资源，重名不覆盖；不同素体的包按工程的素体自动选）。rar、7z、分卷用电脑上默认的解压软件（7-Zip、Bandizip、WinRAR、好压、NanaZip、PeaZip）
 - 流水线页：工程 → 素材 → 装配 → 菜单 → 验收。工程 Assets 里导入过的素材自动列出（带素材库里的名字和类别），勾上要装的，按类别装到模型上（衣服互斥切换 + 部件开关 + 换色；头发单独互斥，素体自带的头发可切回；配饰开关默认显示；道具开关默认隐藏；素体在场景没有模型时放进新场景），再按玩家定的层级生成 Modular Avatar 菜单和图标。给工程装上流水线插件（`com.miovrc.pipeline`）和 [UnitySkills](https://github.com/Besty0728/Unity-Skills) 后，还能让 AI 接着做别的改模操作。AI 服务由玩家自己选：DeepSeek、通义千问、智谱 GLM、Kimi、ChatGPT 兼容（OpenAI 接口）、Claude 兼容（Anthropic 接口）；也可以不用 AI，按网格名字分组。AI 可以给头像拍照检查结果（穿模、错位、材质丢失），截图同时显示在验收记录里：模型能看图就直接把图发给它；看不了图的（DeepSeek）可以另设一个「看图模型」把画面描述给它；第一次用时自动测一次主模型能不能看图
 - 一键创建基础工程：Unity 2022.3.22f1 的 VRChat 头像工程（工程设置取自 VRChat 官方模板），从各插件的官方 VPM 仓库解析并下载最新稳定版（VRChat SDK、Modular Avatar、lilToon、Avatar Optimizer、Gesture Manager、VRCFury，可勾选；复用 ALCOM / VCC 的缓存），可顺带导入素材库里的素体、装 Unity 插件并打开 Unity；新工程登记进 ALCOM / VCC 的工程列表。检测本机的 ALCOM、VCC、Unity Hub 和所需 Unity 版本
@@ -69,6 +69,8 @@ Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth �
 - `library.log`：运行日志
 
 流水线放进 Unity 工程的东西（点「移除」会删掉）：`Packages/com.miovrc.pipeline`、`Packages/com.besty.unity-skills`（工程自己已经有 UnitySkills 时不放也不删）、`UserSettings/MioVRCA/bridge`（软件和 Unity 之间传话用的文件）、`UserSettings/MioVRCA/shots`（拍照时的临时图片，软件读走就删）。生成的菜单图标在工程的 `Assets/MioVRCA/<头像名>/Icons`。
+
+摄影棚放进 Unity 工程的东西（工程详情里点「移除摄影棚」会删掉）：`Packages/com.miovrc.studio`、`UserSettings/MioVRCA/studio`（摄影棚的设置和保存的姿势，还有软件请 Unity 打开摄影棚时留下的 `open.json`，Unity 读到就删）。照片不在工程里，在「图片」文件夹的 `MioVRCA/<工程名>`，移除时不删。
 
 ## 从源码构建
 
@@ -134,7 +136,7 @@ third_party/      依赖库的副本
 | `internal/netdisk/` | 百度网盘分享读取、合集拆分、分享内容分析、和上次相比的变化 |
 | `internal/booth/` | Booth 商品信息、搜索与匹配 |
 | `internal/library/` | 素材库本身：扫描素材（`scan.go`）、分析工程使用情况（`usage.go`）、封面（`thumbs.go`）、同款合并和衣服风格标签（`groups.go`）、PSD 统计、已购和网盘分享对上素材（`purchases.go`、`automatch.go`）、界面显示用的卡片数据（`views.go`）、Booth 页（`boothshop.go`：标签转成 Booth 分类和搜索词，标出已购、已有）、刷新流程（`refresh.go`：扫描 → 使用情况 → Booth）、定期检查变化（`sync.go`）、监视素材文件夹（`watch.go`） |
-| `internal/unity/` | Unity 工程：工程页（`projects.go`：Unity 版本、打开状态、找本机的 Unity 编辑器、工程封面插件）、一键导入（`unityimport.go`：读 unitypackage、按 GUID 写进工程、选素体版本）、自带的 VPM 解析器和一键创建基础工程（`vpm.go`、`projectnew.go`）、检测 ALCOM / VCC / Unity Hub（`toolchain_*.go`）、往工程里装 / 移除插件并和 Unity 传话（`unitybridge.go`） |
+| `internal/unity/` | Unity 工程：工程页（`projects.go`：Unity 版本、打开状态、找本机的 Unity 编辑器、工程封面插件）、摄影棚插件的安装、更新、移除和打开请求（`studio.go`）、一键导入（`unityimport.go`：读 unitypackage、按 GUID 写进工程、选素体版本）、自带的 VPM 解析器和一键创建基础工程（`vpm.go`、`projectnew.go`）、检测 ALCOM / VCC / Unity Hub（`toolchain_*.go`）、往工程里装 / 移除插件并和 Unity 传话（`unitybridge.go`） |
 | `internal/purchases/` | Booth 和 Gumroad 已购：在内置页面登录、同步已购（`purchases.go`、`boothpane.go`、`booth_scraper.js`）、下载（`boothdl.go`）；Gumroad 读的是它的 Inertia 页面数据，已购和 Booth 的放在一起，编号带 `gr_` 前缀（`gumroad.go`） |
 | `internal/pandl/` | 百度网盘登录（从内置页面取 Cookie）、转存到自己网盘（全部或勾选的部分）、断点续传下载 |
 | `internal/ai/` | 流水线：AI 服务（`ai.go`：DeepSeek / 通义千问 / 智谱 GLM / Kimi / OpenAI 兼容 / Anthropic 兼容的对话和工具调用，设置和 Key 的保存）、给 AI 看图（`aivision.go`）、对话循环和给 AI 的工具（`aiagent.go`）、不用 AI 时的流程（`pipeline.go`）、工程里的素材列表（`projassets.go`） |
@@ -142,6 +144,7 @@ third_party/      依赖库的副本
 | `internal/testkit/`、`internal/unity/unitytest/` | 几个包的测试共用的小工具、测试用的假 Unity |
 | `unityhelper/com.miovrc.pipeline` | Unity 这一侧（C#，只在编辑器里运行）：体检头像、把素体放进新场景、穿戴（Modular Avatar Setup Outfit）、生成菜单（MA Menu Item / Object Toggle / Material Setter；互斥组按参数分，独立开关用反转的 Object Toggle 做默认显示）、拍图标、给头像拍照。改动都走 Undo，不保存场景 |
 | `unityhelper/com.miovrc.projectcard` | 工程封面插件 |
+| `unityhelper/com.miovrc.studio` | 摄影棚插件（C#，只在编辑器里编译）：编辑器这一侧（`Editor/`）读软件留下的打开请求并进入 Play 模式；Play 模式里的摄影棚（`Runtime/`）用 IMGUI 画界面，拖骨骼摆姿势（IK）、手势、表情、视线、相机、灯光、背景和拍照。建的东西都不存进场景，退出时还原 |
 | `web/` | 界面（HTML / CSS / JS，编译时嵌进 exe） |
 | `packaging/` | 构建脚本（`build.sh`、`build.bat`）、安装包脚本和使用说明 |
 | `test/` | 本地测试用的假 Booth / Gumroad / 网盘 / Google Drive / Dropbox / 翻译服务、假 AI 服务（`mockllm.py`）、假 Unity（`fakeunity.py`） |

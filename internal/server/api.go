@@ -952,6 +952,37 @@ func NewMux(st *core.Store) *http.ServeMux {
 		}
 		core.WriteJSON(w, map[string]any{"ok": true, "running": unity.ProjectRunning(p)})
 	})
+	// the 摄影棚: put the studio package in (or bring it up to date) and ask Unity for the studio, in the page's
+	// language; "on": false takes the package out again
+	post("/api/project/studio", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		p, ok := unity.KnownProject(st, str(b, "path"))
+		if !ok {
+			core.WriteJSON(w, map[string]any{"ok": false, "err": "该工程不在工程列表中"})
+			return
+		}
+		on := true
+		if raw, has := b["on"]; has {
+			_ = json.Unmarshal(raw, &on)
+		}
+		if !on {
+			if err := unity.RemoveStudio(p); err != nil {
+				core.WriteJSON(w, map[string]any{"ok": false, "err": err.Error()})
+				return
+			}
+			core.WriteJSON(w, map[string]any{"ok": true})
+			return
+		}
+		lang := pageLang(st)
+		if lang == "" || lang == "?" {
+			lang = "zh"
+		}
+		note, err := unity.OpenStudio(p, lang)
+		if err != nil {
+			core.WriteJSON(w, map[string]any{"ok": false, "err": err.Error()})
+			return
+		}
+		core.WriteJSON(w, map[string]any{"ok": true, "note": note, "running": unity.ProjectRunning(p)})
+	})
 	// a project picked for the import that the library does not know yet
 	post("/api/import/project", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		p := filepath.Clean(strings.Trim(strings.TrimSpace(str(b, "path")), `"`))

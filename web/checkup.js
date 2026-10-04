@@ -412,7 +412,7 @@ function ckDrawDrawer(fresh) {
   const dr = $("#drawer"), path = fresh ? dr.dataset.proj : ckDrawerPath(); if (!path) return;
   const p = (S.projs || []).find(x => x.path === path);
   if (!p) { closeDrawer(); return; }
-  const st = CK.recs[path], rec = st && st.record, busy = !!CK.busy[path], err = CK.err[path];
+  const st = CK.recs[path], rec = st && st.record, busy = !!CK.busy[path], err = CK.err[path], sb = STUDIO_BUSY[path];
   const cover = p.cover ? `<img src="/thumb?w=640&p=${encodeURIComponent(p.cover)}&t=${encodeURIComponent(p.coverAt)}" alt="">` : `<div class="pph">${ICON.cube}</div>`;
   const state = p.running ? `<span class="okline">已在 Unity 中打开</span>` : p.opened ? `<span>上次打开：${esc(relDay(p.opened))}</span>` : "";
   let sec = `<div class="sec ckd"><h4 class="withact"><span>模型参数</span>${rec ? ckMeta(rec) : ""}
@@ -429,7 +429,7 @@ function ckDrawDrawer(fresh) {
         <h2 data-i18n="off">${esc(p.name)}</h2>
         <div class="sub">${esc(p.path)}</div>
         <div class="sub pmeta">${p.unity ? `<span class="uver${p.editor ? "" : " missing"}">Unity ${esc(p.unity)}</span>` : ""}${state}</div>
-        <div class="rowbtn"><button class="btn primary" data-pa="unity"${p.running ? " disabled" : ""}>打开 Unity</button><button class="btn" data-pa="folder">文件夹</button><button class="btn" data-pa="ai">流水线</button></div>
+        <div class="rowbtn"><button class="btn primary" data-pa="unity"${p.running ? " disabled" : ""}>打开 Unity</button><button class="btn" data-pa="folder">文件夹</button><button class="btn" data-pa="ai">流水线</button><button class="btn" data-pa="studio"${sb ? " disabled" : ""}>${sb === "on" ? "正在准备…" : "摄影棚"}</button>${p.studio ? `<button class="btn ghost" data-pa="studio-off"${sb ? " disabled" : ""}>${sb === "off" ? "正在移除…" : "移除摄影棚"}</button>` : ""}</div>
       </div></div>
     <div class="dbody">${sec}
       <div class="sec"><h4>素材</h4>${p.assets ? `<button class="puse" data-pa="assets">使用了素材库中的 ${esc(p.assets)} 个素材</button>` : `<div class="muted small">未使用素材库中的素材</div>`}</div>

@@ -243,8 +243,11 @@ func pkgVersion(dir string) (name, version, author string) {
 	return m.Name, m.Version, author
 }
 
-func EmbeddedPipelineVersion() string {
-	b, err := vrclib.UnityHelper.ReadFile("unityhelper/" + PipePkg + "/package.json")
+func EmbeddedPipelineVersion() string { return embeddedVersion(PipePkg) }
+
+// embeddedVersion: the version in the package.json of one of the packages this program carries.
+func embeddedVersion(pkg string) string {
+	b, err := vrclib.UnityHelper.ReadFile("unityhelper/" + pkg + "/package.json")
 	if err != nil {
 		return ""
 	}
