@@ -70,7 +70,7 @@ Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth �
 
 流水线放进 Unity 工程的东西（点「移除」会删掉）：`Packages/com.miovrc.pipeline`、`Packages/com.besty.unity-skills`（工程自己已经有 UnitySkills 时不放也不删）、`UserSettings/MioVRCA/bridge`（软件和 Unity 之间传话用的文件）、`UserSettings/MioVRCA/shots`（拍照时的临时图片，软件读走就删）。生成的菜单图标在工程的 `Assets/MioVRCA/<头像名>/Icons`。
 
-摄影棚放进 Unity 工程的东西（工程详情里点「移除摄影棚」会删掉）：`Packages/com.miovrc.studio`、`UserSettings/MioVRCA/studio`（摄影棚的设置和保存的姿势，还有软件请 Unity 打开摄影棚时留下的 `open.json`，Unity 读到就删）。照片不在工程里，在「图片」文件夹的 `MioVRCA/<工程名>`，移除时不删。
+摄影棚放进 Unity 工程的东西（工程详情里点「移除摄影棚」会删掉；摄影棚开着时不能移除，要先退出 Play 模式）：`Packages/com.miovrc.studio`、`UserSettings/MioVRCA/studio`（摄影棚的设置、保存的姿势和表情；摄影棚开着时每 5 秒刷新一次的 `running`，软件看它知道摄影棚开着；软件请 Unity 打开摄影棚时留下的 `open.json`，Unity 读到就删）。照片不在工程里，在「图片」文件夹的 `MioVRCA/<工程名>`，移除时不删。
 
 ## 从源码构建
 
@@ -144,7 +144,7 @@ third_party/      依赖库的副本
 | `internal/testkit/`、`internal/unity/unitytest/` | 几个包的测试共用的小工具、测试用的假 Unity |
 | `unityhelper/com.miovrc.pipeline` | Unity 这一侧（C#，只在编辑器里运行）：体检头像、把素体放进新场景、穿戴（Modular Avatar Setup Outfit）、生成菜单（MA Menu Item / Object Toggle / Material Setter；互斥组按参数分，独立开关用反转的 Object Toggle 做默认显示）、拍图标、给头像拍照。改动都走 Undo，不保存场景 |
 | `unityhelper/com.miovrc.projectcard` | 工程封面插件 |
-| `unityhelper/com.miovrc.studio` | 摄影棚插件（C#，只在编辑器里编译）：编辑器这一侧（`Editor/`）读软件留下的打开请求并进入 Play 模式；Play 模式里的摄影棚（`Runtime/`）用 IMGUI 画界面，拖骨骼摆姿势（IK）、手势、表情、视线、相机、灯光、背景和拍照。建的东西都不存进场景，退出时还原 |
+| `unityhelper/com.miovrc.studio` | 摄影棚插件（C#，只在编辑器里编译）：编辑器这一侧（`Editor/`）读软件留下的打开请求并进入 Play 模式，摄影棚开着时让 Game 视图暂时不用 Unity 自带的快捷键（Ctrl+Z 撤销的是姿势，不是 Unity 里的改动），关掉摄影棚就恢复；Play 模式里的摄影棚（`Runtime/`）用 IMGUI 画界面，拖骨骼摆姿势（IK）、手势、表情、视线、相机、灯光、背景和拍照。建的东西都不存进场景，退出时还原 |
 | `web/` | 界面（HTML / CSS / JS，编译时嵌进 exe） |
 | `packaging/` | 构建脚本（`build.sh`、`build.bat`）、安装包脚本和使用说明 |
 | `test/` | 本地测试用的假 Booth / Gumroad / 网盘 / Google Drive / Dropbox / 翻译服务、假 AI 服务（`mockllm.py`）、假 Unity（`fakeunity.py`） |

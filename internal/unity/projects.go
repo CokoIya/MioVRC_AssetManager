@@ -239,12 +239,13 @@ var (
 
 const unityStartWait = 90 * time.Second
 
-// unityStarting: the program started Unity for the project moments ago and it has not opened the project yet.
+// unityStarting: the program started Unity for the project moments ago and it has not opened the project yet. One
+// that has opened it since (Unity wrote its files) and is gone again was closed or crashed: that start is over.
 func unityStarting(p string) bool {
 	startMu.Lock()
 	at, ok := startedAt[core.PathKey(p)]
 	startMu.Unlock()
-	return ok && time.Since(at) < unityStartWait && !ProjectRunning(p)
+	return ok && time.Since(at) < unityStartWait && projectOpened(p) <= at.Unix() && !ProjectRunning(p)
 }
 
 // OpenInUnity starts the project in the Unity version it is on.

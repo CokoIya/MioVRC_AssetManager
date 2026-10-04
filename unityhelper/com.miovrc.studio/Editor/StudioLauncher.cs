@@ -27,6 +27,7 @@ namespace MioVRCA.Studio
         static double nextPoll, nextBeat;
         static bool deleteWarned;
         static PropertyInfo shortcutSwitch;
+        static string shortcutPref; // the EditorPrefs entry Unity keeps that switch in ("GameView.IgnoreWhenPlayModeFocused")
         static bool shortcutSwitchLooked, shortcutsWarned;
 
         // open.json
@@ -174,14 +175,14 @@ namespace MioVRCA.Studio
                 }
                 if (on)
                 {
-                    if (!EditorPrefs.HasKey(key)) EditorPrefs.SetBool(key, (bool)p.GetValue(null, null));
-                    p.SetValue(null, true, null);
+                    if (!EditorPrefs.HasKey(key)) EditorPrefs.SetBool(key, ShortcutsIgnored(p));
+                    SetShortcutsIgnored(p, true);
                 }
                 else
                 {
                     bool before = EditorPrefs.GetBool(key, false);
                     EditorPrefs.DeleteKey(key);
-                    p.SetValue(null, before, null);
+                    SetShortcutsIgnored(p, before);
                 }
             }
             catch (Exception e)
@@ -200,11 +201,34 @@ namespace MioVRCA.Studio
                 PropertyInfo p = t != null
                     ? t.GetProperty("ignoreWhenPlayModeFocused", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
                     : null;
-                if (p != null && p.PropertyType == typeof(bool) && p.CanRead && p.CanWrite) shortcutSwitch = p;
+                if (p != null && p.PropertyType == typeof(bool) && p.CanRead && p.CanWrite)
+                {
+                    shortcutSwitch = p;
+                    FieldInfo f = t.GetField("kIgnoreWhenPlayModeFocused", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                    string k = f != null && f.FieldType == typeof(string) ? f.GetValue(null) as string : null;
+                    if (!string.IsNullOrEmpty(k)) shortcutPref = k;
+                }
             }
             catch (Exception) { }
             if (shortcutSwitch == null) WarnShortcuts("ShortcutIntegration.ignoreWhenPlayModeFocused");
             return shortcutSwitch;
+        }
+
+        // Unity reads the switch from its EditorPrefs entry only when its shortcut system starts, from a delayCall
+        // after each domain reload. Before that (the static constructor's way back after a crash, a studio opened right
+        // on entering Play mode) the property reads false whatever the user chose, and its setter, which writes the
+        // entry only when the value differs from that false, may write nothing: the entry, still true from the crashed
+        // session, would then switch Unity's shortcuts off again for good. So the entry is read and written as well.
+        static bool ShortcutsIgnored(PropertyInfo p)
+        {
+            bool live = (bool)p.GetValue(null, null);
+            return shortcutPref != null ? EditorPrefs.GetBool(shortcutPref, live) : live;
+        }
+
+        static void SetShortcutsIgnored(PropertyInfo p, bool value)
+        {
+            if (shortcutPref != null) EditorPrefs.SetBool(shortcutPref, value);
+            p.SetValue(null, value, null);
         }
 
         static void WarnShortcuts(string why)
