@@ -1,0 +1,8 @@
+{
+  "name": "com.miovrc.studio",
+  "displayName": "MioVRCA 摄影棚",
+  "version": "0.1.0",
+  "unity": "2022.3",
+  "description": "MioVRCA 的摄影棚：在 Unity 的 Play 模式中给模型摆姿势（拖动骨骼、手势、表情、视线）、布光、取景并拍照，照片保存到「图片」文件夹的 MioVRCA 下。摄影棚的相机、灯光和界面只在 Play 模式中临时创建，不修改场景，也不会随模型上传；设置和保存的姿势在 UserSettings/MioVRCA/studio。在软件的工程详情中点击「移除摄影棚」即可移除。",
+  "author": { "name": "MioVRC", "url": "https://miovrc.com/vrca/" }
+}

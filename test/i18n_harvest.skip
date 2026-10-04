@@ -117,6 +117,25 @@ text internal/server/feedback.go \n\n联系方式
 text internal/server/feedback.go 类型
 text internal/server/feedback.go 匿名玩家
 file unityhelper/com.miovrc.projectcard/Editor/ProjectCover.cs # the cover plugin's own log
+file unityhelper/com.miovrc.studio/Editor/StudioLauncher.cs # the studio's own in-Unity texts, translated by its Lang.cs
+file unityhelper/com.miovrc.studio/Runtime/AvatarRig.cs
+file unityhelper/com.miovrc.studio/Runtime/Backdrop.cs
+file unityhelper/com.miovrc.studio/Runtime/Draw2D.cs
+file unityhelper/com.miovrc.studio/Runtime/FaceControl.cs
+file unityhelper/com.miovrc.studio/Runtime/HandPresets.cs
+file unityhelper/com.miovrc.studio/Runtime/Handles.cs
+file unityhelper/com.miovrc.studio/Runtime/Ik.cs
+file unityhelper/com.miovrc.studio/Runtime/Lang.cs
+file unityhelper/com.miovrc.studio/Runtime/LookAt.cs
+file unityhelper/com.miovrc.studio/Runtime/PhotoCapture.cs
+file unityhelper/com.miovrc.studio/Runtime/Pose.cs
+file unityhelper/com.miovrc.studio/Runtime/Studio.cs
+file unityhelper/com.miovrc.studio/Runtime/StudioCamera.cs
+file unityhelper/com.miovrc.studio/Runtime/StudioHost.cs
+file unityhelper/com.miovrc.studio/Runtime/StudioLights.cs
+file unityhelper/com.miovrc.studio/Runtime/StudioPrefs.cs
+file unityhelper/com.miovrc.studio/Runtime/StudioUi.cs
+file unityhelper/com.miovrc.studio/Runtime/UiKit.cs
 
 # ---- the page's own: not texts ----
 text web/app.js {}月{}日 {}:{} # fmtTime: i18n.js reads times itself
