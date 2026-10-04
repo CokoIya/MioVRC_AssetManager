@@ -1,7 +1,7 @@
 {
   "name": "com.miovrc.pipeline",
   "displayName": "MioVRCA 改模流水线",
-  "version": "1.2.1",
+  "version": "1.4.0",
   "unity": "2019.4",
   "description": "MioVRCA 流水线的 Unity 端组件：检查模型、将素体放入新场景、将衣服 / 头发 / 配饰 / 道具装配到模型上（Modular Avatar）、按约定生成菜单开关和图标、截图供 AI 和玩家检查。仅在编辑器中运行，所有改动均可按 Ctrl+Z 撤销，不会自动保存场景。通过工程的 UserSettings/MioVRCA/bridge 文件夹与软件通信，不开启网络端口。在软件的「流水线」页点击「移除」即可移除。",
   "author": { "name": "MioVRC", "url": "https://miovrc.com/vrca/" }

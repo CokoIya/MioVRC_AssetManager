@@ -20,7 +20,7 @@ import (
 
 func TestBridgeCall(t *testing.T) {
 	proj := t.TempDir()
-	if _, err := unity.BridgeCall(context.Background(), proj, "ping", nil, time.Second); err == nil || !strings.Contains(err.Error(), "AI 插件") {
+	if _, err := unity.BridgeCall(context.Background(), proj, "ping", nil, time.Second); err == nil || !strings.Contains(err.Error(), "Unity 插件") {
 		t.Errorf("no package: %v", err)
 	}
 	n := 0

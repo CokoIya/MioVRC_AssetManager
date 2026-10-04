@@ -12,28 +12,36 @@ import (
 var (
 	ModKernel32DL           = syscall.NewLazyDLL("kernel32.dll")
 	procMultiByteToWideChar = ModKernel32DL.NewProc("MultiByteToWideChar")
+	procGetACP              = ModKernel32DL.NewProc("GetACP")
 	modCrypt32              = syscall.NewLazyDLL("crypt32.dll")
 	procCryptProtectData    = modCrypt32.NewProc("CryptProtectData")
 	procCryptUnprotectData  = modCrypt32.NewProc("CryptUnprotectData")
 	procLocalFree           = ModKernel32DL.NewProc("LocalFree")
 )
 
-// DecodeCP932 reads a Japanese (Shift-JIS) file name, as found in zips made on Japanese Windows.
-func DecodeCP932(b []byte) (string, bool) {
+// DecodeCodePage reads text stored in a Windows code page (932: Japanese Shift-JIS, 936: Chinese GBK), as
+// the file names in zips made on such a Windows are. False when the bytes are not valid in that code page.
+func DecodeCodePage(cp uint32, b []byte) (string, bool) {
 	if len(b) == 0 {
 		return "", true
 	}
-	const cp932, errInvalid = 932, 0x8 // MB_ERR_INVALID_CHARS
-	n, _, _ := procMultiByteToWideChar.Call(cp932, errInvalid, uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)), 0, 0)
+	const errInvalid = 0x8 // MB_ERR_INVALID_CHARS
+	n, _, _ := procMultiByteToWideChar.Call(uintptr(cp), errInvalid, uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)), 0, 0)
 	if n == 0 {
 		return "", false
 	}
 	buf := make([]uint16, n)
-	n, _, _ = procMultiByteToWideChar.Call(cp932, errInvalid, uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)), uintptr(unsafe.Pointer(&buf[0])), n)
+	n, _, _ = procMultiByteToWideChar.Call(uintptr(cp), errInvalid, uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)), uintptr(unsafe.Pointer(&buf[0])), n)
 	if n == 0 {
 		return "", false
 	}
 	return syscall.UTF16ToString(buf[:n]), true
+}
+
+// ANSICodePage: the code page this Windows uses for text that does not say its own (936 on a Chinese system).
+func ANSICodePage() uint32 {
+	cp, _, _ := procGetACP.Call()
+	return uint32(cp)
 }
 
 type dataBlob struct {

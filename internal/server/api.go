@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"vrclib/internal/ai"
 	"vrclib/internal/archive"
 	"vrclib/internal/booth"
+	"vrclib/internal/cloudshare"
 	"vrclib/internal/core"
 	"vrclib/internal/library"
 	"vrclib/internal/naming"
@@ -105,9 +107,46 @@ type stateResp struct {
 
 func tasksSnapshot() []core.Task {
 	return []core.Task{core.TaskScan.Snapshot(), core.TaskUsage.Snapshot(), booth.TaskMatch.Snapshot(), core.TaskBooth.Snapshot(), translate.TaskTrans.Snapshot(),
-		purchases.TaskPurchase.Snapshot(), purchases.TaskGumroad.Snapshot(), netdisk.TaskPan.Snapshot(), update.TaskUpdate.Snapshot(), purchases.TaskDownload.Snapshot(), pandl.TaskPanDL.Snapshot(), unity.TaskImport.Snapshot(), unity.TaskNP.Snapshot()}
+		purchases.TaskPurchase.Snapshot(), purchases.TaskGumroad.Snapshot(), netdisk.TaskPan.Snapshot(), update.TaskUpdate.Snapshot(), purchases.TaskDownload.Snapshot(), pandl.TaskPanDL.Snapshot(), unity.TaskImport.Snapshot(), unity.TaskNP.Snapshot(),
+		library.TaskPkgCover.Snapshot()}
 }
 
+// LocalOnly lets a request through only when it was sent to this server under its own address
+// (127.0.0.1 or localhost, with the port being listened on). A page of another site whose name has been
+// pointed at 127.0.0.1 (DNS rebinding) arrives with that site's Host, and gets nothing: not the page with
+// the token, not a picture, not a route added later.
+func LocalOnly(listen net.Addr, h http.Handler) http.Handler {
+	_, port, _ := net.SplitHostPort(listen.String())
+	own := map[string]bool{"127.0.0.1:" + port: true, "localhost:" + port: true}
+	if a, ok := listen.(*net.TCPAddr); ok && a.IP.Equal(net.IPv6loopback) {
+		own["[::1]:"+port] = true
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !own[strings.ToLower(r.Host)] {
+			http.Error(w, "forbidden", 403)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+// pageLang: the language the page starts in. "?" on a fresh install with nothing chosen: the page goes by
+// the system's language until the first-run screen is done (web/i18n.js).
+func pageLang(st *core.Store) string {
+	st.Mu.RLock()
+	defer st.Mu.RUnlock()
+	// only the values the page knows: this goes into a script of the page as it is, and the setting may have come
+	// from a library.json somebody else made
+	switch l := st.Settings.Lang; {
+	case l == "en" || l == "ja":
+		return l
+	case l == "" && !st.Settings.SetupDone:
+		return "?"
+	}
+	return ""
+}
+
+// NewMux: every route of the local server. What is served to a browser goes through LocalOnly.
 func NewMux(st *core.Store) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -123,7 +162,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 		switch {
 		case strings.HasSuffix(name, ".html"):
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			b = []byte(strings.ReplaceAll(string(b), "__TOKEN__", apiToken))
+			b = []byte(strings.NewReplacer("__TOKEN__", apiToken, "__LANG__", pageLang(st)).Replace(string(b)))
 		case strings.HasSuffix(name, ".js"):
 			w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		case strings.HasSuffix(name, ".css"):
@@ -137,31 +176,21 @@ func NewMux(st *core.Store) *http.ServeMux {
 	mux.HandleFunc("/api/ping", func(w http.ResponseWriter, r *http.Request) {
 		LastPing.Store(time.Now().Unix())
 		EverPing.Store(true)
-		core.WriteJSON(w, map[string]any{"app": "vrclib", "rev": core.CurRev()})
+		res := map[string]any{"app": "vrclib", "rev": core.CurRev()}
+		if core.Quitting.Load() { // a copy started now waits for this one to be gone
+			res["quitting"] = true
+		}
+		core.WriteJSON(w, res)
 	})
 	mux.HandleFunc("/api/state", func(w http.ResponseWriter, r *http.Request) {
-		st.Mu.RLock()
-		resp := stateResp{Rev: core.CurRev(), Version: core.AppVersion, Settings: st.Settings, Projects: st.Projects,
-			Warnings: st.Warnings, LastScan: st.LastScan, LastUsage: st.LastUsage, Categories: library.Categories,
-			Overrides: st.Overrides, DataDir: core.DataDir, SetupNeeded: !st.Settings.SetupDone,
-			PurchaseSync: st.PurchaseSync, PurchaseBusy: core.PurchaseBusy.Load(),
-			CanShortcut: runtime.GOOS == "windows"}
-		resp.Gumroad = purchases.CurrentGumroadAccount(st)
-		resp.PurchaseCount = len(st.Purchases) - resp.Gumroad.Count
-		resp.Assets = library.AllViews(st)
-		resp.StyleNames = library.StyleNames(st.Settings.Styles)
-		resp.Update = st.Update
-		resp.UpdateNewer = st.Update != nil && update.VersionNewer(st.Update.Version, core.AppVersion)
+		// what is not in the store first: some of it asks Windows, and the store is not held meanwhile
+		resp := stateResp{Rev: core.CurRev(), Version: core.AppVersion, Categories: library.Categories, DataDir: core.DataDir,
+			PurchaseBusy: core.PurchaseBusy.Load(), CanShortcut: runtime.GOOS == "windows"}
 		resp.UpdatedFrom, resp.Releases, resp.AppName = core.UpdatedFrom, update.ReleasesPage(), core.AppName
 		resp.Changelog = update.Changelog()
-		resp.DLDir = purchases.DownloadDir(st)
 		for _, c := range library.ShopCats {
 			resp.ShopCats = append(resp.ShopCats, c.Label)
 		}
-		if st.Settings.SetupDone {
-			resp.WhatsNew = update.WhatsNew(st)
-		}
-		st.Mu.RUnlock()
 		resp.DefaultBrowser = webpane.BrowserLabel(core.DefaultBrowserExe())
 		resp.Downloads, resp.DLNeedLogin, resp.BoothLogin = purchases.DLSnapshot(), purchases.DLNeedLogin(), len(purchases.LoadBoothSession()) > 0
 		resp.PaneMode, resp.BoothWeb, resp.BoothAcc, resp.XYBase = webpane.PaneMode(), core.BoothWebBase(), core.BoothAccountsBase(), webpane.XianyuBase()
@@ -175,7 +204,34 @@ func NewMux(st *core.Store) *http.ServeMux {
 		}
 		resp.Tasks = tasksSnapshot()
 		resp.Busy = library.PipelineBusy()
-		core.WriteJSON(w, resp)
+		// the store's part, written out while it is held: the answer points into its maps and slices (the
+		// overrides, each card's locations and usage …), which a scan or an edit changes the moment it is let go
+		b, err := func() ([]byte, error) {
+			st.Mu.RLock()
+			defer st.Mu.RUnlock() // also when building a card panics
+			resp.Settings, resp.Projects, resp.LastScan, resp.LastUsage = st.Settings, st.Projects, st.LastScan, st.LastUsage
+			resp.Warnings = append(st.Notices(), st.Warnings...)
+			resp.Overrides, resp.SetupNeeded, resp.PurchaseSync = st.Overrides, !st.Settings.SetupDone, st.PurchaseSync
+			resp.Gumroad = purchases.CurrentGumroadAccount(st)
+			resp.PurchaseCount = len(st.Purchases) - resp.Gumroad.Count
+			resp.Assets = library.AllViews(st)
+			resp.StyleNames = library.StyleNames(st.Settings.Styles)
+			resp.Update = st.Update
+			resp.UpdateNewer = st.Update != nil && update.VersionNewer(st.Update.Version, core.AppVersion)
+			resp.DLDir = purchases.DownloadDir(st)
+			if st.Settings.SetupDone {
+				resp.WhatsNew = update.WhatsNew(st)
+			}
+			return json.Marshal(resp)
+		}()
+		if err != nil {
+			core.Logf("界面数据生成失败: %v", err)
+			http.Error(w, "internal error", 500)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(b)
 	})
 	mux.HandleFunc("/api/progress", func(w http.ResponseWriter, r *http.Request) {
 		LastPing.Store(time.Now().Unix())
@@ -251,7 +307,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 	})
 	post("/api/user", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		key := str(b, "key")
-		if boolean(b, "delete") && strings.HasPrefix(key, "pan:") {
+		if boolean(b, "delete") && core.IsNetdiskKey(key) {
 			st.Mu.Lock()
 			delete(st.User, key)
 			delete(st.BoothMatch, key)
@@ -263,7 +319,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 		}
 		var u core.UserData
 		if err := json.Unmarshal(b["user"], &u); err != nil {
-			core.WriteJSON(w, map[string]any{"ok": false, "err": err.Error()})
+			core.WriteJSON(w, map[string]any{"ok": false, "err": badBody("素材信息", err)})
 			return
 		}
 		u.Updated = time.Now().Unix()
@@ -276,7 +332,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 			u.Styles = nil
 		}
 		u.ShareURL, u.SharePwd = strings.TrimSpace(u.ShareURL), strings.TrimSpace(u.SharePwd)
-		if strings.HasPrefix(key, "pan:") && strings.Contains(key, "#") {
+		if core.IsNetdiskKey(key) && strings.Contains(key, "#") {
 			u.ShareURL, u.SharePwd, u.PanPath = "", "", "" // a product inside a share: the link stays with the share
 		}
 		st.Mu.Lock()
@@ -287,19 +343,22 @@ func NewMux(st *core.Store) *http.ServeMux {
 			u.PanCopy, u.PanSaved, u.PanGot = old.PanCopy, old.PanSaved, old.PanGot
 		}
 		st.User[key] = &u
-		panChanged := netdisk.ShareSurl(u.ShareURL) != "" && (old == nil || old.ShareURL != u.ShareURL || old.SharePwd != u.SharePwd ||
-			st.Pan[netdisk.ShareSurl(u.ShareURL)] == nil)
+		panChanged := netdisk.ShareID(u.ShareURL) != "" && (old == nil || old.ShareURL != u.ShareURL || old.SharePwd != u.SharePwd ||
+			st.Pan[netdisk.ShareID(u.ShareURL)] == nil)
+		// what follows is decided here: once the store is let go, others may write to the entry
+		renamed := u.Name != "" && (old == nil || old.Name != u.Name)
+		newBooth := u.BoothURL != "" && naming.ReBoothURL.MatchString(u.BoothURL) && (old == nil || old.BoothURL != u.BoothURL)
 		st.Mu.Unlock()
 		_ = st.Save()
 		core.BumpRev()
 		core.WriteJSON(w, map[string]any{"ok": true})
 		if panChanged {
 			library.QueuePanFetch(st, key)
-		} else if u.Name != "" && (old == nil || old.Name != u.Name) {
+		} else if renamed {
 			library.KickTranslate(st)
 		}
 		// a newly entered booth link → fetch its info
-		if u.BoothURL != "" && naming.ReBoothURL.MatchString(u.BoothURL) && (old == nil || old.BoothURL != u.BoothURL) {
+		if newBooth {
 			library.StartPipeline(st, false, false, true, false, []string{key})
 		}
 	})
@@ -357,7 +416,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 			}
 			u := st.User[key]
 			if u == nil {
-				if a == nil && !strings.HasPrefix(key, "pan:") && !strings.HasPrefix(key, "purchase:") {
+				if a == nil && !core.IsNetdiskKey(key) && !strings.HasPrefix(key, "purchase:") {
 					continue
 				}
 				u = &core.UserData{}
@@ -393,7 +452,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 	post("/api/settings", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		var s core.Settings
 		if err := json.Unmarshal(b["settings"], &s); err != nil {
-			core.WriteJSON(w, map[string]any{"ok": false, "err": err.Error()})
+			core.WriteJSON(w, map[string]any{"ok": false, "err": badBody("设置", err)})
 			return
 		}
 		s.Roots, s.ProjectRoots, s.Bases = core.CleanPaths(s.Roots), core.CleanPaths(s.ProjectRoots), core.CleanList(s.Bases)
@@ -405,9 +464,13 @@ func NewMux(st *core.Store) *http.ServeMux {
 			s.Styles = []string{}
 		}
 		s.SetupDone = true
+		if s.Lang != "en" && s.Lang != "ja" {
+			s.Lang = ""
+		}
 		st.Mu.Lock()
 		st.Settings = s
 		st.Mu.Unlock()
+		core.ProxyChanged()
 		_ = st.Save()
 		core.BumpRev()
 		if boolean(b, "noRescan") { // only display settings or style tags changed
@@ -491,7 +554,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 	post("/api/styles", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		var list []string
 		if err := json.Unmarshal(b["styles"], &list); err != nil {
-			core.WriteJSON(w, map[string]any{"ok": false, "err": err.Error()})
+			core.WriteJSON(w, map[string]any{"ok": false, "err": badBody("风格标签", err)})
 			return
 		}
 		list = core.CleanList(list)
@@ -530,7 +593,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 	post("/api/boothsearch", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		hits, err := booth.SearchBooth(core.HTTPClient(st), str(b, "q"))
 		if err != nil {
-			core.WriteJSON(w, map[string]any{"ok": false, "err": err.Error()})
+			core.WriteJSON(w, map[string]any{"ok": false, "err": "Booth 搜索失败（" + core.FriendlyNetErr(err) + "）"})
 			return
 		}
 		if name := str(b, "name"); name != "" {
@@ -600,7 +663,8 @@ func NewMux(st *core.Store) *http.ServeMux {
 	post("/api/shortcut", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		p, err := core.CreateDesktopShortcut()
 		if err != nil {
-			core.WriteJSON(w, map[string]any{"ok": false, "err": err.Error()})
+			core.Logf("桌面快捷方式没能创建: %v", err)
+			core.WriteJSON(w, map[string]any{"ok": false, "err": "无法创建桌面快捷方式（" + core.TrimErr(err) + "）"})
 			return
 		}
 		core.WriteJSON(w, map[string]any{"ok": true, "path": p})
@@ -820,7 +884,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 			core.WriteJSON(w, map[string]any{"ok": false, "err": err.Error()})
 			return
 		}
-		core.WriteJSON(w, map[string]any{"ok": true, "login": !pandl.CurrentBaiduAccount().LoggedIn})
+		core.WriteJSON(w, map[string]any{"ok": true, "login": !pandl.CurrentBaiduAccount().LoggedIn && !cloudshare.IsCloudKey(str(b, "key"))})
 	})
 	post("/api/pan/download/cancel", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		pandl.CancelPanDownloads()
@@ -854,6 +918,11 @@ func NewMux(st *core.Store) *http.ServeMux {
 	// ---------- the 工程 page ----------
 	ai.RegisterAI(st, post)
 	registerPipe(st, post)
+	registerCheckup(st, post)
+	registerRecipes(st, post)
+	registerLibTools(st, post)
+	registerCloudAPI(st, post)
+	registerStores(st, post)
 	post("/api/projects", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		core.WriteJSON(w, map[string]any{"ok": true, "projects": unity.ProjectCards(st)})
 	})
@@ -938,12 +1007,19 @@ func NewMux(st *core.Store) *http.ServeMux {
 			core.BumpRev()
 		}
 		if err != nil {
-			core.WriteJSON(w, map[string]any{"ok": false, "err": err.Error()})
+			core.Logf("Booth 登录信息没能清除: %v", err)
+			core.WriteJSON(w, map[string]any{"ok": false, "err": "无法清除 Booth 登录信息（" + core.TrimErr(err) + "）"})
 			return
 		}
 		core.WriteJSON(w, map[string]any{"ok": true})
 	})
 	return mux
+}
+
+// badBody: what the window is told when what it sent cannot be read (the detail goes to the log).
+func badBody(what string, err error) string {
+	core.Logf("%s的数据无法读取: %v", what, err)
+	return what + "的数据格式有误，未保存"
 }
 
 func underAny(p string, dirs []string) bool {

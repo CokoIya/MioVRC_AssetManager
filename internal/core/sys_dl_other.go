@@ -2,7 +2,10 @@
 
 package core
 
-func DecodeCP932(b []byte) (string, bool)    { return "", false }
+// DecodeCodePage and ANSICodePage: Windows does the conversion; elsewhere (tests) there is none.
+func DecodeCodePage(cp uint32, b []byte) (string, bool) { return "", false }
+func ANSICodePage() uint32                              { return 0 }
+
 func ProtectData(b []byte) ([]byte, error)   { return b, nil }
 func UnprotectData(b []byte) ([]byte, error) { return b, nil }
 

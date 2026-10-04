@@ -11,9 +11,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"vrclib/internal/core"
 )
@@ -48,52 +48,67 @@ func archiveName(file string) string {
 	return strings.TrimSuffix(b, filepath.Ext(b))
 }
 
+// volKey: which archive of its folder a file is part of, by its name alone — the name the set goes by, the
+// scheme its volumes follow, and whether this file is the one that opens the set. Only volumes of one scheme
+// belong together: "x.zip" with "x.z01"…, "x.rar" with "x.r00"…, "x.part1.rar" with "x.part2.rar"…,
+// "x.7z.001" with "x.7z.002"…. "x.zip" and "x.7z" are two archives that happen to share a name. kind "": no
+// archive file.
+func volKey(base string) (stem, kind string, first bool) {
+	if m := reVolNum.FindStringSubmatch(base); m != nil {
+		return m[1], "num." + strings.ToLower(m[2]), m[3] == "001"
+	}
+	if m := reVolPart.FindStringSubmatch(base); m != nil {
+		return m[1], "part", strings.TrimLeft(m[2], "0") == "1"
+	}
+	if m := reVolZnn.FindStringSubmatch(base); m != nil {
+		return m[1], "zip", false
+	}
+	if m := reVolRnn.FindStringSubmatch(base); m != nil {
+		return m[1], "rar", false
+	}
+	if reArchive.MatchString(base) {
+		ext := filepath.Ext(base)
+		return strings.TrimSuffix(base, ext), strings.ToLower(ext[1:]), true
+	}
+	return "", "", false
+}
+
+// VolumeName splits a file's name where a set's name ends and what makes the file a volume of it begins:
+// "Dress.part1.rar" → "Dress", ".part1.rar"; "Dress.zip.001" → "Dress", ".zip.001"; any other file at its
+// extension. key is the same for all volumes of one set in a folder, and for nothing else there.
+func VolumeName(name string) (stem, rest, key string) {
+	stem, kind, _ := volKey(name)
+	if kind == "" {
+		stem = strings.TrimSuffix(name, filepath.Ext(name))
+		return stem, name[len(stem):], strings.ToLower(name) + "|"
+	}
+	return stem, name[len(stem):], strings.ToLower(stem) + "|" + kind
+}
+
 // groupArchives sorts the archive files in one folder into archives (volumes together).
 func groupArchives(files []string) []archiveSet {
-	type key struct{ dir, name string }
+	type key struct{ dir, name, kind string }
 	sets := map[key]*archiveSet{}
 	var order []key
-	get := func(dir, name string) *archiveSet {
-		k := key{dir, strings.ToLower(name)}
-		if s := sets[k]; s != nil {
-			return s
-		}
-		s := &archiveSet{Name: name}
-		sets[k] = s
-		order = append(order, k)
-		return s
-	}
 	sort.Strings(files)
 	for _, f := range files {
-		dir, b := filepath.Dir(f), filepath.Base(f)
-		switch {
-		case reVolNum.MatchString(b):
-			m := reVolNum.FindStringSubmatch(b)
-			s := get(dir, m[1])
-			s.Parts = append(s.Parts, f)
-			if m[3] == "001" {
-				s.Main = f
-			}
-		case reVolPart.MatchString(b):
-			m := reVolPart.FindStringSubmatch(b)
-			s := get(dir, m[1])
-			s.Parts = append(s.Parts, f)
-			if strings.TrimLeft(m[2], "0") == "1" {
-				s.Main = f
-			}
-		case reVolZnn.MatchString(b), reVolRnn.MatchString(b):
-			var m []string
-			if m = reVolZnn.FindStringSubmatch(b); m == nil {
-				m = reVolRnn.FindStringSubmatch(b)
-			}
-			s := get(dir, m[1])
-			s.Parts = append(s.Parts, f)
-		case reArchive.MatchString(b):
-			s := get(dir, strings.TrimSuffix(b, filepath.Ext(b)))
-			s.Parts = append(s.Parts, f)
-			if s.Main == "" || !reVolNum.MatchString(filepath.Base(s.Main)) {
-				s.Main = f // x.zip with x.z01…, x.rar with x.r00…: the archive itself opens the set
-			}
+		stem, kind, first := volKey(filepath.Base(f))
+		if kind == "" {
+			continue
+		}
+		k := key{filepath.Dir(f), strings.ToLower(stem), kind}
+		if s := sets[k]; s != nil && first && s.Main != "" {
+			k.name = f // a second archive under that name (the two differ in case only): an archive of its own
+		}
+		s := sets[k]
+		if s == nil {
+			s = &archiveSet{Name: stem}
+			sets[k] = s
+			order = append(order, k)
+		}
+		s.Parts = append(s.Parts, f)
+		if first {
+			s.Main = f
 		}
 	}
 	var out []archiveSet
@@ -108,6 +123,25 @@ func groupArchives(files []string) []archiveSet {
 			}
 		}
 		out = append(out, *s)
+	}
+	return out
+}
+
+// readParts: the files of a that unpacking a.Main reads — a.Main itself and the volumes that follow it under
+// its own scheme, in its folder. Whatever else a set was handed is left out: only these may be removed once
+// the unpack went well.
+func readParts(a archiveSet) []string {
+	out := []string{a.Main}
+	stem, kind, _ := volKey(filepath.Base(a.Main))
+	if kind == "" {
+		return out
+	}
+	dir := core.PathKey(filepath.Dir(a.Main))
+	for _, p := range a.Parts {
+		s, k, first := volKey(filepath.Base(p))
+		if p != a.Main && !first && k == kind && strings.EqualFold(s, stem) && core.PathKey(filepath.Dir(p)) == dir {
+			out = append(out, p)
+		}
 	}
 	return out
 }
@@ -127,7 +161,7 @@ func findArchives(dir string) []archiveSet {
 		if !IsArchiveFile(dir) {
 			return nil
 		}
-		// a single archive file: with its sibling volumes
+		// a single archive file: with its sibling volumes, and nothing else that shares its name
 		ents, _ := os.ReadDir(filepath.Dir(dir))
 		var files []string
 		name := strings.ToLower(archiveName(dir))
@@ -137,7 +171,14 @@ func findArchives(dir string) []archiveSet {
 				files = append(files, p)
 			}
 		}
-		return groupArchives(files)
+		for _, s := range groupArchives(files) {
+			for _, p := range s.Parts {
+				if core.PathKey(p) == core.PathKey(dir) {
+					return []archiveSet{s}
+				}
+			}
+		}
+		return nil
 	}
 	var files []string
 	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
@@ -304,33 +345,21 @@ func toolsFor(archive string) []arcTool {
 	return out
 }
 
-// zipNeedsTool: zips the built-in reader cannot do (encrypted entries, other compression methods).
-func zipNeedsTool(p string) (needs bool, sjis bool) {
+// zipNeedsTool: zips the built-in reader cannot do (encrypted entries, other compression methods), and
+// the code page their names are in, for the program that unpacks them (0: nothing to tell it).
+func zipNeedsTool(p string) (needs bool, cp uint32) {
 	zr, err := zip.OpenReader(p)
 	if err != nil {
-		return true, false
+		return true, 0
 	}
 	defer zr.Close()
 	for _, f := range zr.File {
 		if f.Flags&0x1 != 0 || (f.Method != zip.Store && f.Method != zip.Deflate) {
 			needs = true
 		}
-		if f.NonUTF8 && !utf8.ValidString(f.Name) {
-			if s, ok := core.DecodeCP932([]byte(f.Name)); ok && hasKana(s) {
-				sjis = true
-			}
-		}
 	}
-	return needs, sjis
-}
-
-func hasKana(s string) bool {
-	for _, r := range s {
-		if (r >= 0x3040 && r <= 0x30ff) || (r >= 0xff66 && r <= 0xff9d) {
-			return true
-		}
-	}
-	return false
+	cp, _ = zipCodePage(zr.File)
+	return needs, cp
 }
 
 // extractArchive unpacks a into its folder (a single folder inside is kept as it is, anything else
@@ -338,11 +367,10 @@ func hasKana(s string) bool {
 func extractArchive(a archiveSet, pwd string) (string, error) {
 	parent := filepath.Dir(a.Main)
 	single := len(a.Parts) == 1 && strings.EqualFold(filepath.Ext(a.Main), ".zip")
-	sjis := false
+	cp := uint32(0)
 	if single {
-		needs, sj := zipNeedsTool(a.Main)
-		sjis = sj
-		if !needs {
+		var needs bool
+		if needs, cp = zipNeedsTool(a.Main); !needs {
 			return extractZip(a.Main, parent)
 		}
 	}
@@ -360,9 +388,9 @@ func extractArchive(a archiveSet, pwd string) (string, error) {
 		tried++
 		_ = os.RemoveAll(tmp)
 		if err := os.MkdirAll(tmp, 0755); err != nil {
-			return "", err
+			return "", fmt.Errorf("解压出错：无法创建文件夹（%v）", err)
 		}
-		err := runArcTool(t, a.Main, tmp, pwd, sjis)
+		err := runArcTool(t, a.Main, tmp, pwd, cp)
 		if err == nil {
 			return placeExtracted(tmp, parent, a.Name)
 		}
@@ -378,13 +406,17 @@ func extractArchive(a archiveSet, pwd string) (string, error) {
 	return "", lastErr
 }
 
-func runArcTool(t arcTool, archive, out, pwd string, sjis bool) error {
+// arcToolArgs: the command line that unpacks archive into out. cp: the code page of a zip's file names
+// when they do not say it themselves (0 = nothing to tell the program).
+func arcToolArgs(t arcTool, archive, out, pwd string, cp uint32) []string {
 	var args []string
 	switch t.Kind {
 	case "7z":
-		args = []string{"x", "-y", "-bd", "-o" + out, "-p" + pwd} // -p always: never wait for a typed password
-		if sjis {
-			args = append(args, "-mcp=932")
+		// -p always: never wait for a typed password. -aou: two entries under one name both stay (the
+		// second gets a number), instead of the second replacing the first
+		args = []string{"x", "-y", "-aou", "-bd", "-o" + out, "-p" + pwd}
+		if cp != 0 {
+			args = append(args, "-mcp="+strconv.FormatUint(uint64(cp), 10))
 		}
 		args = append(args, "--", archive)
 	case "bz":
@@ -392,8 +424,8 @@ func runArcTool(t arcTool, archive, out, pwd string, sjis bool) error {
 		if pwd != "" {
 			args = append(args, "-p:"+pwd)
 		}
-		if sjis {
-			args = append(args, "-cp:932")
+		if cp != 0 {
+			args = append(args, "-cp:"+strconv.FormatUint(uint64(cp), 10))
 		}
 		args = append(args, archive)
 	case "unrar", "winrar":
@@ -410,6 +442,11 @@ func runArcTool(t arcTool, archive, out, pwd string, sjis bool) error {
 	case "tar":
 		args = []string{"-xf", archive, "-C", out}
 	}
+	return args
+}
+
+func runArcTool(t arcTool, archive, out, pwd string, cp uint32) error {
+	args := arcToolArgs(t, archive, out, pwd, cp)
 	// a program that stops to ask something would wait forever in its hidden window
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Minute)
 	defer cancel()
@@ -438,7 +475,7 @@ func runArcTool(t arcTool, archive, out, pwd string, sjis bool) error {
 func placeExtracted(tmp, parent, name string) (string, error) {
 	ents, err := os.ReadDir(tmp)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("解压出错：无法读取解压出的文件（%v）", err)
 	}
 	src, target := tmp, filepath.Join(parent, core.SafeName(name, 120))
 	if len(ents) == 1 && ents[0].IsDir() {
@@ -448,7 +485,7 @@ func placeExtracted(tmp, parent, name string) (string, error) {
 	target = UniquePath(target)
 	if err := os.Rename(src, target); err != nil {
 		_ = os.RemoveAll(tmp)
-		return "", err
+		return "", fmt.Errorf("解压出错：无法将解压出的文件夹移至 %s（%v）", target, err)
 	}
 	_ = os.RemoveAll(tmp)
 	return target, nil
@@ -473,23 +510,50 @@ func UniquePath(p string) string {
 	}
 }
 
-// unpackAll unpacks every archive under the given places, then what those contained (an archive in
-// an archive, PSD packs inside the main zip …), up to three levels. Archives that unpacked fine are
-// handed to remove: the Recycle Bin for the player's own files, deletion for this program's downloads,
-// nil keeps them. report is called before each archive.
 type unpackResult struct {
 	Done    []string // folders made
 	Failed  map[string]string
 	Removed int
 }
 
+// UnpackAll unpacks every archive under the given places, then what those contained (an archive in
+// an archive, PSD packs inside the main zip …), up to three levels. Archives that unpacked fine are
+// handed to remove: the Recycle Bin for the player's own files, nil keeps them. report is called before
+// each archive. Every archive under a folder given here is taken: for what a download brought into a
+// folder that may hold other things, UnpackFiles is the one to use.
 func UnpackAll(places []string, pwd string, remove func([]string) error, report func(name string, i, n int)) unpackResult {
+	return unpack(places, pwd, remove, report, false)
+}
+
+// UnpackFiles unpacks the given archive files — each with the volumes of its own set — and then what they
+// contained, as UnpackAll does. Nothing else is touched: no other archive in their folders, and no folder
+// that was there before. For the files a download just brought: only they are unpacked, and only they are
+// handed to remove (deletion, for what this program downloaded itself and can download again).
+func UnpackFiles(files []string, pwd string, remove func([]string) error, report func(name string, i, n int)) unpackResult {
+	return unpack(files, pwd, remove, report, true)
+}
+
+func unpack(places []string, pwd string, remove func([]string) error, report func(name string, i, n int), own bool) unpackResult {
 	res := unpackResult{Failed: map[string]string{}}
 	seen := map[string]bool{}
+	made := map[string]bool{} // the folders this run unpacked into
+	fresh := func(dir string) bool {
+		for m := range made {
+			if core.UnderDir(dir, m) {
+				return true
+			}
+		}
+		return false
+	}
 	queue := places
 	for level := 0; level < 3 && len(queue) > 0; level++ {
 		var sets []archiveSet
 		for _, p := range queue {
+			if own && level == 0 {
+				if st, err := os.Stat(p); err != nil || st.IsDir() {
+					continue // files only: a folder is never looked through for what else it holds
+				}
+			}
 			for _, a := range findArchives(p) {
 				if !seen[strings.ToLower(a.Main)] {
 					seen[strings.ToLower(a.Main)] = true
@@ -502,8 +566,12 @@ func UnpackAll(places []string, pwd string, remove func([]string) error, report 
 			if report != nil {
 				report(filepath.Base(a.Main), i, len(sets))
 			}
-			if dir := alreadyUnpacked(a); dir != "" {
-				queue = append(queue, dir) // unpacked before (by hand): leave the archive alone
+			// unpacked before (by hand): leave the archive alone. A folder this run made is another archive's
+			// ("Dress.7z" next to "Dress.zip"): this one is unpacked next to it
+			if dir := alreadyUnpacked(a); dir != "" && !made[core.PathKey(dir)] {
+				if !own || fresh(dir) {
+					queue = append(queue, dir)
+				}
 				continue
 			}
 			out, err := extractArchive(a, pwd)
@@ -512,12 +580,14 @@ func UnpackAll(places []string, pwd string, remove func([]string) error, report 
 				continue
 			}
 			res.Done = append(res.Done, out)
+			made[core.PathKey(out)] = true
 			queue = append(queue, out)
 			if remove != nil {
-				if err := remove(a.Parts); err != nil {
+				parts := readParts(a) // never a file the unpack did not read
+				if err := remove(parts); err != nil {
 					core.Logf("压缩包没能删除 %s: %v", a.Main, err)
 				} else {
-					res.Removed += len(a.Parts)
+					res.Removed += len(parts)
 				}
 			}
 		}
@@ -532,8 +602,9 @@ func alreadyUnpacked(a archiveSet) string {
 	if strings.EqualFold(filepath.Ext(a.Main), ".zip") && len(a.Parts) == 1 {
 		if zr, err := zip.OpenReader(a.Main); err == nil {
 			tops := map[string]bool{}
-			for _, f := range zr.File {
-				n := strings.SplitN(zipEntryName(f), "/", 2)[0]
+			entries, _ := zipNames(zr.File) // names that cannot be read: only the archive's own name to go by
+			for _, e := range entries {
+				n := strings.SplitN(e, "/", 2)[0]
 				if n != "" && !strings.HasPrefix(n, "__MACOSX") {
 					tops[n] = true
 				}
@@ -555,7 +626,8 @@ func alreadyUnpacked(a archiveSet) string {
 	return ""
 }
 
-// RemoveFiles deletes archives this program downloaded itself (they can be downloaded again).
+// RemoveFiles deletes archives this program downloaded itself (they can be downloaded again). Only for
+// UnpackFiles: with UnpackAll it would delete whatever else lies in the folder.
 func RemoveFiles(paths []string) error {
 	var first error
 	for _, p := range paths {

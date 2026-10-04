@@ -2,6 +2,8 @@ package booth
 
 import (
 	"testing"
+
+	"vrclib/internal/core"
 )
 
 func TestBoothParse(t *testing.T) {
@@ -36,5 +38,27 @@ func TestBoothParse(t *testing.T) {
 	}
 	if s := trimOgTitle("plain"); s != "plain" {
 		t.Fatal(s)
+	}
+}
+
+// A share card whose folder or files carry the Booth item number is that item's — a Google Drive or Dropbox
+// card as much as a Baidu one.
+func TestAssetBoothOfShareCards(t *testing.T) {
+	listing := func(key string) *core.PanListing {
+		return &core.PanListing{Surl: key, Title: "8099091", Count: 2, Files: []*core.PanFile{{Name: "8099091", Dir: true, Children: []*core.PanFile{
+			{Name: "AONAMI_manuka.zip", Size: 1000}, {Name: "AONAMI_shinano.zip", Size: 1000}}}}}
+	}
+	st := &core.Store{Settings: core.DefaultSettings(), User: map[string]*core.UserData{}, Pan: map[string]*core.PanListing{
+		"1abcDEF":            listing("1abcDEF"),
+		"gd:1Folder00000000": listing("gd:1Folder00000000"),
+		"db:abc123xyz456789": listing("db:abc123xyz456789"),
+	}}
+	for _, key := range []string{"pan:1abcDEF", "gd:1Folder00000000", "db:abc123xyz456789"} {
+		if id, how := AssetBooth(st, key, nil); id != "8099091" || how != "name" {
+			t.Errorf("%s: item %q (%s)", key, id, how)
+		}
+	}
+	if id, _ := AssetBooth(st, "name:8099091", nil); id != "" {
+		t.Errorf("a card that is no share's: %q", id)
 	}
 }

@@ -1,6 +1,6 @@
 """Mock of Baidu share pages, Booth search/item JSON and Bing translator for end-to-end tests.
 Request/response shapes copied from the live services (checked 2026-10-01)."""
-import http.server, socketserver, urllib.parse, json, io, sys, html, os, hashlib, zipfile, tarfile, gzip, threading
+import http.server, socketserver, urllib.parse, json, io, sys, html, os, hashlib, zipfile, tarfile, gzip, threading, time
 from PIL import Image
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 47991
@@ -88,6 +88,7 @@ SHARES["1PickShare"] = ("", None, [
         {"name": "Dress_B.zip", "size": len(CONTENT["Dress_B.zip"])},
         {"name": "PSD", "dir": True, "kids": [{"name": "a.psd", "size": 4000}, {"name": "b.psd", "size": 5000}]},
         {"name": "readme_set.txt", "size": 300}]}])
+PRICE, ITEM_LOG = {}, []  # the wish list's tests: id -> what the item costs now; every item JSON asked for
 DISK = {"/": {"dir": True}}  # the logged-in player's netdisk: path -> {dir, size, src}
 BD = {"login": False, "limit": 1000, "cut": set(), "log": []}
 BDUSS = "mockbduss"
@@ -154,6 +155,7 @@ HITS = {
 
 SYN = {}  # items made up while browsing
 BROWSE_LOG = []
+SHOP, SHOP_LOG = {}, []  # the followed shops' tests: sub -> {"state": ok|busy|gone, "extra": [ids put on sale since]}; every list page asked for
 
 
 def tree_items(nodes, base):
@@ -180,6 +182,36 @@ def card(id_, name, sub, shop, cat, price):
     return f'''<li class="item-card l-card " data-product-brand="{sub}" data-product-category="209" data-product-id="{id_}" data-product-name="{html.escape(name[:20])}..." data-product-price="{price}"><div class="item-card__wrap" id="item_{id_}"><div class="item-card__thumbnail js-thumbnail"><div class="item-card__thumbnail-images"><a class="js-thumbnail-image item-card__thumbnail-image" data-original="{B}/thumb/{id_}.jpg" href="https://booth.pm/ja/items/{id_}"></a></div></div>
 <div class="item-card__summary"><div class="item-card__category"><a class="item-card__category-anchor nav-reverse" href="#">{cat}</a></div><div class="item-card__title"><a target="_self" class="item-card__title-anchor--multiline nav" href="https://booth.pm/ja/items/{id_}">{html.escape(name)}</a></div>
 <div class="item-card__shop-info"><a class="item-card__shop-name-anchor nav" href="https://{sub}.booth.pm/"><div class="flex items-center"><img alt="{html.escape(shop)}" class="user-avatar at-item-footer" src="x"></div></a></div></div></div></li>'''
+
+
+def shop_items(sub):
+    """a shop's items, the newest (highest id) first: what the search pages have shown of it, plus what the tests put on sale"""
+    seen, out = set(), []
+    for v in [[x] for x in SYN.values()] + list(HITS.values()):
+        for h in v:
+            if h[2] == sub and h[0] not in seen:
+                seen.add(h[0]); out.append(h)
+    return sorted(out, key=lambda h: -int(h[0]))
+
+
+def shop_page(sub, page):
+    """<sub>.booth.pm/items?page=N (shape as of 2026-09, from Booth2RSS's parser: a card is a mount point whose
+    data-item holds the item as JSON; the header has the name label and the icon as a background image)"""
+    items = shop_items(sub)
+    name = items[0][3] if items else sub
+    cards = ""
+    for h in items[(page - 1) * 60: page * 60]:
+        it = {"id": h[0], "name": h[1], "price": f"¥ {h[5]:,}", "url": f"https://{sub}.booth.pm/items/{h[0]}", "is_adult": "adult" in h[1], "is_end_of_sale": False,
+              "is_placeholder": False, "is_sold_out": False, "is_vrchat": True, "minimum_stock": None, "local_price": None,
+              "category": {"name": {"ja": h[4], "en": h[4]}, "url": "x"}, "thumbnail_image_urls": [f"{B}/thumb/{h[0]}.jpg"]}
+        cards += f'<li class="item-card l-card js-mount-point-shop-item-card" data-item="{html.escape(json.dumps(it, ensure_ascii=False))}"></li>'
+    last = max(1, (len(items) + 59) // 60)
+    return f'''<!doctype html><html><head><title>{html.escape(name)} - BOOTH</title></head><body>
+<header><a class="nav" title="Home" href="/">{html.escape(sub)}</a><div class="avatar-image" style="background-image: url({B}/thumb/icon_{sub}.jpg)"></div>
+<span class="shop-name-label display_title">{html.escape(name)}</span></header><div class="description"><div class="booth-description"><div class="autolink u-mb-16"><div>VRChat 向けの衣装を販売しています</div></div></div></div>
+<div class="shop-private-notice" hidden>現在このショップは非公開中です</div>
+<ul class="shop-items">{cards}</ul>
+<nav class="pager">{"".join(f'<a class="nav-item" href="/items?page={p}">{p}</a>' for p in range(1, last + 1))}<a class="nav-item last-page" href="/items?page={last}"></a></nav></body></html>'''
 
 
 class H(http.server.BaseHTTPRequestHandler):
@@ -340,6 +372,44 @@ class H(http.server.BaseHTTPRequestHandler):
             return self.send(200, json.dumps({"tag_name": tag, "name": "MioVRC素材托管工具 " + tag[1:], "draft": False, "prerelease": False,
                 "published_at": "2026-10-05T03:00:00Z", "html_url": "https://github.com/CokoIya/MioVRC_AssetManager/releases/tag/" + tag,
                 "body": "## 更新内容\n- 新功能：**测试**\n- 修复：`library.json` 测试\n\n**下载**：[发布页](https://example.com)", "assets": assets}), "application/json")
+        if u.path == "/mock/price":  # the wish list's tests: what an item costs from now on, or that it is gone / sold out / refused
+            PRICE[q.get("id", [""])[0]] = {"price": int(q["price"][0]) if "price" in q else None, "state": q.get("state", ["ok"])[0],
+                                           "vars": [(n, int(p)) for n, p in (v.rsplit(":", 1) for v in q.get("var", []))]}
+            return self.send(200, "ok", "text/plain")
+        if u.path == "/mock/itemlog":
+            return self.send(200, json.dumps(ITEM_LOG), "application/json")
+        if u.path == "/mock/shop":  # the followed shops' tests: a shop refuses / is gone, or puts a new item on sale (id, name, price)
+            sub = q.get("sub", [""])[0]
+            st = SHOP.setdefault(sub, {"state": "ok"})
+            if "state" in q:
+                st["state"] = q["state"][0]
+            if "id" in q:
+                iid = q["id"][0]
+                SYN[iid] = (iid, q.get("name", ["New item"])[0], sub, q.get("shop", [(shop_items(sub) or [[0, 0, 0, sub]])[0][3]])[0], q.get("cat", ["3D衣装"])[0], int(q.get("price", ["1000"])[0]))
+            return self.send(200, json.dumps({"ok": True, "items": [h[0] for h in shop_items(sub)]}), "application/json")
+        if u.path == "/mock/shoplog":
+            return self.send(200, json.dumps(SHOP_LOG), "application/json")
+        if u.path.startswith("/shop/"):  # <sub>.booth.pm: the stand-in has no subdomains, so the shop's pages live under /shop/<sub>/
+            parts = u.path.split("/")
+            sub, rest = parts[2], "/".join(parts[3:])
+            st = SHOP.get(sub, {"state": "ok"})
+            if st["state"] == "busy":
+                return self.send(429, "Too Many Requests", "text/plain")
+            if st["state"] == "gone" or not shop_items(sub):
+                return self.send(404, "<html>not found</html>")
+            if rest in ("", "items"):
+                if rest == "items":
+                    SHOP_LOG.append({"t": time.time(), "sub": sub, "q": u.query})
+                return self.send(200, shop_page(sub, int(q.get("page", ["1"])[0])))
+            if rest.startswith("items/"):  # an item's page on the shop's own address: like booth.pm's
+                u = u._replace(path="/ja/items/" + rest[6:])
+            else:
+                return self.send(404, "not found")
+        if u.path == "/search":  # a stand-in for a Bing result page: the words, and results that lead to the Jinxxy stand-in
+            words = q.get("q", [""])[0]
+            jx = os.environ.get("MOCK_JX", "http://127.0.0.1:47993")
+            body = f"<h1 id='words'>{html.escape(words)}</h1>" + "".join(f'<li><a href="{jx}/aesu/result_{i}" target="_blank">{html.escape(words)} result {i}</a></li>' for i in range(1, 4))
+            return self.send(200, f"<html><head><title>{html.escape(words)} - 搜索</title></head><body>{body}</body></html>")
         if u.path == "/mock/browselog":
             return self.send(200, json.dumps(BROWSE_LOG, ensure_ascii=False), "application/json")
         if u.path.startswith("/dl/"):
@@ -486,6 +556,13 @@ class H(http.server.BaseHTTPRequestHandler):
             id_ = u.path.split("/")[-1]
             is_json = id_.endswith(".json")
             id_ = id_[:-5] if is_json else id_
+            pr = PRICE.get(id_, {})
+            if is_json:
+                ITEM_LOG.append(id_)
+            if pr.get("state") == "busy":
+                return self.send(429, "Too Many Requests", "text/plain")
+            if pr.get("state") == "gone":
+                return self.send(404, "{}")
             for v in list(HITS.values()) + [[x] for x in SYN.values()]:
                 for h in v:
                     if h[0] != id_:
@@ -495,7 +572,14 @@ class H(http.server.BaseHTTPRequestHandler):
 <div class="js-market-item-detail-description description"><p class="autolink">この商品は8アバターに対応したドレスです。</p></div>
 <section class="shop__text"><h2 class="break-words font-bold">商品説明</h2><p class="break-words js-autolink whitespace-pre-line">8アバター対応のドレスです。\n&lt;注意&gt; 改変前提です。</p></section><section class="shop__text"><h2 class="break-words font-bold">利用規約</h2><p class="break-words">VN3ライセンス<br>再配布禁止</p></section><section class="shop__text"><h2 class="x">画像のみ</h2><img src="x"></section></body></html>''')
                     # live shape (checked 2026-10-01): id is a string, tags are objects
-                    return self.send(200, json.dumps({"id": id_, "name": h[1], "price": f"¥ {h[5]}", "url": f"https://{h[2]}.booth.pm/items/{id_}",
+                    # price and variations (shape of the live JSON, checked 2026-10-03: "¥ 6,000", "¥ 1,060~" with several
+                    # variations; a variation has a number for a price and null for a name when it is the only one)
+                    price = pr.get("price") if pr.get("price") is not None else h[5]
+                    vs = pr.get("vars") or [(None, price)]
+                    low = min(p for _, p in vs)
+                    return self.send(200, json.dumps({"id": id_, "name": h[1], "price": f"¥ {low:,}" + ("~" if len(set(p for _, p in vs)) > 1 else ""), "url": f"https://{h[2]}.booth.pm/items/{id_}",
+                        "is_sold_out": pr.get("state") == "soldout", "is_end_of_sale": pr.get("state") == "end",
+                        "variations": [{"id": int(id_) * 10 + k, "name": n, "price": p, "status": "addable_to_cart", "type": "digital", "is_empty_stock": False} for k, (n, p) in enumerate(vs)],
                         "description": "この商品は8アバターに対応したドレスです。\n\n■対応アバター\nPlum / Chocolat\n■内容\nunitypackage",
                         "tags": [{"name": "VRChat", "url": "https://booth.pm/ja/items?tags%5B%5D=VRChat"}, {"name": "衣装", "url": "x"}],
                         "category": {"id": 209, "name": h[4], "parent": {"name": "3Dモデル", "url": "x"}, "url": "x"},

@@ -67,6 +67,8 @@ type PanFile struct {
 	Dir      bool       `json:"d,omitempty"`
 	Children []*PanFile `json:"c,omitempty"`
 	Partial  bool       `json:"p,omitempty"` // folder not fully listed (limits)
+	Ref      string     `json:"r,omitempty"` // Google Drive: the file's id (Baidu's files are found by path)
+	RKey     string     `json:"k,omitempty"` // Google Drive: the entry's own resourcekey, when it has one
 }
 
 type PanListing struct {
@@ -85,7 +87,7 @@ type PanListing struct {
 }
 
 func IsPanShareKey(key string) bool {
-	return strings.HasPrefix(key, "pan:") && !strings.Contains(key, "#")
+	return IsNetdiskKey(key) && !strings.Contains(key, "#")
 }
 
 type PurchaseOrder struct {

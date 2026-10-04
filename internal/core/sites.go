@@ -1,6 +1,7 @@
 package core
 
 import (
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,3 +52,20 @@ func LibraryURL(gift bool) string {
 }
 
 func BoothProfileDir() string { return filepath.Join(DataDir, "booth-profile") }
+
+func JinxxyBase() string {
+	if v := os.Getenv("VRCLIB_JINXXY_BASE"); v != "" { // tests only
+		return strings.TrimRight(v, "/")
+	}
+	return "https://jinxxy.com"
+}
+
+// JinxxySearchURL: Jinxxy's own search has no address a query can be put into (the market's pages ignore
+// one), so the words go to Bing, kept to that site.
+func JinxxySearchURL(q string) string {
+	base := "https://cn.bing.com"
+	if v := os.Getenv("VRCLIB_BING_BASE"); v != "" { // tests only
+		base = strings.TrimRight(v, "/")
+	}
+	return base + "/search?q=" + url.QueryEscape("site:jinxxy.com "+strings.TrimSpace(q))
+}

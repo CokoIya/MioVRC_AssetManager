@@ -122,8 +122,8 @@ namespace MioVRCA.Pipeline
         {
             if (string.IsNullOrEmpty(path)) throw new PipelineException("未指定物体路径");
             string p = path.Replace('\\', '/').Trim('/');
-            if (p.StartsWith(avatar.name + "/")) { Transform viaRoot = avatar.Find(p.Substring(avatar.name.Length + 1)); if (viaRoot != null) return viaRoot; }
-            Transform t = avatar.Find(p);
+            if (p.StartsWith(avatar.name + "/")) { Transform viaRoot = Walk(avatar, p.Substring(avatar.name.Length + 1), path); if (viaRoot != null) return viaRoot; }
+            Transform t = Walk(avatar, p, path);
             if (t != null) return t;
             Transform hit = null;
             int n = 0;
@@ -134,6 +134,48 @@ namespace MioVRCA.Pipeline
             if (n == 1) return hit;
             if (n > 1) throw new PipelineException("模型下有 " + n + " 个名为「" + p + "」的物体，需填写完整路径");
             throw new PipelineException("模型下未找到「" + path + "」");
+        }
+
+        // A path, one level at a time. Transform.Find takes the first of several children with one name: a menu
+        // item written for the second would then control the first, so a path that fits more than one is refused.
+        static Transform Walk(Transform from, string rel, string asked)
+        {
+            Transform at = from;
+            foreach (string seg in rel.Split('/'))
+            {
+                Transform hit = null;
+                int n = 0;
+                foreach (Transform c in at)
+                    if (c.name == seg) { if (hit == null) hit = c; n++; }
+                if (n == 0) return null;
+                if (n > 1)
+                    throw new PipelineException("路径「" + asked + "」不唯一：「" + at.name + "」下有 " + n + " 个名为「" + seg + "」的物体，无法确定是哪一个。请先在 Unity 中将它们改为不同的名称");
+                at = hit;
+            }
+            return at;
+        }
+
+        // the object at a path below the avatar, null when there is none; a path that fits more than one is refused
+        public static Transform AtPath(Transform avatar, string path)
+        {
+            string p = (path ?? "").Replace('\\', '/').Trim('/');
+            return p == "" ? null : Walk(avatar, p, path);
+        }
+
+        // a direct child by its name (a name may hold a "/", which Transform.Find would read as a path)
+        public static Transform Child(Transform parent, string name)
+        {
+            foreach (Transform c in parent)
+                if (c.name == name) return c;
+            return null;
+        }
+
+        // stripped from the avatar when it is built: the object, or one above it, carries the EditorOnly tag
+        public static bool EditorOnly(Transform t)
+        {
+            for (; t != null; t = t.parent)
+                if (t.CompareTag("EditorOnly")) return true;
+            return false;
         }
 
         public static string PrefabSource(GameObject go)

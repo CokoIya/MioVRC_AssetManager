@@ -238,10 +238,12 @@ func StartFirefoxDriver(exe, profile, startURL string, extra []string) (*bidiDri
 	}
 	c, err := cdpDial(strings.TrimRight(ws, "/")+"/session", 10*time.Second)
 	if err != nil {
+		_ = cmd.Process.Kill() // nobody else will end the browser that was started for this
 		return nil, err
 	}
 	if _, err := c.call("session.new", map[string]any{"capabilities": map[string]any{}}, 15*time.Second); err != nil {
 		c.Close()
+		_ = cmd.Process.Kill()
 		return nil, fmt.Errorf("Firefox 会话建立失败：%v", err)
 	}
 	d := &bidiDriver{c: c, cmd: cmd}

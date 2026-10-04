@@ -32,6 +32,8 @@ type ProjectCard struct {
 	CoverAt int64  `json:"coverAt,omitempty"`
 	Helper  bool   `json:"helper,omitempty"` // the cover package is in the project
 	Editor  bool   `json:"editor"`           // its Unity version is installed on this computer
+
+	Checkup *CheckupBrief `json:"checkup,omitempty"` // its last check-up, in short
 }
 
 func ProjectCards(st *core.Store) []ProjectCard {
@@ -45,6 +47,7 @@ func ProjectCards(st *core.Store) []ProjectCard {
 		c.Cover, c.CoverAt = projectCover(p.Path)
 		c.Helper = core.StatOK(filepath.Join(p.Path, "Packages", coverPkg, "package.json"))
 		c.Editor = c.Unity != "" && eds[c.Unity] != ""
+		c.Checkup = lastCheckupBrief(p.Path)
 		out = append(out, c)
 	}
 	return out

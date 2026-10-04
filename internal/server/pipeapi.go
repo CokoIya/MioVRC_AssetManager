@@ -96,9 +96,7 @@ func registerPipe(st *core.Store, post func(string, func(http.ResponseWriter, ma
 		}
 		taken := false
 		if name := strings.TrimSpace(str(b, "name")); name != "" {
-			if ents, err := os.ReadDir(filepath.Join(p, name)); err == nil && len(ents) > 0 {
-				taken = true
-			}
+			taken = unity.NewProjectTaken(filepath.Join(p, name)) // what a failed attempt left there does not count
 		}
 		core.WriteJSON(w, map[string]any{"ok": true, "path": p, "taken": taken})
 	})

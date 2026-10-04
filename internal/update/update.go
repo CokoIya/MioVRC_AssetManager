@@ -2,11 +2,13 @@ package update
 
 import (
 	"archive/zip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"net/http"
 	"net/url"
@@ -94,23 +96,26 @@ func updateClient(st *core.Store, timeout time.Duration) *http.Client {
 
 // fetchLatestRelease reads the newest published (not draft, not pre-release) release: from the API, and from
 // the release pages when the API cannot be reached or has had enough of this address.
-func fetchLatestRelease(st *core.Store) (*core.UpdateInfo, error) {
-	info, err := fetchLatestAPI(st)
+// sure is false when a file of the release could not be asked about (the answer is then not kept as "checked").
+func fetchLatestRelease(st *core.Store) (info *core.UpdateInfo, sure bool, err error) {
+	info, err = fetchLatestAPI(st)
 	if err == nil || errors.Is(err, errNoRelease) {
-		return info, err
+		return info, true, err
 	}
-	if alt, e2 := fetchLatestSite(st); e2 == nil {
+	if alt, sure, e2 := fetchLatestSite(st); e2 == nil {
 		core.Logf("检查更新：API 没有回答（%v），改从发布页读到 %s", err, alt.Version)
-		return alt, nil
+		return alt, sure, nil
 	}
-	return nil, err
+	return nil, false, err
 }
 
 var errNoRelease = errors.New("GitHub 上暂无发布版本")
 
 // fetchLatestSite: /releases/latest redirects to the newest release's page, which gives the tag; the files are
-// where the releases of this program always put them.
-func fetchLatestSite(st *core.Store) (*core.UpdateInfo, error) {
+// where the releases of this program always put them. Whether a file is there is asked; when that question
+// gets no answer (sure is false) the file is taken to be there — "this version has no installer" is only
+// said when the site says so — and the check is not remembered, so the next one asks again.
+func fetchLatestSite(st *core.Store) (info *core.UpdateInfo, sure bool, err error) {
 	c := updateClient(st, 25*time.Second)
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	base := githubSite() + "/" + UpdateRepo + "/releases"
@@ -118,23 +123,24 @@ func fetchLatestSite(st *core.Store) (*core.UpdateInfo, error) {
 	req.Header.Set("User-Agent", core.AppID+"/"+core.AppVersion)
 	resp, err := c.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("无法连接 GitHub（%s）", core.FriendlyNetErr(err))
+		return nil, false, fmt.Errorf("无法连接 GitHub（%s）", core.FriendlyNetErr(err))
 	}
 	resp.Body.Close()
 	loc := resp.Header.Get("Location")
 	i := strings.LastIndex(loc, "/releases/tag/")
 	if resp.StatusCode < 300 || resp.StatusCode > 399 || i < 0 {
-		return nil, fmt.Errorf("GitHub 发布页返回错误（HTTP %d）", resp.StatusCode)
+		return nil, false, fmt.Errorf("GitHub 发布页返回错误（HTTP %d）", resp.StatusCode)
 	}
 	tag := loc[i+len("/releases/tag/"):]
 	if t, err := url.PathUnescape(tag); err == nil {
 		tag = t
 	}
-	info := &core.UpdateInfo{Tag: tag, Version: reVerNum.FindString(tag), URL: base + "/tag/" + url.PathEscape(tag)}
+	info = &core.UpdateInfo{Tag: tag, Version: reVerNum.FindString(tag), URL: base + "/tag/" + url.PathEscape(tag)}
 	if info.Version == "" {
-		return nil, errors.New("发布版本的标签中缺少版本号（例如 v1.4.0）")
+		return nil, false, errors.New("发布版本的标签中缺少版本号（例如 v1.4.0）")
 	}
 	head := updateClient(st, 25*time.Second)
+	sure = true
 	probe := func(name string) *core.UpdateAsset {
 		u := base + "/download/" + url.PathEscape(tag) + "/" + name
 		a := &core.UpdateAsset{Name: name, URL: u}
@@ -158,11 +164,17 @@ func fetchLatestSite(st *core.Store) (*core.UpdateInfo, error) {
 		req.Header.Set("Range", "bytes=0-0")
 		resp, err := head.Do(req)
 		if err != nil {
-			return nil
+			sure = false // no answer is not "no such file"
+			return a
 		}
 		resp.Body.Close()
-		if resp.StatusCode != 200 && resp.StatusCode != 206 {
+		switch resp.StatusCode {
+		case 200, 206:
+		case 404:
 			return nil
+		default:
+			sure = false
+			return a
 		}
 		if _, total, ok := strings.Cut(resp.Header.Get("Content-Range"), "/"); ok {
 			if n, err := strconv.ParseInt(total, 10, 64); err == nil && n > 0 {
@@ -173,7 +185,7 @@ func fetchLatestSite(st *core.Store) (*core.UpdateInfo, error) {
 	}
 	info.Zip = probe(core.AppID + "-portable-" + info.Version + ".zip")
 	info.Setup = probe(core.AppID + "-setup-" + info.Version + ".exe")
-	return info, nil
+	return info, sure, nil
 }
 
 func fetchLatestAPI(st *core.Store) (*core.UpdateInfo, error) {
@@ -259,11 +271,13 @@ func CheckUpdate(st *core.Store, force bool) (*core.UpdateInfo, error) {
 	if !force && cached != nil && time.Now().Unix()-last < 3600 {
 		return cached, nil
 	}
-	info, err := fetchLatestRelease(st)
+	info, sure, err := fetchLatestRelease(st)
 	st.Mu.Lock()
 	if err == nil {
-		st.UpdateChecked = time.Now().Unix()
-		st.Update = info
+		st.Update, st.UpdateChecked = info, 0
+		if sure {
+			st.UpdateChecked = time.Now().Unix()
+		}
 	}
 	st.Mu.Unlock()
 	_ = st.Save()
@@ -276,51 +290,40 @@ func CheckUpdate(st *core.Store, force bool) (*core.UpdateInfo, error) {
 
 // ---------- install ----------
 
+var (
+	// a download from which nothing has come for this long is cut and taken up again where it stopped. There
+	// is no limit on the whole of it: a slow connection gets there in the end.
+	dlStall     = 60 * time.Second
+	dlRetryWait = 3 * time.Second
+)
+
+const dlTries = 4 // attempts in a row that bring nothing
+
 func download(st *core.Store, a *core.UpdateAsset, dst string, prog *core.Task) error {
-	req, _ := http.NewRequest("GET", a.URL, nil)
-	req.Header.Set("User-Agent", core.AppID+"/"+core.AppVersion)
-	resp, err := updateClient(st, 15*time.Minute).Do(req)
-	if err != nil {
-		return fmt.Errorf("下载失败（%s）", core.FriendlyNetErr(err))
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("下载失败（HTTP %d）", resp.StatusCode)
-	}
-	total := a.Size
-	if total <= 0 {
-		total = resp.ContentLength
-	}
 	f, err := os.Create(dst)
 	if err != nil {
-		return err
+		return fmt.Errorf("无法写入更新文件（%v）", err)
 	}
+	defer f.Close()
 	h := sha256.New()
 	var got int64
-	buf := make([]byte, 64<<10)
-	for {
-		n, rerr := resp.Body.Read(buf)
-		if n > 0 {
-			if _, werr := f.Write(buf[:n]); werr != nil {
-				f.Close()
-				return werr
-			}
-			h.Write(buf[:n])
-			got += int64(n)
-			if total > 0 {
-				prog.Set(int(got>>10), int(total>>10), fmt.Sprintf("正在下载 %s / %s", core.FmtMB(got), core.FmtMB(total)))
-			}
-		}
-		if rerr == io.EOF {
+	for fails := 0; ; {
+		before := got
+		again, err := downloadFrom(st, a, f, h, &got, prog)
+		if err == nil || (a.Size > 0 && got == a.Size) { // (cut after the last byte: nothing left to ask for)
 			break
 		}
-		if rerr != nil {
-			f.Close()
-			return fmt.Errorf("下载中断（%s）", core.FriendlyNetErr(rerr))
+		if fails++; got > before {
+			fails = 0 // it moved on: a slow or shaky connection, not a dead one
 		}
+		if !again || fails >= dlTries {
+			return err
+		}
+		core.Logf("更新下载中断，已下载 %s，稍后继续: %v", core.FmtMB(got), err)
+		time.Sleep(dlRetryWait)
 	}
 	if err := f.Close(); err != nil {
-		return err
+		return fmt.Errorf("无法写入更新文件（%v）", err)
 	}
 	if a.Size > 0 && got != a.Size {
 		return fmt.Errorf("下载不完整（%d / %d 字节）", got, a.Size)
@@ -329,6 +332,89 @@ func download(st *core.Store, a *core.UpdateAsset, dst string, prog *core.Task) 
 		return errors.New("下载的文件校验未通过，可能已被篡改，已停止更新")
 	}
 	return nil
+}
+
+// downloadFrom asks for the file from byte *got on and writes what comes after what f already holds.
+// again: worth another try (the connection, not the file, was the problem).
+func downloadFrom(st *core.Store, a *core.UpdateAsset, f *os.File, h hash.Hash, got *int64, prog *core.Task) (again bool, err error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stall := time.AfterFunc(dlStall, cancel)
+	defer stall.Stop()
+	why := func(err error) string {
+		if ctx.Err() != nil {
+			return "连接长时间无响应"
+		}
+		return core.FriendlyNetErr(err)
+	}
+	req, _ := http.NewRequestWithContext(ctx, "GET", a.URL, nil)
+	req.Header.Set("User-Agent", core.AppID+"/"+core.AppVersion)
+	if *got > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", *got))
+	}
+	resp, err := updateClient(st, 0).Do(req)
+	if err != nil {
+		return true, fmt.Errorf("下载失败（%s）", why(err))
+	}
+	defer resp.Body.Close()
+	switch {
+	case resp.StatusCode == 206 && *got > 0 && strings.HasPrefix(resp.Header.Get("Content-Range"), fmt.Sprintf("bytes %d-", *got)):
+		// goes on where it stopped
+	case resp.StatusCode == 200:
+		if *got > 0 { // this server starts over: so does the file
+			if _, err := f.Seek(0, io.SeekStart); err != nil {
+				return false, err
+			}
+			if err := f.Truncate(0); err != nil {
+				return false, err
+			}
+			h.Reset()
+			*got = 0
+		}
+	default:
+		return resp.StatusCode >= 500 || resp.StatusCode == 429, fmt.Errorf("下载失败（HTTP %d）", resp.StatusCode)
+	}
+	total := a.Size
+	if total <= 0 && resp.ContentLength > 0 {
+		total = *got + resp.ContentLength
+	}
+	buf := make([]byte, 64<<10)
+	for {
+		n, rerr := resp.Body.Read(buf)
+		if n > 0 {
+			stall.Reset(dlStall)
+			if _, werr := f.Write(buf[:n]); werr != nil {
+				return false, fmt.Errorf("无法写入更新文件（%v）", werr)
+			}
+			h.Write(buf[:n])
+			*got += int64(n)
+			if total > 0 {
+				prog.Set(int(*got>>10), int(total>>10), fmt.Sprintf("正在下载 %s / %s", core.FmtMB(*got), core.FmtMB(total)))
+			}
+		}
+		if rerr == io.EOF {
+			return false, nil
+		}
+		if rerr != nil {
+			return true, fmt.Errorf("下载中断（%s）", why(rerr))
+		}
+	}
+}
+
+// CleanDownloads removes what earlier updates left in the data folder's "update" folder: installers that
+// were run, packages of updates that failed. One still in use (an installer that has just started this
+// copy) cannot be removed by Windows and goes the next time.
+func CleanDownloads() {
+	dir := filepath.Join(core.DataDir, "update")
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range ents {
+		if n := strings.ToLower(e.Name()); !e.IsDir() && strings.HasPrefix(n, strings.ToLower(core.AppID)+"-") && (strings.HasSuffix(n, ".exe") || strings.HasSuffix(n, ".zip")) {
+			_ = os.Remove(filepath.Join(dir, e.Name()))
+		}
+	}
 }
 
 // exeFromZip writes the program inside a portable zip to dst.

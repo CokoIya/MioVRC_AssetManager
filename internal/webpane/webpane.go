@@ -27,8 +27,15 @@ var NativePane paneNativeAPI
 var errNoPane = errors.New("本机缺少内置浏览器组件（需要 WebView2、Edge 或 Chrome）")
 
 // Links that would open a new window stay in the pane (popups with a size, such as payment windows,
-// still open on their own).
-const paneLinkScript = `(()=>{if(window.__mioPane)return;window.__mioPane=1;
+// still open on their own). On a Jinxxy page, a link to another site leaves for the default browser (see
+// storepane.go; "__JX__" is replaced by the test for such a page) — but not one to a login or a payment page,
+// which has to stay with the page it belongs to.
+const paneLinkSource = `(()=>{if(window.__mioPane)return;window.__mioPane=1;
+document.addEventListener('click',e=>{if(!(__JX__)||typeof window.mioExternal!=='function')return;
+const a=e.target&&e.target.closest&&e.target.closest('a[href]');if(!a||!/^https?:/i.test(a.href||''))return;
+let u;try{u=new URL(a.href)}catch(x){return}
+if(u.origin===location.origin||/(^|\.)(jinxxy|jinxxy-cdn|paypal|stripe)\.com$/i.test(u.hostname)||(/(^|\.)discord\.com$/i.test(u.hostname)&&/^\/(api\/)?(oauth2|login)/.test(u.pathname)))return;
+e.preventDefault();e.stopImmediatePropagation();window.mioExternal(u.href)},true);
 document.addEventListener('click',e=>{const a=e.target&&e.target.closest&&e.target.closest('a[target]');
 if(!a||!/^https?:/i.test(a.href||'')||e.ctrlKey||e.shiftKey||e.metaKey)return;
 const t=(a.getAttribute('target')||'').toLowerCase();if(t&&t!=='_self'&&t!=='_top'&&t!=='_parent'){e.preventDefault();location.href=a.href}},true);
@@ -42,6 +49,8 @@ if(box){const a=box.querySelector('a[href*="/items/"]'),im=/\/items\/(\d+)/.exec
 const row=el.parentElement,f=row&&row.querySelector('.break-all');file=f?f.textContent.trim():'';
 window.mioDownload(JSON.stringify({id:m[1],item,name,file}));const sp=el.querySelector('span')||el;sp.textContent='已加入下载队列';el.style.opacity='.6'},true)})()`
 
+var paneLinkScript = paneScriptFor(core.JinxxyBase())
+
 type webPane struct {
 	Mu       sync.Mutex
 	St       *core.Store
@@ -51,9 +60,13 @@ type webPane struct {
 	target   string
 	shown    bool   // on screen (native: placed and visible; window: a visible window)
 	headless bool   // window mode: started without a window for a quiet login check
-	kind     string // "booth" | "xianyu": which tab the page belongs to
+	kind     string // "booth" | "xianyu" | "jinxxy" …: whose page it is
 	restored int    // the browser (by its port) whose saved logins were put back
 	shownAt  time.Time
+	origins  map[int]string // the page's script contexts (the page itself and its frames) → whose page each is
+	frames   map[int]string // … and the frame each of them runs in (a download names the frame that began it)
+	dlConn   *cdpConn       // the connection on which the browser was told to hand its downloads over (storepane.go)
+	dlDir    string
 }
 
 var Pane = &webPane{}
@@ -237,7 +250,7 @@ func (p *webPane) page() (*cdpConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	p.conn, p.target = c, pick.ID
+	p.conn, p.target, p.origins, p.frames = c, pick.ID, map[int]string{}, map[int]string{}
 	c.onEvent = p.event
 	if p.restored != p.Port { // this browser was just started
 		p.restored = p.Port
@@ -251,8 +264,10 @@ func (p *webPane) page() (*cdpConn, error) {
 	_, _ = c.call("Page.enable", nil, 5*time.Second)
 	_, _ = c.call("Runtime.enable", nil, 5*time.Second)
 	_, _ = c.call("Runtime.addBinding", map[string]any{"name": "mioDownload"}, 5*time.Second)
+	_, _ = c.call("Runtime.addBinding", map[string]any{"name": "mioExternal"}, 5*time.Second)
 	_, _ = c.call("Page.addScriptToEvaluateOnNewDocument", map[string]any{"source": paneLinkScript}, 5*time.Second)
 	_, _ = c.eval(paneLinkScript, false, 3*time.Second)
+	p.downloadMode(c)
 	return c, nil
 }
 
@@ -282,6 +297,7 @@ func (p *webPane) Open(u, kind string, show bool) error {
 	if kind != "" {
 		p.kind = kind
 	}
+	p.downloadMode(c)
 	if show && p.mode == "window" {
 		p.shown, p.shownAt = true, time.Now()
 	}
@@ -337,16 +353,17 @@ func (p *webPane) Shown() bool {
 }
 
 type PaneState struct {
-	Mode    string `json:"mode"`
-	Open    bool   `json:"open"`
-	Shown   bool   `json:"shown"`
-	URL     string `json:"url"`
-	Title   string `json:"title"`
-	Back    bool   `json:"back"`
-	Fwd     bool   `json:"fwd"`
-	Loading bool   `json:"loading"`
-	Kind    string `json:"kind"`
-	DL      int    `json:"dl"` // downloads waiting or running (a click on the page may have added one)
+	Mode    string     `json:"mode"`
+	Open    bool       `json:"open"`
+	Shown   bool       `json:"shown"`
+	URL     string     `json:"url"`
+	Title   string     `json:"title"`
+	Back    bool       `json:"back"`
+	Fwd     bool       `json:"fwd"`
+	Loading bool       `json:"loading"`
+	Kind    string     `json:"kind"`
+	DL      int        `json:"dl"`              // downloads waiting or running (a click on the page may have added one)
+	Files   []PaneFile `json:"files,omitempty"` // files the pane's browser downloaded for the library (storepane.go)
 }
 
 type navHistory struct {
@@ -372,6 +389,12 @@ func (p *webPane) history() (*navHistory, error) {
 
 func (p *webPane) State() PaneState {
 	s := PaneState{Mode: PaneMode(), DL: PaneDownloadsLeft()}
+	s.Files = PaneFiles()
+	for _, f := range s.Files {
+		if f.Status == "running" || f.Status == "saving" {
+			s.DL++
+		}
+	}
 	p.Mu.Lock()
 	running := p.Port > 0 && !p.headless
 	s.Kind = p.kind
@@ -456,21 +479,129 @@ func (p *webPane) Act(act string) (string, error) {
 	return "", errors.New("未知操作")
 }
 
+// boothOrigin: a page of booth.pm or one of its shops (in tests: of the stand-in for it).
+func boothOrigin(origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	h := strings.ToLower(u.Hostname())
+	if u.Scheme == "https" && (h == "booth.pm" || strings.HasSuffix(h, ".booth.pm")) {
+		return true
+	}
+	for _, base := range []string{core.BoothWebBase(), core.BoothAccountsBase(), core.BoothDLBase()} { // other hosts only in tests
+		if b, err := url.Parse(base); err == nil && !strings.HasSuffix(b.Hostname(), "booth.pm") && b.Scheme == u.Scheme && b.Host == u.Host {
+			return true
+		}
+	}
+	return false
+}
+
+// downloadID: Booth's ids are numbers.
+func downloadID(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return s != "" && len(s) <= 20
+}
+
 // event: DevTools events of the pane's page. A download button clicked on a Booth page goes into the
 // program's own downloads (unpacked into the library) instead of the browser's.
 func (p *webPane) event(method string, params json.RawMessage) {
+	switch method {
+	case "Runtime.executionContextCreated":
+		var e struct {
+			Context struct {
+				ID     int    `json:"id"`
+				Origin string `json:"origin"`
+				Aux    struct {
+					Frame string `json:"frameId"`
+				} `json:"auxData"`
+			} `json:"context"`
+		}
+		if json.Unmarshal(params, &e) == nil && e.Context.ID != 0 {
+			p.Mu.Lock()
+			if p.origins != nil {
+				p.origins[e.Context.ID] = e.Context.Origin
+			}
+			if p.frames != nil && e.Context.Aux.Frame != "" {
+				p.frames[e.Context.ID] = e.Context.Aux.Frame
+			}
+			p.Mu.Unlock()
+		}
+		return
+	case "Runtime.executionContextDestroyed":
+		var e struct {
+			ID int `json:"executionContextId"`
+		}
+		if json.Unmarshal(params, &e) == nil {
+			p.Mu.Lock()
+			delete(p.origins, e.ID)
+			delete(p.frames, e.ID)
+			p.Mu.Unlock()
+		}
+		return
+	case "Runtime.executionContextsCleared":
+		p.Mu.Lock()
+		if p.origins != nil {
+			p.origins = map[int]string{}
+		}
+		if p.frames != nil {
+			p.frames = map[int]string{}
+		}
+		p.Mu.Unlock()
+		return
+	}
+	if method == "Browser.downloadWillBegin" || method == "Browser.downloadProgress" {
+		p.downloadEvent(method, params)
+		return
+	}
 	if method != "Runtime.bindingCalled" || p.St == nil {
 		return
 	}
-	var b struct{ Name, Payload string }
+	var b struct {
+		Name, Payload string
+		Ctx           int `json:"executionContextId"`
+	}
+	if json.Unmarshal(params, &b) == nil && b.Name == "mioExternal" {
+		p.externalClicked(b.Ctx, b.Payload)
+		return
+	}
 	if json.Unmarshal(params, &b) != nil || b.Name != "mioDownload" {
 		return
 	}
 	var d struct{ ID, Item, Name, File string }
-	if json.Unmarshal([]byte(b.Payload), &d) != nil || d.ID == "" {
+	if json.Unmarshal([]byte(b.Payload), &d) != nil || !downloadID(d.ID) {
+		return
+	}
+	if d.Item != "" && !downloadID(d.Item) {
+		d.Item = ""
+	}
+	// every page in the pane can call the binding (闲鱼, the netdisk, a frame inside a Booth page): only a
+	// Booth page's call counts. Asked of the page by its script context; of the pane's address when that
+	// context is not known.
+	p.Mu.Lock()
+	origin, known := p.origins[b.Ctx]
+	p.Mu.Unlock()
+	if !known || origin == "" {
+		origin = p.currentURL()
+	}
+	if !boothOrigin(origin) {
+		core.Logf("内置页面：已忽略非 Booth 页面发起的下载请求")
 		return
 	}
 	PaneDownloadClicked(p.St, d.ID, d.Item, d.Name, d.File)
+}
+
+// currentURL: where the pane's page is ("" when it cannot be told).
+func (p *webPane) currentURL() string {
+	h, err := p.history()
+	if err != nil || h.CurrentIndex < 0 || h.CurrentIndex >= len(h.Entries) {
+		return ""
+	}
+	return h.Entries[h.CurrentIndex].URL
 }
 
 // Cookies of the pane's profile for these sites.
@@ -524,7 +655,7 @@ func (p *webPane) ForgetSites(suffixes []string) error {
 //     it is ended abruptly.
 // How long a login is good for is still up to the site.
 
-var keepLoginSites = []string{"goofish.com", "taobao.com", "booth.pm", "pixiv.net", "baidu.com", "gumroad.com"}
+var keepLoginSites = []string{"goofish.com", "taobao.com", "booth.pm", "pixiv.net", "baidu.com", "gumroad.com", "jinxxy.com"}
 
 const keepLoginFor = 180 * 24 * time.Hour
 
@@ -535,7 +666,7 @@ func keepLoginSite(domain string) bool {
 			return true
 		}
 	}
-	for _, base := range []string{XianyuBase(), core.BoothWebBase(), core.PanBase(), core.GumroadBase()} { // other hosts only in tests
+	for _, base := range []string{XianyuBase(), core.BoothWebBase(), core.PanBase(), core.GumroadBase(), core.JinxxyBase()} { // other hosts only in tests
 		if u, err := url.Parse(base); err == nil && u.Hostname() == d {
 			return true
 		}
@@ -758,8 +889,9 @@ func (p *webPane) CloseHidden() {
 // ---------- the pane as the Booth sync window ----------
 
 type PaneDriver struct {
-	Start time.Time
-	seen  bool // the player had the pane on screen during this sync
+	Start  time.Time
+	seen   bool      // the player had the pane on screen during this sync
+	hidden time.Time // since when it is off screen
 }
 
 func (d *PaneDriver) conn() (*cdpConn, error) {
@@ -803,17 +935,39 @@ func (d *PaneDriver) CloseBrowser() {}
 
 func (d *PaneDriver) Cookies(urls []string) ([]core.SavedCookie, error) { return Pane.Cookies(urls) }
 
-// userLeft: the player closed the pane while the sync was still waiting for the login.
-func (d *PaneDriver) userLeft() bool {
+// UserLeft: the player closed the pane while the sync was still waiting for the login.
+func (d *PaneDriver) UserLeft() bool { return paneLeft("booth", d.Start, &d.seen, &d.hidden) }
+
+// PaneWatch: is the player still on the page a login is waited for on?
+type PaneWatch struct {
+	Kind   string // the tab the page was opened for
+	Start  time.Time
+	seen   bool
+	hidden time.Time
+}
+
+// Left: the page area went over to another tab, or the player closed the pane (or never opened it).
+func (w *PaneWatch) Left() bool { return paneLeft(w.Kind, w.Start, &w.seen, &w.hidden) }
+
+// paneAway: a pane off screen for this long was closed; for less, a dialog or the details panel was over it.
+var paneAway = 8 * time.Second
+
+func paneLeft(kind string, start time.Time, seen *bool, hidden *time.Time) bool {
 	Pane.Mu.Lock()
-	other := Pane.kind == "xianyu" || Pane.kind == "pan" // the page area went over to 闲鱼 or the netdisk
+	other := Pane.kind != "" && Pane.kind != kind // the page area went over to 闲鱼, the netdisk …
 	Pane.Mu.Unlock()
 	if other {
 		return true
 	}
 	if Pane.Shown() {
-		d.seen = true
+		*seen, *hidden = true, time.Time{}
 		return false
 	}
-	return d.seen || time.Since(d.Start) > 15*time.Second
+	if !*seen {
+		return time.Since(start) > 15*time.Second
+	}
+	if hidden.IsZero() {
+		*hidden = time.Now()
+	}
+	return time.Since(*hidden) > paneAway
 }

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/jchv/go-webview2"
 	"os"
 	"path/filepath"
@@ -26,6 +27,7 @@ var (
 	procSetForegroundWindow = core.ModUser32.NewProc("SetForegroundWindow")
 	procGetDpiForSystem     = core.ModUser32.NewProc("GetDpiForSystem")
 	procSystemParamsInfo    = core.ModUser32.NewProc("SystemParametersInfoW")
+	procMessageBoxW         = core.ModUser32.NewProc("MessageBoxW")
 )
 
 // focusExistingWindow brings an already open library window to the front.
@@ -51,8 +53,8 @@ func focusExistingWindow() bool {
 type rect struct{ Left, Top, Right, Bottom int32 }
 
 // windowSize picks a comfortable first size: 1440×900 at 100 % scaling, never more than 92 % of the
-// screen's free area.
-func windowSize() (uint, uint) {
+// screen's free area. The scaling comes back too (96 = 100 %).
+func windowSize() (uint, uint, int) {
 	dpi := uintptr(96)
 	if procGetDpiForSystem.Find() == nil {
 		if d, _, _ := procGetDpiForSystem.Call(); d >= 96 {
@@ -69,7 +71,27 @@ func windowSize() (uint, uint) {
 			h = mh
 		}
 	}
-	return uint(w), uint(h)
+	return uint(w), uint(h), int(dpi)
+}
+
+// confirmClose: closing the window ends the program and the downloads under way with it, so that is asked
+// first (否 is the default button). True: close.
+func confirmClose(hwnd uintptr) bool {
+	n := core.Downloading.Load()
+	if n <= 0 {
+		return true
+	}
+	title, _ := syscall.UTF16PtrFromString(windowTitle)
+	// (a system message box: not the page's, so its other languages stand here)
+	ask := map[string]string{"en": "%d download(s) are still running. Closing stops them, and unfinished files have to be downloaded again next time.\n\nClose anyway?",
+		"ja": "ダウンロードが %d 件残っています。閉じると中断され、未完了のファイルは次回ダウンロードし直す必要があります。\n\n閉じてもよろしいですか？"}[uiLang()]
+	if ask == "" {
+		ask = "仍有 %d 个下载任务未完成，关闭后将中断，下次需重新下载未完成的文件。\n\n确定要关闭吗？"
+	}
+	text, _ := syscall.UTF16PtrFromString(fmt.Sprintf(ask, n))
+	const mbYesNo, mbIconWarning, mbDefButton2, idNo = 0x4, 0x30, 0x100, 7
+	r, _, _ := procMessageBoxW.Call(hwnd, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(title)), mbYesNo|mbIconWarning|mbDefButton2)
+	return r != idNo // 是 — or the box could not be shown, which must not keep the window open for ever
 }
 
 // runNativeWindow shows the UI in the app's own window and returns when the user closes it.
@@ -84,7 +106,7 @@ func runNativeWindow(url string) bool {
 	if base == "" {
 		base = core.DataDir
 	}
-	w, h := windowSize()
+	w, h, dpi := windowSize()
 	wv := webview2.NewWithOptions(webview2.WebViewOptions{
 		AutoFocus: true,
 		DataPath:  filepath.Join(core.AppDataFolder(base), "WebView2"),
@@ -101,9 +123,20 @@ func runNativeWindow(url string) bool {
 	if !webview2.IconLoaded {
 		core.Logf("窗口图标没有加载到（exe 里的图标资源读不出来）")
 	}
+	nativeUI.Store(true)
 	webpane.NativePane = &webpane.WinPane{Wv: wv} // Booth / 闲鱼 pages open inside this window
 	webview2.MoveHook = webpane.PaneParentMoved
-	wv.SetSize(int(w)*55/100, int(h)*60/100, webview2.HintMin)
+	hwnd, asking := uintptr(wv.Window()), false // asking: only touched on this thread, by the window's messages
+	webview2.CloseHook = func() bool {
+		if asking {
+			return false // the question is on screen already
+		}
+		asking = true
+		defer func() { asking = false }()
+		return confirmClose(hwnd)
+	}
+	minW, minH := minWindowSize(int(w), int(h), dpi)
+	wv.SetSize(minW, minH, webview2.HintMin)
 	wv.Navigate(url)
 	wv.Run()
 	return true

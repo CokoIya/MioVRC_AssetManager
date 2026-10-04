@@ -30,6 +30,9 @@ var (
 	ReGenericKey = regexp.MustCompile(`^(材质|材料|道具|衣服|服装|衣装|头发|发型|配饰|饰品|素体|模型|插件|系统|动作|音效|字体|其他|其它|贴图|纹理|妆容|素材|资源|新建文件夹|新しいフォルダー|newfolder|备份|测试|更新|归总|合集|整合|特典|bonus|dlc|materials?|textures?|psd|fbx|prefabs?|unitypackages?|readme|tools?|hair|clothe?s?|outfits?|accessor(y|ies)|props?|plugins?|others?|misc|assets?|new|update[sd]?|fix(ed)?|最新|修复|版|年|月|日|号)+$`)
 	ReStructural = regexp.MustCompile(`^(fbx|blend|textures?|tex|materials?|mat|psd|prefabs?|unitypackages?|readme|docs?|documents?|説明書|说明|manual|uv|uvmap|animations?|anim|meshe?s?|models?|images?|画像|samples?|preview|thumbnails?|サムネ|その他|others?|extra|bonus|特典|terms|规约|利用規約|shaders?|scripts?|editor|sounds?|audio|icons?|menu|expressions?|fx|data|source|src|assets|resources|png|tga|masks?|normal(map)?|emission|matcap|spec|liltoon|body|face|costume|kaihen_tips)$`)
 	ReCollection = regexp.MustCompile(`合集|合辑|全家桶|collection|大全`)
+	// compiled once: these are used for every card, every time the window asks for the library
+	reDigits  = regexp.MustCompile(`[0-9]+`)
+	reNameSep = regexp.MustCompile(`[\s_\-.]+`)
 )
 
 func BoothIDFromName(name string) string {
@@ -70,7 +73,7 @@ func CleanName(n string) string {
 // IsGenericName: names like "材质", "衣服头发", "12月26日更新" that say nothing about the product.
 func IsGenericName(n string) bool {
 	k := NormKey(n)
-	k = regexp.MustCompile(`[0-9]+`).ReplaceAllString(k, "")
+	k = reDigits.ReplaceAllString(k, "")
 	k = strings.ReplaceAll(k, "version", "")
 	k = strings.ReplaceAll(k, "ver", "")
 	if k == "" || k == "v" {
@@ -97,7 +100,7 @@ func CommonChildPrefix(names []string) string {
 		if IsGenericName(c) || IsStructuralName(c, "") {
 			continue
 		}
-		toks := regexp.MustCompile(`[\s_\-.]+`).Split(strings.TrimSpace(c), -1)
+		toks := reNameSep.Split(strings.TrimSpace(c), -1)
 		var t []string
 		for _, x := range toks {
 			if x != "" {
@@ -138,7 +141,7 @@ func CommonChildPrefix(names []string) string {
 
 // IsCategoryWordName: a folder named only by category words ("衣服", "头发", "更新归总"), not just digits.
 func IsCategoryWordName(n string) bool {
-	k := regexp.MustCompile(`[0-9]+`).ReplaceAllString(NormKey(n), "")
+	k := reDigits.ReplaceAllString(NormKey(n), "")
 	return k != "" && ReGenericKey.MatchString(k)
 }
 

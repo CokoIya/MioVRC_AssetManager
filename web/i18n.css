@@ -1,0 +1,82 @@
+/* the interface in other languages (loaded by i18n.js, not in Chinese): what does not fit as it is in Chinese */
+
+/* a rank is said in English already: not twice; and its chip is wider than two Chinese characters */
+.ckrank .en { display: none; }
+.ckline { grid-template-columns: 8px minmax(0, 1fr) auto 72px 78px; }
+.ckfig { grid-template-columns: minmax(0, 1fr) auto 48px 78px; }
+.ckd .ckfig { grid-template-columns: minmax(0, 1fr) auto 78px; }
+.ckd .ckline { grid-template-columns: 8px minmax(0, 1fr) auto 56px 78px; }
+
+/* the buttons beside the pipeline's text box: as wide as their words */
+.aibtns { width: auto; min-width: 104px; }
+.aibtns > .btn { white-space: nowrap; }
+
+/* the pipeline's side panel: a button that does not fit beside what it belongs to goes below it; links may take two lines */
+.toolrow { flex-wrap: wrap; row-gap: 4px; }
+.toolrow .v { flex: 1 1 auto; }
+.toolrow .btn.small { margin-left: auto; }
+.sidelinks .navitem > span { white-space: normal; }
+@media (min-width: 861px) { html[lang=ja] .side { width: 252px; } } /* フェイストラッキング */
+
+/* the wish list: the column of 在售 / 已下架, in longer words */
+@media (min-width: 1101px) { .wlrow { grid-template-columns: 72px minmax(0, 1fr) minmax(120px, auto) 96px auto; } }
+
+/* a netdisk card's summary: "Compatible bases" is wider than the Chinese label's column */
+html[lang=en] .pansum .k { width: 116px; }
+
+/* the password box of an import keeps its hint whole */
+.impopts input:not([type]) { min-width: 230px; }
+
+/* the update notes and the change log stay as they are written */
+.upnotes::before, ul.wn:first-of-type::before { display: block; margin: 0 0 6px; color: var(--faint); font-size: 12px; }
+ul.wn:first-of-type::before { margin-left: -1.2em; }
+html[lang=en] .upnotes::before, html[lang=en] ul.wn:first-of-type::before { content: "The notes below are in Chinese."; }
+html[lang=ja] .upnotes::before, html[lang=ja] ul.wn:first-of-type::before { content: "以下の更新内容は中国語で書かれています。"; }
+
+/* The header. The tabs are longer words than in Chinese, so each step of app.css's "Narrow windows" comes earlier,
+   and under 800 px the tabs' letters and at last the brand's icon give way: the row fits down to 720 px on every
+   view, with the update button too. */
+@media (max-width: 1280px) {
+  html[lang=en] .top .btn.update { width: 38px; padding: 0; }
+  html[lang=en] .top .btn.update > span { display: none; }
+  html[lang=en] .top .btn.update > svg { display: block; }
+}
+@media (max-width: 1060px) { html[lang=en] .top select { width: 96px; padding: 0 6px 0 8px; text-overflow: ellipsis; } }
+@media (max-width: 960px) { html[lang=en] .brand span { display: none; } }
+@media (max-width: 900px) { html[lang=en] .views button { padding: 0 8px; } }
+@media (max-width: 860px) {
+  html[lang=en] .top { gap: 6px; padding: 0 12px; }
+  html[lang=en] .views button { padding: 0 7px; font-size: 13px; }
+  html[lang=en] .top select { width: 80px; }
+}
+@media (max-width: 800px) { html[lang=en] .views button { padding: 0 5px; font-size: 12px; } }
+@media (max-width: 760px) { html[lang=en] .brand { display: none; } }
+
+@media (max-width: 1400px) {
+  html[lang=ja] .top .btn.update { width: 38px; padding: 0; }
+  html[lang=ja] .top .btn.update > span { display: none; }
+  html[lang=ja] .top .btn.update > svg { display: block; }
+}
+@media (max-width: 1300px) {
+  html[lang=ja] .top .btn.fold { width: 38px; padding: 0; }
+  html[lang=ja] .top .btn.fold > span { display: none; }
+  html[lang=ja] .top .btn.fold > svg { display: block; }
+}
+@media (max-width: 1180px) { html[lang=ja] .top select { width: 96px; padding: 0 6px 0 8px; text-overflow: ellipsis; } }
+@media (max-width: 1040px) { html[lang=ja] .brand span { display: none; } }
+@media (max-width: 940px) {
+  html[lang=ja] .top { gap: 8px; padding: 0 12px; }
+  html[lang=ja] .views button { padding: 0 8px; }
+}
+@media (max-width: 860px) {
+  html[lang=ja] .top { gap: 6px; }
+  html[lang=ja] .views button { padding: 0 7px; font-size: 13px; }
+  html[lang=ja] .top select { width: 80px; }
+}
+@media (max-width: 840px) { html[lang=ja] .views button { padding: 0 5px; font-size: 12px; } }
+@media (max-width: 800px) { html[lang=ja] .brand { display: none; } }
+@media (max-width: 760px) {
+  html[lang=ja] .top { gap: 4px; }
+  html[lang=ja] .views button { padding: 0 4px; }
+  html[lang=ja] .top select { width: 56px; }
+}

@@ -1,0 +1,126 @@
+# What test/i18n_harvest.py leaves out of the Go and C# lists: Chinese literals that never reach the page.
+#   func <file> <function or top-level name>   everything in it
+#   text <file> <how the literal starts>       one literal
+#   file <file>                                the whole file
+# A reason follows after " #".
+
+# ---- said to the AI model, not to the player ----
+func internal/ai/aiagent.go aiPromptText # the system prompt
+func internal/ai/aiagent.go avatarArg # a tool's description
+func internal/ai/aiagent.go inspectForAI # what a tool call answers the model with
+func internal/ai/aiagent.go agedMark
+func internal/ai/aiagent.go cutAnswer
+func internal/ai/aiagent.go badAnswer
+func internal/ai/aiagent.go ageResults
+func internal/ai/aiagent.go mendTurns
+func internal/ai/aiagent.go langNote # the line that tells the model which language to answer in
+text internal/ai/aiagent.go 错误： # the tool result as the model gets it; the player reads err.Error()
+text internal/ai/aiagent.go 玩家没有同意执行这个操作
+text internal/ai/aiagent.go 玩家停止了这次操作
+text internal/ai/aiagent.go \n（没有拿到截图的图片数据
+text internal/ai/ai.go 只回复两个字 # the test message sent to the model
+text internal/ai/ai.go （上面工具结果里说的截图
+text internal/ai/ai.go （没有内容）
+func internal/ai/aivision.go describePrompt
+func internal/ai/aivision.go aiSeesTest
+func internal/ai/aivision.go probeImage
+func internal/ai/aivision.go describeImages
+func internal/ai/aivision.go agePictures
+func internal/ai/aivision.go dropPictures
+func internal/ai/aivision.go takeImages
+text internal/ai/aivision.go 你没有看到画面
+text internal/ai/aivision.go （玩家关掉了识图
+text internal/ai/aivision.go 请玩家自己看截图
+text internal/ai/aivision.go 截图附在后面
+text internal/ai/aivision.go （你现在用的模型（
+text internal/ai/aivision.go ）看不了图
+text internal/ai/aivision.go 告诉玩家：
+text internal/ai/aivision.go 你自己看不了图
+text internal/ai/aivision.go ）对这些截图的描述
+text internal/ai/aivision.go （请同一家的视觉模型
+text internal/ai/aivision.go  来看图，但它没有回答
+text internal/ai/aivision.go 。截图已经显示给玩家
+text internal/ai/aivision.go （视觉模型没有回答
+text internal/ai/aivision.go 错误：
+func internal/unity/checkup.go TextForAI
+func internal/unity/checkup.go text
+func internal/unity/checkup.go valueText
+func internal/unity/checkup.go rankZh
+func internal/unity/unitybridge.go Clip
+text unityhelper/com.miovrc.pipeline/Editor/Bridge.cs 新场景已保存，里面放好了 # a tool result's note, for the model
+text unityhelper/com.miovrc.pipeline/Editor/Bridge.cs 」（还有默认的相机和灯光）
+text unityhelper/com.miovrc.pipeline/Editor/Dresser.cs 场景没有保存；Ctrl+Z 可以撤销
+text unityhelper/com.miovrc.pipeline/Editor/MenuBuilder.cs 场景没有保存；Ctrl+Z 可以撤销
+text unityhelper/com.miovrc.pipeline/Editor/Snapshot.cs Play 模式里的画面
+text unityhelper/com.miovrc.pipeline/Editor/Snapshot.cs 编辑模式里的画面
+text unityhelper/com.miovrc.pipeline/Editor/AvatarInspect.cs (缺失脚本)
+
+# ---- words written into the avatar's menu: their other languages are in internal/ai/labels.go ----
+func internal/ai/labels.go menuWords
+func internal/ai/labels.go hierWords
+func internal/ai/labels.go langNote
+func internal/ai/aiagent.go partRank
+func internal/ai/aiagent.go kindCategory
+func internal/ai/ai.go defaultHierarchy
+func internal/ai/ai.go oldHierarchy
+func internal/ai/pipeline.go stripLabel
+text internal/ai/pipeline.go 原装头发
+text internal/ai/pipeline.go 原版皮肤
+text internal/ai/pipeline.go 穿上
+text internal/ai/pipeline.go 戴上
+text internal/ai/pipeline.go 配色
+text internal/ai/pipeline.go 饰品
+text unityhelper/com.miovrc.pipeline/Editor/MenuBuilder.cs 主菜单
+
+# ---- words looked for in names, tables of rules ----
+func internal/ai/aiagent.go partWords
+func internal/ai/aiagent.go categoryWords
+func internal/ai/aiagent.go parseHierarchy
+func internal/ai/aiagent.go menuPath
+func internal/ai/aiagent.go hierarchyLevels
+func internal/ai/aiagent.go tidyAssets
+func internal/ai/pipeline.go groupParts
+func internal/ai/pipeline.go hairPartOf
+func internal/ai/pipeline.go kindOrder
+func internal/ai/pipeline.go pluginKinds
+func internal/ai/pipeline.go libraryBases
+func internal/ai/projassets.go kindWords
+func internal/ai/projassets.go guessKind
+func internal/ai/recipe.go recipeItemOf
+func internal/booth/boothmatch.go stopWords
+func internal/core/model.go DefaultStyles # "name=keywords" rows: the names are in the dictionaries
+func internal/core/store.go DefaultSettings
+func internal/core/setup.go FormerNames
+func internal/core/setup.go legacyName
+func internal/library/boothshop.go ShopCats # labels (in the dictionaries) with the Japanese words Booth is searched by
+func internal/library/scan.go coverScore
+func internal/library/views.go keywordWins
+file internal/naming/names.go
+file internal/naming/bases.go
+text internal/core/sys_windows_ui.go 卸载.exe
+text internal/core/setup.go VRChat素材 # folder names looked for on first run
+text internal/core/setup.go VRC素材
+func internal/ai/ai.go overflow # words looked for in a service's error
+func internal/ai/ai.go noPictures
+func internal/ai/ai.go busy
+
+# ---- written elsewhere than the page ----
+text cmd/miovrca/window_windows.go 仍有 # a system message box: its other languages stand beside it
+text cmd/miovrca/window_windows.go ダウンロードが
+func internal/unity/unitybridge.go writeSkillsPackage # a readme file in the project
+text internal/unity/projectnew.go MioVRCA 正在创建该工程 # a marker file in the project
+func internal/webpane/webpane.go paneLinkSource # scripts for the pages inside the program
+func internal/webpane/webpane.go boothDLSource
+func internal/server/feedback.go feedbackInfo # what a feedback mail carries, for the author
+text internal/server/feedback.go 反馈
+text internal/server/feedback.go \n\n联系方式
+text internal/server/feedback.go 类型
+text internal/server/feedback.go 匿名玩家
+file unityhelper/com.miovrc.projectcard/Editor/ProjectCover.cs # the cover plugin's own log
+
+# ---- the page's own: not texts ----
+text web/app.js {}月{}日 {}:{} # fmtTime: i18n.js reads times itself
+
+# ---- written into the player's own notes, in the window's language; never the page's own text ----
+text internal/library/konoasset.go 依赖素材： # the dependencies line of a KonoAsset memo (Chinese window)
+text internal/library/konoasset.go 依存アセット： # the same line for a Japanese window

@@ -18,8 +18,10 @@ func FakeUnity(t *testing.T, project string, answer func(cmd string, args map[st
 	dir := unity.BridgeDir(project)
 	_ = os.MkdirAll(dir, 0755)
 	_ = os.MkdirAll(filepath.Join(project, "Packages", unity.PipePkg), 0755)
-	alive := func() {
-		_ = os.WriteFile(filepath.Join(dir, "alive.json"), []byte(`{"bridge":"`+unity.EmbeddedPipelineVersion()+`","pid":1,"ma":"1.18.3","sdk":true,"skills":{"installed":true,"running":false}}`), 0644)
+	alive := func() { // swapped in whole, as the plugin does: a reader never finds half a file
+		tmp := filepath.Join(dir, "alive.tmp")
+		_ = os.WriteFile(tmp, []byte(`{"bridge":"`+unity.EmbeddedPipelineVersion()+`","pid":1,"ma":"1.18.3","sdk":true,"skills":{"installed":true,"running":false}}`), 0644)
+		_ = os.Rename(tmp, filepath.Join(dir, "alive.json"))
 	}
 	alive()
 	done := make(chan struct{})
