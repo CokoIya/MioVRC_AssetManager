@@ -328,6 +328,17 @@ func TestStudioLaunchOnce(t *testing.T) {
 	if n := count(1); n != 1 {
 		t.Errorf("a second Unity was started: %d starts", n)
 	}
+	// that Unity opened the project since and is gone again (closed, or crashed): started again at once
+	startMu.Lock()
+	startedAt[core.PathKey(p)] = time.Now().Add(-10 * time.Second)
+	startMu.Unlock()
+	_ = os.WriteFile(filepath.Join(p, "Library", "LastSceneManagerSetup.txt"), []byte("x"), 0644)
+	if note, err = OpenStudio(p, "zh"); err != nil || note != "正在打开 Unity，打开后自动进入摄影棚" {
+		t.Errorf("after a close: %q %v", note, err)
+	}
+	if n := count(2); n != 2 {
+		t.Errorf("not started again after Unity closed: %d starts", n)
+	}
 	// long enough ago (that Unity never opened the project): started again
 	startMu.Lock()
 	startedAt[core.PathKey(p)] = time.Now().Add(-unityStartWait - time.Second)
@@ -335,7 +346,7 @@ func TestStudioLaunchOnce(t *testing.T) {
 	if note, err = OpenStudio(p, "zh"); err != nil || note != "正在打开 Unity，打开后自动进入摄影棚" {
 		t.Errorf("later: %q %v", note, err)
 	}
-	if n := count(2); n != 2 {
+	if n := count(3); n != 3 {
 		t.Errorf("not started again: %d starts", n)
 	}
 }

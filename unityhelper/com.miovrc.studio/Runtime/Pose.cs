@@ -250,6 +250,7 @@ namespace MioVRCA.Studio
 
         // Sets muscles through HumanPoseHandler, but only the bones `only` accepts change (all bones when null): the
         // others, and the hips position unless setBody, are put back as they were. The model is updated.
+        // bodyPosition / bodyRotation (used with setBody): relative to the root, as SetHumanPose takes them (BodyToRoot).
         public void SetMuscles(float[] muscles, Vector3 bodyPosition, Quaternion bodyRotation, bool setBody, Predicate<HumanBodyBones> only)
         {
             if (muscles == null || !Ready) return;
@@ -269,6 +270,7 @@ namespace MioVRCA.Studio
                     humanPose.bodyPosition = bodyPosition;
                     humanPose.bodyRotation = bodyRotation;
                 }
+                else BodyToRoot(ref humanPose.bodyPosition, ref humanPose.bodyRotation); // the body stays as it is
                 h.SetHumanPose(ref humanPose);
 
                 // the round trip through muscles is not exact: bones that should not change get their rotation back
@@ -292,9 +294,11 @@ namespace MioVRCA.Studio
             }
         }
 
-        // HumanPose has the body (its centre and facing) in world space, the position divided by the human scale. A
-        // pose slot keeps it relative to the avatar's root instead (scaled the same way), so that another avatar gets
-        // it at its own place and facing. Both return false, and change nothing, when the root or scale is unusable.
+        // GetHumanPose gives the body (its centre and facing) in world space, the position divided by the human scale,
+        // but SetHumanPose takes it relative to the root, scaled the same way (Unity's docs for the two; a plain get
+        // and set moves an avatar that is not at the origin). This turns the first into the second. A pose slot keeps
+        // the body so, and another avatar then gets it at its own place and facing. Returns false, and changes
+        // nothing, when the root or scale is unusable.
         internal bool BodyToRoot(ref Vector3 position, ref Quaternion rotation)
         {
             Transform root;
@@ -302,16 +306,6 @@ namespace MioVRCA.Studio
             if (!BodyFrame(out root, out scale)) return false;
             position = root.InverseTransformPoint(position * scale) / scale;
             rotation = Normalized(Quaternion.Inverse(root.rotation) * rotation);
-            return true;
-        }
-
-        internal bool BodyFromRoot(ref Vector3 position, ref Quaternion rotation)
-        {
-            Transform root;
-            float scale;
-            if (!BodyFrame(out root, out scale)) return false;
-            position = root.TransformPoint(position * scale) / scale;
-            rotation = Normalized(root.rotation * rotation);
             return true;
         }
 
@@ -587,12 +581,10 @@ namespace MioVRCA.Studio
             else
             {
                 var muscles = (float[])s.muscles.Clone();
-                Vector3 bodyPosition = s.bodyPosition;
-                Quaternion bodyRotation = PoseModel.Normalized(s.bodyRotation);
-                // A body kept in world space (an older file) is where the other avatar stood in the scene: this one
-                // then keeps its own body place and facing and takes only the muscles.
-                bool setBody = s.bodyInRoot && m.BodyFromRoot(ref bodyPosition, ref bodyRotation);
-                m.SetMuscles(muscles, bodyPosition, bodyRotation, setBody, null);
+                // The body is kept relative to the root, as SetHumanPose takes it. A body kept in world space (an
+                // older file) is where the other avatar stood in the scene: this one then keeps its own body place
+                // and facing and takes only the muscles.
+                m.SetMuscles(muscles, s.bodyPosition, PoseModel.Normalized(s.bodyRotation), s.bodyInRoot, null);
             }
             return true;
         }
