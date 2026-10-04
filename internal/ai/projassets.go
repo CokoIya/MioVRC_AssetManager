@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"io/fs"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"vrclib/internal/core"
+	"vrclib/internal/library"
 	"vrclib/internal/naming"
 	"vrclib/internal/unity"
 )
@@ -18,16 +20,50 @@ import (
 type ProjAsset struct {
 	Folder  string `json:"folder"`           // Assets/<shop>/<item>
 	Name    string `json:"name"`             // the library's name for it, else the folder's
-	Kind    string `json:"kind"`             // 素体, 衣服, 头发, 配饰, 道具, 其他
+	Kind    string `json:"kind"`             // one of pipelineKinds, or 其他
 	Key     string `json:"key,omitempty"`    // library asset
 	Prefabs int    `json:"prefabs"`          // .prefab files under the folder
 	Source  string `json:"source,omitempty"` // how it was tied to the library: 匹配 (GUIDs), 导入 (this program put it there)
 	Avatar  bool   `json:"avatar,omitempty"` // a whole avatar is among its prefabs (Unity said)
 	MAReady bool   `json:"maReady,omitempty"`
 	Worn    bool   `json:"worn,omitempty"` // an instance of one of its prefabs is on the avatar
+	// the base bodies the library says it is made for, and whether a prefab of it carries face tracking (Unity said)
+	Bases []string `json:"bases,omitempty"`
+	FT    bool     `json:"faceTracking,omitempty"`
 }
 
-var pipelineKinds = []string{"素体", "衣服", "头发", "配饰", "道具"}
+// the kinds the line knows, in the order the list shows them
+var pipelineKinds = []string{"素体", "衣服", "头发", "皮肤", "表情", "配饰", "道具", "光影", "互动", "面捕"}
+
+// What a name says about the kinds the library has no category of its own for: there a skin is 材质, an
+// expression pack 动作 or 其他, a lighting control and an interaction gimmick 插件.
+var kindWords = []struct {
+	kind string
+	re   *regexp.Regexp
+}{
+	{"面捕", regexp.MustCompile(`face[ _-]?track|facial[ _-]?track|面捕|面部追踪|面部捕捉|フェイストラッキング|triturbo`)},
+	{"皮肤", regexp.MustCompile(`皮肤|肌|素肌|skin|スキン|body ?tex|ボディテクスチャ`)},
+	{"表情", regexp.MustCompile(`表情|expression|facial|フェイシャル|emotion`)},
+	{"光影", regexp.MustCompile(`pcss|光影|阴影|灯光|亮度|shadow|(^|[^a-z])lights?([^a-z]|$)|light ?control|lighting|self ?light|ライト`)},
+	{"互动", regexp.MustCompile(`互动|(^|[^a-z])(sps|pcs|dps|tps)([^a-z]|$)|insertial|contact ?system|penetrat|亲吻|kiss|摸头|head ?pat|なでなで|触摸`)},
+}
+
+// guessKind: the pipeline's kind for an asset, by its library category and what its name says.
+func guessKind(name, cat string) string {
+	switch cat {
+	case "素体", "衣服", "头发", "配饰", "道具", "面捕":
+		return cat
+	case "音效", "字体":
+		return "其他"
+	}
+	low := strings.ToLower(name)
+	for _, k := range kindWords {
+		if k.re.MatchString(low) {
+			return k.kind
+		}
+	}
+	return "其他"
+}
 
 // folders under Assets that are tools, not assets
 var skipAssetDirs = map[string]bool{"vrcsdk": true, "gesture manager": true, "blackstartx": true, "liltoon": true, "_backup": true, "miovrca": true,
@@ -96,15 +132,22 @@ func projectAssets(st *core.Store, project string) []ProjAsset {
 	// what the library knows about folders in this project
 	type known struct {
 		key, name, cat, source string
+		bases                  []string
+		folder                 string // as the library wrote it
 	}
 	byFolder := map[string]known{}
 	st.Mu.RLock()
 	pname := filepath.Base(project)
+	// the category and the base bodies as the library shows them (what the player set by hand counts)
+	record := func(a *core.Asset, source, folder string) known {
+		v := library.BuildView(st, a)
+		return known{a.Key, a.Name, v.Category, source, v.Bases, folder}
+	}
 	for _, a := range st.Assets {
 		for _, u := range a.Usage {
 			if u.Project == pname && u.Folder != "" {
 				if _, have := byFolder[strings.ToLower(u.Folder)]; !have {
-					byFolder[strings.ToLower(u.Folder)] = known{a.Key, a.Name, a.Category, "匹配"}
+					byFolder[strings.ToLower(u.Folder)] = record(a, "匹配", u.Folder)
 				}
 			}
 		}
@@ -113,18 +156,12 @@ func projectAssets(st *core.Store, project string) []ProjAsset {
 	for folder, key := range imported {
 		for _, a := range st.Assets {
 			if a.Key == key || a.AltKey == key {
-				byFolder[strings.ToLower(folder)] = known{a.Key, a.Name, a.Category, "导入"}
+				byFolder[strings.ToLower(folder)] = record(a, "导入", folder)
 				break
 			}
 		}
 	}
 	st.Mu.RUnlock()
-	kindOf := func(cat string) string {
-		if core.ContainsStr(pipelineKinds, cat) {
-			return cat
-		}
-		return "其他"
-	}
 	st.Mu.RLock()
 	defs := naming.ParseBases(st.Settings.Bases)
 	st.Mu.RUnlock()
@@ -151,7 +188,7 @@ func projectAssets(st *core.Store, project string) []ProjAsset {
 		low := strings.ToLower(folder)
 		for f := low; f != ""; f = parentFolder(f) {
 			if k, ok := byFolder[f]; ok {
-				pa.Key, pa.Name, pa.Kind, pa.Source = k.key, k.name, kindOf(k.cat), k.source
+				pa.Key, pa.Name, pa.Kind, pa.Source, pa.Bases = k.key, k.name, guessKind(k.name, k.cat), k.source, k.bases
 				break
 			}
 		}
@@ -159,7 +196,8 @@ func projectAssets(st *core.Store, project string) []ProjAsset {
 			pa.Kind = "其他"
 			// the folder's own name first, then the folders above it ("_头发/樱发": 头发)
 			for _, cand := range append([]string{pa.Name}, reverseStrings(parts)...) {
-				if c := naming.Classify(strings.TrimLeft(cand, "_")); core.ContainsStr(pipelineKinds, c) {
+				cand = strings.TrimLeft(cand, "_")
+				if c := guessKind(cand, naming.Classify(cand)); c != "其他" {
 					pa.Kind = c
 					break
 				}
@@ -168,16 +206,17 @@ func projectAssets(st *core.Store, project string) []ProjAsset {
 		seen[low] = true
 		out = append(out, pa)
 	}
-	// library records for folders the scan found no prefab in (a tool package, a folder the player renamed)
+	// library records for folders the scan found no prefab in (a folder the player renamed, a skin that is
+	// materials only); tools and sounds the line has no use for are left out
 	for f, k := range byFolder {
-		if seen[f] || k.cat == "插件" || k.cat == "材质" || k.cat == "音效" || k.cat == "字体" {
+		kind := guessKind(k.name, k.cat)
+		if seen[f] || (kind == "其他" && (k.cat == "插件" || k.cat == "材质" || k.cat == "音效" || k.cat == "字体")) {
 			continue
 		}
-		full := f
-		if !core.StatOK(filepath.Join(project, filepath.FromSlash(full))) {
+		if !core.StatOK(filepath.Join(project, filepath.FromSlash(k.folder))) {
 			continue
 		}
-		out = append(out, ProjAsset{Folder: f, Name: k.name, Kind: kindOf(k.cat), Key: k.key, Source: k.source})
+		out = append(out, ProjAsset{Folder: k.folder, Name: k.name, Kind: kind, Key: k.key, Source: k.source, Bases: k.bases})
 	}
 	rank := func(k string) int {
 		for i, x := range pipelineKinds {
@@ -261,12 +300,19 @@ func projectAssetsLive(st *core.Store, project string, fresh bool) []ProjAsset {
 				if p.MAReady {
 					list[i].MAReady = true
 				}
+				if p.FaceTracking {
+					list[i].FT = true
+				}
 			}
 			if n > 0 {
 				list[i].Prefabs = n
 			}
 			if list[i].Avatar && list[i].Kind == "其他" {
 				list[i].Kind = "素体"
+			}
+			// its components say what the names did not
+			if list[i].FT && !list[i].Avatar && list[i].Kind == "其他" {
+				list[i].Kind = "面捕"
 			}
 		}
 	}

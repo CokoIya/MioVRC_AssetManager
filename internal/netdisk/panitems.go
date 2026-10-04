@@ -14,7 +14,7 @@ type panItem struct {
 	Hints []string      // folders above it that it was sorted under ("衣服"), outermost first
 }
 
-func PanItemKey(surl, path string) string { return "pan:" + surl + "#" + path }
+func PanItemKey(surl, path string) string { return ShareKey(surl) + "#" + path }
 
 // SplitPanKey: "pan:1abc#/x/y" → ("1abc", "/x/y"); a whole share has no path.
 func SplitPanKey(key string) (string, string) {

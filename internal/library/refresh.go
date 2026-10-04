@@ -5,6 +5,7 @@ import (
 
 	"vrclib/internal/booth"
 	"vrclib/internal/core"
+	"vrclib/internal/translate"
 )
 
 var (
@@ -41,7 +42,7 @@ func StartPipeline(st *core.Store, doScan, doUsage, doBooth bool, forceBooth boo
 			again, scan, usage := boothAgain, scanAgain, usageAgain
 			boothAgain, scanAgain, usageAgain = false, false, false
 			pipeMu.Unlock()
-			if !again && !scan && !usage {
+			if (!again && !scan && !usage) || core.Quitting.Load() {
 				break
 			}
 			RunPipeline(st, scan, usage || scan, again, false, nil)
@@ -50,28 +51,41 @@ func StartPipeline(st *core.Store, doScan, doUsage, doBooth bool, forceBooth boo
 	return true
 }
 
+// RunPipeline does the steps asked for, saving after each. Once the program is quitting no further step is
+// begun, and the one under way stops at its next folder or request without leaving half a result.
 func RunPipeline(st *core.Store, doScan, doUsage, doBooth bool, forceBooth bool, boothOnly []string) {
-	if doScan {
-		core.RunTask(core.TaskScan, func() { RunFolderScan(st, core.TaskScan) })
+	step := func(t *core.Task, f func()) {
+		if core.Quitting.Load() {
+			return
+		}
+		core.RunTask(t, f)
 		_ = st.Save()
 		core.BumpRev()
+	}
+	if doScan {
+		step(core.TaskScan, func() { RunFolderScan(st, core.TaskScan) })
 	}
 	if doUsage {
-		core.RunTask(core.TaskUsage, func() { RunUsageScan(st, core.TaskUsage) })
-		_ = st.Save()
-		core.BumpRev()
+		step(core.TaskUsage, func() { RunUsageScan(st, core.TaskUsage) })
 	}
 	if doBooth && len(boothOnly) == 0 {
-		core.RunTask(booth.TaskMatch, func() { RunAutoMatch(st, booth.TaskMatch) })
-		_ = st.Save()
-		core.BumpRev()
+		step(booth.TaskMatch, func() { RunAutoMatch(st, booth.TaskMatch) })
 	}
 	if doBooth {
-		core.RunTask(core.TaskBooth, func() { booth.RunBoothFetch(st, core.TaskBooth, forceBooth, boothOnly) })
-		_ = st.Save()
-		core.BumpRev()
+		step(core.TaskBooth, func() { booth.RunBoothFetch(st, core.TaskBooth, forceBooth, boothOnly) })
 	}
-	KickTranslate(st)
+	if !core.Quitting.Load() {
+		KickTranslate(st)
+	}
+	if doScan && !core.Quitting.Load() {
+		KickPkgCovers(st) // last, and apart from the pipeline: the window is not kept "scanning" by it
+	}
+}
+
+// BackgroundBusy: is any of the work a rescan sets going still under way — the pipeline itself, and the look
+// into the packages and the translation of names that follow it? (Tests wait for it before their folders go.)
+func BackgroundBusy() bool {
+	return PipelineBusy() || PkgBatchSnapshot().Running || translate.TransBusy.Load()
 }
 
 func PipelineBusy() bool {

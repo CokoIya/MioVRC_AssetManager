@@ -1,6 +1,7 @@
 package pandl
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"vrclib/internal/archive"
+	"vrclib/internal/cloudshare"
 	"vrclib/internal/core"
 	"vrclib/internal/library"
 	"vrclib/internal/naming"
@@ -169,6 +171,7 @@ func WatchBaiduLogin(st *core.Store) {
 			core.BumpRev()
 		}()
 		end := time.Now().Add(20 * time.Minute)
+		gap, next := 5*time.Second, time.Time{} // Baidu itself is asked less and less often while the answer stays "not yet"
 		for time.Now().Before(end) {
 			time.Sleep(2 * time.Second)
 			webpane.Pane.Mu.Lock()
@@ -177,13 +180,17 @@ func WatchBaiduLogin(st *core.Store) {
 			if !running {
 				return // the window was closed
 			}
-			s, err := captureBaiduLogin(st)
+			s, asked, err := captureBaiduLoginIf(st, func() bool { return !time.Now().Before(next) })
+			if asked {
+				next = time.Now().Add(gap)
+				gap = min(gap*2, time.Minute)
+			}
 			if err != nil {
 				core.Logf("百度网盘登录检查：%v", err)
 				continue
 			}
 			if s != nil {
-				core.Logf("百度网盘已登录：%s", s.Name)
+				core.Logf("百度网盘已登录")
 				ResumePanDownloads(st)
 				return
 			}
@@ -193,25 +200,33 @@ func WatchBaiduLogin(st *core.Store) {
 
 // captureBaiduLogin takes the login from the built-in page (nil: not logged in there).
 func captureBaiduLogin(st *core.Store) (*baiduSession, error) {
+	s, _, err := captureBaiduLoginIf(st, func() bool { return true })
+	return s, err
+}
+
+// captureBaiduLoginIf: the page's cookies are looked at every time; Baidu is asked whose they are (asked) only
+// when they look like a login and ask allows it.
+func captureBaiduLoginIf(st *core.Store, ask func() bool) (s *baiduSession, asked bool, err error) {
 	cs, err := webpane.Pane.Cookies([]string{core.PanBase() + "/"})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	cs = pickBaiduCookies(cs)
-	if !hasCookie(cs, "BDUSS") || !hasCookie(cs, "STOKEN") {
-		return nil, nil // not logged in, or the netdisk page has not opened after the login yet
+	if !hasCookie(cs, "BDUSS") || !hasCookie(cs, "STOKEN") || !ask() {
+		return nil, false, nil // not logged in, or the netdisk page has not opened after the login yet
 	}
-	s := &baiduSession{Cookies: cs, At: time.Now().Unix(), VIP: -1}
+	s = &baiduSession{Cookies: cs, At: time.Now().Unix(), VIP: -1}
 	bc := NewBDClient(st, s)
+	defer bc.c.CloseIdleConnections()
 	name, vip, err := bc.Whoami()
 	if errors.Is(err, ErrBaiduLogin) {
-		return nil, nil // a cookie from an older login: the page has not logged in yet
+		return nil, true, nil // a cookie from an older login: the page has not logged in yet
 	}
 	if err != nil {
-		return nil, err
+		return nil, true, err
 	}
 	s.Name, s.VIP = name, vip
-	return s, SaveBaiduSession(s)
+	return s, true, SaveBaiduSession(s)
 }
 
 // LogoutBaidu forgets the login, here and in the built-in page (so its login page asks again).
@@ -241,6 +256,7 @@ func LogoutBaidu() error {
 type bdClient struct {
 	c        *http.Client
 	dl       *http.Client
+	ctx      context.Context // ends when the player cancels the job
 	mu       sync.Mutex
 	cookies  []core.SavedCookie
 	bdstoken string
@@ -254,7 +270,15 @@ var pcsUAs = []string{"pan.baidu.com", "netdisk;7.42.0.5;PC;PC-Windows;10.0.2263
 func NewBDClient(st *core.Store, s *baiduSession) *bdClient {
 	tr := netdisk.NewPanClient(st).HTTP.Transport // Baidu is reached directly, like the share listings
 	return &bdClient{c: &http.Client{Transport: tr, Timeout: 40 * time.Second}, dl: &http.Client{Transport: tr},
-		cookies: append([]core.SavedCookie(nil), s.Cookies...)}
+		ctx: context.Background(), cookies: append([]core.SavedCookie(nil), s.Cookies...)}
+}
+
+// sleep waits between requests; errPanCancelled when the job is cancelled meanwhile.
+func (b *bdClient) sleep(d time.Duration) error {
+	if !purchases.Sleep(b.ctx, d) {
+		return errPanCancelled
+	}
+	return nil
 }
 
 func (b *bdClient) cookieHeader() string {
@@ -296,7 +320,7 @@ func (b *bdClient) do(method, u string, form url.Values) ([]byte, *http.Response
 	if form != nil {
 		rd = strings.NewReader(form.Encode())
 	}
-	req, _ := http.NewRequest(method, u, rd)
+	req, _ := http.NewRequestWithContext(b.ctx, method, u, rd)
 	req.Header.Set("User-Agent", core.UA)
 	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
 	ref := b.ref
@@ -311,6 +335,9 @@ func (b *bdClient) do(method, u string, form url.Values) ([]byte, *http.Response
 	}
 	resp, err := b.c.Do(req)
 	if err != nil {
+		if b.ctx.Err() != nil {
+			return nil, nil, errPanCancelled
+		}
 		return nil, nil, netdisk.FriendlyPanErr(err)
 	}
 	defer resp.Body.Close()
@@ -435,7 +462,7 @@ func (b *bdClient) openShare(surl, pwd string) (*netdisk.BDShare, error) {
 		strings.Contains(text, "链接已过期") || strings.Contains(text, "分享已过期") || strings.Contains(text, "platform-non-found"):
 		return nil, errors.New("分享已失效或被取消")
 	}
-	_ = os.WriteFile(filepath.Join(core.DataDir, "pan-debug.txt"), []byte(core.Truncate(text, 200000)), 0644)
+	netdisk.WriteDebug(core.Truncate(text, 200000))
 	return nil, errors.New("无法读取分享内容（百度网盘页面可能已改版）")
 }
 
@@ -457,7 +484,9 @@ func (b *bdClient) shareList(s *netdisk.BDShare, dir string) ([]netdisk.PanRaw, 
 		if len(r.List) < 100 {
 			break
 		}
-		time.Sleep(200 * time.Millisecond)
+		if err := b.sleep(200 * time.Millisecond); err != nil {
+			return nil, err
+		}
 	}
 	return all, nil
 }
@@ -519,6 +548,7 @@ type bdEntry struct {
 	Name  string      `json:"server_filename"`
 	IsDir json.Number `json:"isdir"`
 	Size  json.Number `json:"size"`
+	Mtime json.Number `json:"server_mtime"`
 }
 
 func (b *bdClient) list(dir string) ([]bdEntry, error) {
@@ -559,6 +589,35 @@ func (b *bdClient) mkdir(p string) error {
 	}
 	if errno != 0 && errno != -8 { // -8: it is there already
 		return bdWriteErr("在网盘中创建文件夹", errno)
+	}
+	return nil
+}
+
+// remove puts things of the player's netdisk into its recycle bin (Baidu keeps them there for ten days or
+// more, so the player can still take them back). Only ever asked for what is inside the program's own folder.
+func (b *bdClient) remove(paths []string) error {
+	for _, p := range paths {
+		if path.Clean(p) != p || !strings.HasPrefix(p, panSaveRoot+"/") || strings.Count(p, "/") < 3 {
+			return errors.New("无法替换网盘中的旧文件（路径不在「" + panSaveRoot + "」内）")
+		}
+	}
+	list, _ := json.Marshal(paths)
+	var r struct {
+		TaskID json.Number `json:"taskid"`
+	}
+	ref := b.ref
+	b.ref = ""
+	errno, err := b.call("POST", "/api/filemanager", url.Values{"opera": {"delete"}, "async": {"2"}, "onnest": {"fail"}},
+		url.Values{"filelist": {string(list)}}, &r)
+	b.ref = ref
+	if err != nil {
+		return err
+	}
+	if errno != 0 {
+		return bdWriteErr("替换网盘中的旧文件", errno)
+	}
+	if id := r.TaskID.String(); id != "" && id != "0" {
+		return b.waitTask(id, "替换网盘中的旧文件")
 	}
 	return nil
 }
@@ -606,7 +665,7 @@ func (b *bdClient) transfer(s *netdisk.BDShare, items []netdisk.PanRaw, dest str
 		switch {
 		case errno == 0 || dup:
 			if id := r.TaskID.String(); id != "" && id != "0" {
-				if err := b.waitTask(id); err != nil {
+				if err := b.waitTask(id, "转存到网盘"); err != nil {
 					return err
 				}
 			}
@@ -640,8 +699,11 @@ func (b *bdClient) transfer(s *netdisk.BDShare, items []netdisk.PanRaw, dest str
 	return nil
 }
 
-// waitTask: a big save runs in the background on Baidu's side.
-func (b *bdClient) waitTask(id string) error {
+// panPoll: between two looks at something Baidu does in the background (tests shorten it).
+var panPoll = 2 * time.Second
+
+// waitTask: a big save (or removal) runs in the background on Baidu's side.
+func (b *bdClient) waitTask(id, what string) error {
 	for i := 0; i < 300; i++ {
 		var r struct {
 			Status    string `json:"status"`
@@ -653,14 +715,15 @@ func (b *bdClient) waitTask(id string) error {
 		}
 		switch {
 		case errno != 0:
-			time.Sleep(3 * time.Second) // no word on it: the listing afterwards shows what arrived
-			return nil
+			return b.sleep(panPoll * 3 / 2) // no word on it: the listing afterwards shows what arrived
 		case r.Status == "success":
 			return nil
 		case r.Status == "failed":
-			return bdWriteErr("转存到网盘", r.TaskErrno)
+			return bdWriteErr(what, r.TaskErrno)
 		}
-		time.Sleep(2 * time.Second)
+		if err := b.sleep(panPoll); err != nil {
+			return err
+		}
 	}
 	return errors.New("网盘转存尚未结束，请稍后重新下载（已转存的文件不会重复转存）")
 }
@@ -730,7 +793,18 @@ func pcsURL(remote string) string {
 
 // fetchRange appends remote[from:] to part.
 func (b *bdClient) fetchRange(remote, part string, from, size int64, prog func(n int64)) error {
-	req, _ := http.NewRequest("GET", pcsURL(remote), nil)
+	g := purchases.NewStallGuard(b.ctx)
+	defer g.Stop()
+	netErr := func(err error) error {
+		switch {
+		case b.ctx.Err() != nil:
+			return errPanCancelled
+		case g.Stalled():
+			return fmt.Errorf("下载中断（%d 秒内未收到数据）", int(purchases.StallAfter.Seconds()))
+		}
+		return fmt.Errorf("下载中断（%s）", purchases.NetErrText(err))
+	}
+	req, _ := http.NewRequestWithContext(g.Ctx, "GET", pcsURL(remote), nil)
 	b.mu.Lock()
 	req.Header.Set("User-Agent", pcsUAs[b.dlUA])
 	b.mu.Unlock()
@@ -738,9 +812,10 @@ func (b *bdClient) fetchRange(remote, part string, from, size int64, prog func(n
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", from, size-1))
 	resp, err := b.dl.Do(req)
 	if err != nil {
-		return fmt.Errorf("下载中断（%s）", core.FriendlyNetErr(err))
+		return netErr(err)
 	}
 	defer resp.Body.Close()
+	g.Kick()
 	if resp.StatusCode != 206 && !(resp.StatusCode == 200 && from == 0) {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 600))
 		return pcsError{resp.StatusCode, string(body)}
@@ -751,24 +826,18 @@ func (b *bdClient) fetchRange(remote, part string, from, size int64, prog func(n
 			return fmt.Errorf("百度网盘返回的数据范围有误（%s）", cr)
 		}
 	}
-	idle := time.AfterFunc(60*time.Second, func() { resp.Body.Close() })
-	defer idle.Stop()
 	f, err := os.OpenFile(part, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		return err
+		return purchases.WriteErr(part, err)
 	}
 	buf := make([]byte, 256<<10)
 	for {
-		if panCancel.Load() {
-			f.Close()
-			return errPanCancelled
-		}
 		n, rerr := resp.Body.Read(buf)
-		idle.Reset(60 * time.Second)
 		if n > 0 {
+			g.Kick()
 			if _, werr := f.Write(buf[:n]); werr != nil {
 				f.Close()
-				return fmt.Errorf("写入失败：%v", werr)
+				return purchases.WriteErr(part, werr)
 			}
 			prog(int64(n))
 		}
@@ -777,42 +846,63 @@ func (b *bdClient) fetchRange(remote, part string, from, size int64, prog func(n
 		}
 		if rerr != nil {
 			f.Close()
-			return fmt.Errorf("下载中断（%s）", core.FriendlyNetErr(rerr))
+			return netErr(rerr)
 		}
 	}
-	return f.Close()
+	if err := f.Close(); err != nil {
+		return purchases.WriteErr(part, err)
+	}
+	return nil
 }
 
-// download one file with resume: what is in local+".part" is kept between tries (and runs).
+// panRetryUnit: the pauses between tries are counted in this (tests shorten it).
+var panRetryUnit = time.Second
+
+// download one file with resume: what is in local+".part" is kept between tries (and runs). What the disk
+// refuses is not tried again: only the connection is.
 func (b *bdClient) download(f bdFile, local string, prog func(n int64)) error {
 	if fi, err := os.Stat(local); err == nil && fi.Size() == f.Size {
 		prog(f.Size)
 		return nil // downloaded before
 	}
 	if err := os.MkdirAll(filepath.Dir(local), 0755); err != nil {
-		return err
+		return purchases.WriteErr(filepath.Dir(local), err)
 	}
 	if f.Size == 0 {
-		return os.WriteFile(local, nil, 0644)
+		if err := os.WriteFile(local, nil, 0644); err != nil {
+			return purchases.WriteErr(local, err)
+		}
+		return nil
 	}
 	part := local + ".part"
+	var had int64
 	if fi, err := os.Stat(part); err == nil {
 		if fi.Size() > f.Size {
 			_ = os.Remove(part)
 		} else {
-			prog(fi.Size())
+			had = fi.Size()
+			prog(had)
 		}
+	}
+	if err := purchases.CheckSpace(filepath.Dir(local), f.Size-had); err != nil {
+		return err
 	}
 	var lastErr error
 	stuck := 0
 	for attempt := 0; attempt < 40; attempt++ {
+		if b.ctx.Err() != nil {
+			return errPanCancelled
+		}
 		var have int64
 		if fi, err := os.Stat(part); err == nil {
 			have = fi.Size()
 		}
 		if have == f.Size {
 			_ = os.Remove(local)
-			return os.Rename(part, local)
+			if err := os.Rename(part, local); err != nil {
+				return purchases.WriteErr(local, err)
+			}
+			return nil
 		}
 		err := b.fetchRange(f.Path, part, have, f.Size, prog)
 		if err == nil {
@@ -824,7 +914,7 @@ func (b *bdClient) download(f bdFile, local string, prog func(n int64)) error {
 			}
 			err = errors.New("百度网盘返回的文件不完整") // nothing more came: try again a little later
 		}
-		if errors.Is(err, errPanCancelled) {
+		if errors.Is(err, errPanCancelled) || purchases.IsLocalErr(err) {
 			return err
 		}
 		var pe pcsError
@@ -843,7 +933,9 @@ func (b *bdClient) download(f bdFile, local string, prog func(n int64)) error {
 			}
 		}
 		lastErr = err
-		time.Sleep(time.Duration(min(2+attempt*2, 20)) * time.Second)
+		if err := b.sleep(time.Duration(min(2+attempt*2, 20)) * panRetryUnit); err != nil {
+			return err
+		}
 	}
 	if lastErr == nil {
 		lastErr = errors.New("下载失败，请重试")
@@ -861,6 +953,8 @@ type PanJob struct {
 	Msg     string   `json:"msg"`
 	Done    int64    `json:"done"`
 	Total   int64    `json:"total"`
+	ByCount bool     `json:"byCount,omitempty"` // the sizes are not known beforehand: the progress is Pct, by files
+	Pct     int      `json:"pct,omitempty"`
 	File    string   `json:"file,omitempty"`
 	Files   int      `json:"files"`
 	FileN   int      `json:"fileN"`
@@ -873,18 +967,57 @@ type PanJob struct {
 	Project string   `json:"project,omitempty"`
 	Paths   []string `json:"paths,omitempty"` // only these parts of the card's file list
 
-	imp *unity.ImportReq
+	imp     *unity.ImportReq
+	counted bool // in core.Downloading
 }
 
 var (
 	panDLMu      sync.Mutex
 	panJobs      []*PanJob
 	panDLRunning bool
-	panCancel    atomic.Bool
+	panCtx       context.Context // ends when the player cancels; what is queued after that gets a new one
+	panStop      context.CancelFunc
 	TaskPanDL    = &core.Task{Name: "pandl", Label: "下载网盘分享"}
 
-	errPanCancelled = errors.New("已取消")
+	errPanCancelled = purchases.ErrCancelled
 )
+
+const panKeep = 50 // finished jobs the window still lists
+
+func panOver(stage string) bool { return stage == "done" || stage == "failed" }
+
+// recountPanLocked keeps core.Downloading in step with the jobs: a job counts from being queued until it is
+// over for whatever reason (one waiting for a login does not: nothing is running for it). Caller holds panDLMu.
+func recountPanLocked() {
+	for _, j := range panJobs {
+		if a := !panOver(j.Stage) && j.Stage != "login"; a != j.counted {
+			j.counted = a
+			if a {
+				core.Downloading.Add(1)
+			} else {
+				core.Downloading.Add(-1)
+			}
+		}
+	}
+}
+
+// keepPanLocked: the list without the jobs drop picks; one that still counts is uncounted on its way out.
+// Caller holds panDLMu.
+func keepPanLocked(drop func(j *PanJob) bool) {
+	kept := panJobs[:0]
+	for _, j := range panJobs {
+		if !drop(j) {
+			kept = append(kept, j)
+			continue
+		}
+		if j.counted {
+			j.counted = false
+			core.Downloading.Add(-1)
+		}
+	}
+	clear(panJobs[len(kept):])
+	panJobs = kept
+}
 
 func PanJobsSnapshot() []PanJob {
 	panDLMu.Lock()
@@ -902,6 +1035,9 @@ func setPan(j *PanJob, f func(j *PanJob)) {
 	stage := j.Stage
 	f(j)
 	changed := j.Stage != stage
+	if changed {
+		recountPanLocked()
+	}
 	panDLMu.Unlock()
 	if changed {
 		core.BumpRev()
@@ -913,7 +1049,7 @@ func setPan(j *PanJob, f func(j *PanJob)) {
 func QueuePanDownload(st *core.Store, key string, paths []string, imp *unity.ImportReq) error {
 	surl, _ := netdisk.SplitPanKey(key)
 	st.Mu.RLock()
-	u := st.User["pan:"+surl]
+	u := st.User[netdisk.ShareKey(surl)]
 	link := ""
 	if u != nil {
 		link = u.ShareURL
@@ -925,33 +1061,35 @@ func QueuePanDownload(st *core.Store, key string, paths []string, imp *unity.Imp
 		}
 	}
 	st.Mu.RUnlock()
-	if netdisk.ShareSurl(link) == "" {
+	if netdisk.ShareID(link) == "" {
 		return errors.New("该素材没有百度网盘分享链接")
 	}
 	if title == "" {
-		title = "网盘分享 " + surl
+		title = netdisk.SharePlaceholder(surl)
 	}
 	panDLMu.Lock()
 	for _, o := range panJobs {
-		if o.Key == key && o.Stage != "done" && o.Stage != "failed" {
+		if o.Key == key && !panOver(o.Stage) {
 			panDLMu.Unlock()
 			return errors.New("已在下载队列中")
 		}
 	}
-	kept := panJobs[:0]
-	for _, o := range panJobs {
-		if o.Key != key {
-			kept = append(kept, o)
-		}
-	}
+	keepPanLocked(func(o *PanJob) bool { return o.Key == key })
 	j := &PanJob{ID: time.Now().UnixNano(), Key: key, Title: title, Stage: "queued", Msg: "排队中", Paths: normPanPaths(paths), imp: imp}
 	if imp != nil {
 		j.Project = imp.Project
 	}
-	panJobs = append(kept, j)
-	if len(panJobs) > 50 {
-		panJobs = panJobs[len(panJobs)-50:]
-	}
+	panJobs = append(panJobs, j)
+	// over the limit the oldest finished ones go; a job that waits or runs is never dropped
+	over := len(panJobs) - panKeep
+	keepPanLocked(func(o *PanJob) bool {
+		if over > 0 && panOver(o.Stage) {
+			over--
+			return true
+		}
+		return false
+	})
+	recountPanLocked()
 	start := !panDLRunning
 	panDLRunning = true
 	panDLMu.Unlock()
@@ -972,6 +1110,7 @@ func ResumePanDownloads(st *core.Store) {
 			n++
 		}
 	}
+	recountPanLocked()
 	start := n > 0 && !panDLRunning
 	if start {
 		panDLRunning = true
@@ -983,89 +1122,131 @@ func ResumePanDownloads(st *core.Store) {
 	}
 }
 
+// CancelPanDownloads stops the job that is running (its requests are ended, its waits cut short) and takes
+// the waiting ones off the queue.
 func CancelPanDownloads() {
-	panCancel.Store(true)
 	panDLMu.Lock()
+	if panStop != nil {
+		panStop()
+	}
 	for _, j := range panJobs {
 		if j.Stage == "queued" || j.Stage == "login" {
 			j.Stage, j.Msg, j.Err = "failed", "已取消", "已取消"
 		}
 	}
+	recountPanLocked()
 	panDLMu.Unlock()
 	core.BumpRev()
+}
+
+// CancelAll: the program is closing — every download stops, the netdisk's and the Booth / Gumroad ones.
+// core.Downloading is back at zero once the running ones have let go.
+func CancelAll() {
+	CancelPanDownloads()
+	purchases.CancelAllDownloads()
 }
 
 // DismissPanJob: the player closed a finished job's note.
 func DismissPanJob(key string) {
 	panDLMu.Lock()
-	kept := panJobs[:0]
-	for _, j := range panJobs {
-		if j.Key != key || (j.Stage != "done" && j.Stage != "failed") {
-			kept = append(kept, j)
-		}
-	}
-	panJobs = kept
+	keepPanLocked(func(j *PanJob) bool { return j.Key == key && panOver(j.Stage) })
 	panDLMu.Unlock()
 	core.BumpRev()
 }
 
-func nextPanJob() *PanJob {
+// nextPanJob: the next waiting job and the context it runs under.
+func nextPanJob() (*PanJob, context.Context) {
 	panDLMu.Lock()
 	defer panDLMu.Unlock()
 	for _, j := range panJobs {
 		if j.Stage == "queued" {
 			j.Stage = "save"
-			return j
+			if panCtx == nil || panCtx.Err() != nil { // cancelled before: what was queued since then runs
+				panCtx, panStop = context.WithCancel(context.Background())
+			}
+			return j, panCtx
 		}
 	}
 	panDLRunning = false
-	return nil
+	return nil, nil
 }
 
+// runPan: one job (tests put their own here).
+var runPan = runPanJob
+
 func panDLWorker(st *core.Store) {
-	panCancel.Store(false)
 	got := 0
+	again, login := false, false
 	core.RunTask(TaskPanDL, func() {
+		var cur *PanJob
+		clean := false
+		defer func() {
+			if clean {
+				return
+			}
+			// a panic (RunTask reports it): that job is over, and the queue is not left stuck behind it
+			panDLMu.Lock()
+			if cur != nil && !panOver(cur.Stage) {
+				cur.Stage, cur.Err, cur.Msg = "failed", "下载出错，详见 library.log", "下载出错，详见 library.log"
+				for _, o := range panJobs {
+					again = again || o.Stage == "queued"
+				}
+			}
+			panDLRunning = again
+			recountPanLocked()
+			panDLMu.Unlock()
+		}()
 		for {
-			j := nextPanJob()
+			j, ctx := nextPanJob()
 			if j == nil {
 				break
 			}
+			cur = j
 			core.BumpRev()
-			err := runPanJob(st, j)
+			err := runPan(ctx, st, j)
 			switch {
 			case err == nil:
 				got++
+			case ctx.Err() != nil:
+				setPan(j, func(j *PanJob) { j.Stage, j.Err, j.Msg = "failed", "已取消", "已取消" })
 			case errors.Is(err, ErrBaiduLogin):
 				ForgetBaiduSession() // Baidu turned the saved login away: the login page asks again
+				// the Baidu jobs wait for the login; a Google Drive / Dropbox one needs none and goes on
 				panDLMu.Lock()
 				for _, o := range panJobs {
-					if o == j || o.Stage == "queued" {
+					if o == j || (o.Stage == "queued" && !cloudshare.IsCloudKey(o.Key)) {
 						o.Stage, o.Msg, o.Err = "login", "需要登录百度网盘", ""
 					}
 				}
-				panDLRunning = false
+				recountPanLocked()
 				panDLMu.Unlock()
+				login = true
 				TaskPanDL.Set(0, 0, "需要登录百度网盘")
 				core.BumpRev()
-				return
 			default:
 				core.Logf("网盘下载失败 %s: %v", j.Key, err)
 				setPan(j, func(j *PanJob) { j.Stage, j.Err, j.Msg = "failed", err.Error(), err.Error() })
-				if panCancel.Load() {
-					CancelPanDownloads()
-				}
 			}
 		}
-		if got > 0 {
+		clean = true
+		switch {
+		case got > 0:
 			TaskPanDL.Set(1, 1, fmt.Sprintf("完成：已下载 %d 个网盘分享", got))
-		} else {
+		case login:
+			TaskPanDL.Set(0, 0, "需要登录百度网盘")
+		default:
 			TaskPanDL.Set(0, 0, "")
 		}
 	})
+	if again {
+		go panDLWorker(st) // the jobs behind the one that crashed
+	}
 }
 
-func runPanJob(st *core.Store, j *PanJob) error {
+func runPanJob(ctx context.Context, st *core.Store, j *PanJob) error {
+	if cloudshare.IsCloudKey(j.Key) {
+		return runCloudJob(ctx, st, j)
+	}
 	s := LoadBaiduSession()
 	if webpane.PaneMode() != "" {
 		webpane.Pane.Mu.Lock()
@@ -1081,6 +1262,8 @@ func runPanJob(st *core.Store, j *PanJob) error {
 		return ErrBaiduLogin
 	}
 	b := NewBDClient(st, s)
+	b.ctx = ctx
+	defer b.c.CloseIdleConnections()
 	msg := func(m string) {
 		setPan(j, func(j *PanJob) { j.Msg = m })
 		TaskPanDL.Set(0, 0, j.Title+"："+m)
@@ -1171,15 +1354,30 @@ func runPanJob(st *core.Store, j *PanJob) error {
 		name = "网盘分享 " + surl
 	}
 	dest := panSaveRoot + "/" + name
-	var saved []string
 	st.Mu.RLock()
-	if u := st.User[j.Key]; u != nil {
-		if strings.HasPrefix(u.PanCopy, panSaveRoot+"/") { // where an earlier download saved it
-			dest = u.PanCopy
-		}
-		saved = u.PanSaved
+	if u := st.User[j.Key]; u != nil && strings.HasPrefix(u.PanCopy, panSaveRoot+"/") { // where an earlier download saved it
+		dest = u.PanCopy
 	}
 	st.Mu.RUnlock()
+	// where it goes on this disk: the folder of an earlier download, else a new one
+	local := prev
+	if local == "" || !core.IsDir(local) {
+		local, got = archive.UniquePath(filepath.Join(dlRoot, name)), nil
+	}
+	strip := ""
+	if oneDir {
+		strip = rawName(items[0]) + "/" // one folder: its contents go straight into the asset's folder
+	}
+	localOf := func(rel string) string {
+		if rel+"/" == strip {
+			return local
+		}
+		segs := strings.Split(strings.TrimPrefix(rel, strip), "/")
+		for k := range segs {
+			segs[k] = core.SafeName(segs[k], 200)
+		}
+		return filepath.Join(append([]string{local}, segs...)...)
+	}
 	setPan(j, func(j *PanJob) { j.Stage, j.Saved = "save", dest })
 	msg("正在转存到网盘")
 	if err := b.mkdir(panSaveRoot); err != nil {
@@ -1206,7 +1404,15 @@ func runPanJob(st *core.Store, j *PanJob) error {
 				}
 			}
 		}
-		if err := b.saveInto(ls, byDir[d], at, saved, 0, msg); err != nil {
+		replaced, err := b.saveInto(ls, byDir[d], at, 0, msg)
+		// what the seller replaced under the same name: the file on this disk is the old one too, whatever its
+		// size. It goes at once, so that a job that stops after this does not leave it to pass for downloaded
+		for _, p := range replaced {
+			old := localOf(strings.TrimPrefix(p, dest+"/"))
+			_ = os.Remove(old)
+			_ = os.Remove(old + ".part")
+		}
+		if err != nil {
 			return err
 		}
 	}
@@ -1221,10 +1427,6 @@ func runPanJob(st *core.Store, j *PanJob) error {
 	_ = st.Save()
 	// 2. download the picked parts of the copy
 	msg("正在获取网盘文件列表")
-	local := prev
-	if local == "" || !core.IsDir(local) {
-		local, got = archive.UniquePath(filepath.Join(dlRoot, name)), nil
-	}
 	// a picked folder with parts downloaded before (their archives unpacked and gone): those parts are left out;
 	// picking a downloaded part itself downloads it again
 	again := func(pk panPick, tree string) bool { return !panCovered(tree, got) || panCovered(pk.tree, got) }
@@ -1272,20 +1474,6 @@ func runPanJob(st *core.Store, j *PanJob) error {
 	if len(files) == 0 && skipped == 0 {
 		return errors.New("网盘中的文件夹为空")
 	}
-	strip := ""
-	if oneDir {
-		strip = rawName(items[0]) + "/" // one folder: its contents go straight into the asset's folder
-	}
-	localOf := func(rel string) string {
-		if rel+"/" == strip {
-			return local
-		}
-		segs := strings.Split(strings.TrimPrefix(rel, strip), "/")
-		for k := range segs {
-			segs[k] = core.SafeName(segs[k], 200)
-		}
-		return filepath.Join(append([]string{local}, segs...)...)
-	}
 	var total int64
 	for _, f := range files {
 		total += f.Size
@@ -1310,7 +1498,16 @@ func runPanJob(st *core.Store, j *PanJob) error {
 	st.Mu.Unlock()
 	_ = st.Save()
 	if err := os.MkdirAll(local, 0755); err != nil {
-		return fmt.Errorf("创建文件夹失败：%v", err)
+		return purchases.WriteErr(local, err)
+	}
+	var need int64
+	for _, f := range files {
+		if fi, err := os.Stat(localOf(f.Rel)); err != nil || fi.Size() != f.Size {
+			need += f.Size
+		}
+	}
+	if err := purchases.CheckSpace(local, need); err != nil {
+		return err
 	}
 	purchases.PinDownloadDir(st, dlRoot)
 	var done int64
@@ -1352,7 +1549,13 @@ func runPanJob(st *core.Store, j *PanJob) error {
 		if !keep {
 			remove = archive.RemoveFiles
 		}
-		res := archive.UnpackAll([]string{local}, "", remove, func(n string, i, k int) {
+		// only the files this job downloaded (those of an earlier try that stopped are among them): the folder
+		// may be the asset's own, with archives the player keeps packed
+		var mine []string
+		for _, f := range files {
+			mine = append(mine, localOf(f.Rel))
+		}
+		res := archive.UnpackFiles(mine, "", remove, func(n string, i, k int) {
 			setPan(j, func(j *PanJob) { j.Msg = "正在解压 " + n })
 			TaskPanDL.Set(i, k, j.Title+"：正在解压 "+n)
 		})
@@ -1473,50 +1676,109 @@ func mergePanParts(a, b []string) []string {
 	return normPanPaths(all)
 }
 
-// saveInto copies share items into the netdisk folder dir. What an earlier try saved there stays; a folder there
-// only in part (an earlier pick inside it, or a save cut short) is filled up, unless done says it was saved whole.
-func (b *bdClient) saveInto(ls *shareLister, items []panPick, dir string, done []string, depth int, msg func(string)) error {
+// panStale: the copy in the netdisk is not what the share holds under that name now — the seller put another
+// file there (another size, or changed after the copy was made), or a folder where a file was.
+func panStale(it netdisk.PanRaw, e bdEntry) bool {
+	dir := it.IsDir.String() == "1"
+	if dir != (e.IsDir.String() == "1") {
+		return true
+	}
+	if dir {
+		return false
+	}
+	a, _ := it.Size.Int64()
+	z, _ := e.Size.Int64()
+	if a != z {
+		return true
+	}
+	ta, _ := it.Mtime.Int64()
+	tz, _ := e.Mtime.Int64()
+	return ta > 0 && tz > 0 && ta > tz
+}
+
+// saveInto copies share items into the netdisk folder dir, so that the copy ends up as the share is now: what
+// is missing is saved; a file that is there under the same name but is not the share's file any more is put
+// into the netdisk's recycle bin and saved again (replaced: those paths); a folder that is there is looked
+// into, every time — the share may have got more in it since, and an earlier save may have been cut short.
+func (b *bdClient) saveInto(ls *shareLister, items []panPick, dir string, depth int, msg func(string)) (replaced []string, err error) {
 	have, err := b.list(dir)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	there := map[string]bdEntry{}
 	for _, e := range have {
 		there[e.Name] = e
 	}
 	var todo []netdisk.PanRaw
+	var old []string
 	for _, it := range items {
 		n := rawName(it.raw)
 		e, ok := there[n]
 		switch {
 		case !ok:
 			todo = append(todo, it.raw)
-		case it.raw.IsDir.String() == "1" && e.IsDir.String() == "1" && !panCovered(it.tree, done) && depth < 12:
+		case panStale(it.raw, e):
+			old = append(old, dir+"/"+n)
+			todo = append(todo, it.raw)
+		case it.raw.IsDir.String() == "1" && depth < 12:
+			if err := b.sleep(150 * time.Millisecond); err != nil { // many folders: not all at once
+				return replaced, err
+			}
 			kids, err := ls.list(it.raw.Path)
 			if err != nil {
-				return err
+				return replaced, err
 			}
 			sub := make([]panPick, 0, len(kids))
 			for _, k := range kids {
 				sub = append(sub, panPick{tree: path.Join(it.tree, rawName(k)), raw: k})
 			}
-			if err := b.saveInto(ls, sub, dir+"/"+n, done, depth+1, msg); err != nil {
-				return err
+			r, err := b.saveInto(ls, sub, dir+"/"+n, depth+1, msg)
+			replaced = append(replaced, r...)
+			if err != nil {
+				return replaced, err
 			}
 		}
 	}
 	if len(todo) == 0 {
-		return nil
+		return replaced, nil
+	}
+	if len(old) > 0 {
+		// Baidu saves next to a file of the same name ("x(1).zip") instead of over it: the old one goes first
+		msg(fmt.Sprintf("正在替换网盘中已变更的 %d 项", len(old)))
+		replaced = append(replaced, old...) // from here on they may be gone, in part too
+		if err := b.remove(old); err != nil {
+			return replaced, err
+		}
+		for i := 0; ; i++ {
+			if have, err = b.list(dir); err != nil {
+				return replaced, err
+			}
+			left := 0
+			for _, e := range have {
+				if core.ContainsStr(old, dir+"/"+e.Name) {
+					left++
+				}
+			}
+			if left == 0 {
+				break
+			}
+			if i >= 29 {
+				return replaced, errors.New("无法替换网盘中的旧文件，请稍后重新下载")
+			}
+			if err := b.sleep(panPoll); err != nil {
+				return replaced, err
+			}
+		}
 	}
 	if err := b.transfer(ls.s, todo, dir, 0); err != nil {
-		return err
+		return replaced, err
 	}
 	// Baidu may finish the save in the background
 	for i := 0; ; i++ {
-		have, err = b.list(dir)
-		if err != nil {
-			return err
+		if have, err = b.list(dir); err != nil {
+			return replaced, err
 		}
+		there = map[string]bdEntry{}
 		for _, e := range have {
 			there[e.Name] = e
 		}
@@ -1527,13 +1789,15 @@ func (b *bdClient) saveInto(ls *shareLister, items []panPick, dir string, done [
 			}
 		}
 		if missing == 0 {
-			return nil
+			return replaced, nil
 		}
 		if i >= 149 {
-			return errors.New("网盘转存尚未结束，请稍后重新下载（已转存的文件不会重复转存）")
+			return replaced, errors.New("网盘转存尚未结束，请稍后重新下载（已转存的文件不会重复转存）")
 		}
 		msg(fmt.Sprintf("正在转存到网盘（剩余 %d 项）", missing))
-		time.Sleep(2 * time.Second)
+		if err := b.sleep(panPoll); err != nil {
+			return replaced, err
+		}
 	}
 }
 

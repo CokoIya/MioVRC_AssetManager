@@ -155,6 +155,20 @@ func cleanPkgPath(p string) string {
 type importStats struct {
 	New, Updated, Folders, Skipped int
 	Tops                           []string
+	Kept                           int      // files of an installed package (Packages/) the unitypackage would have replaced
+	KeptPkgs                       []string // … and the packages they belong to
+}
+
+// installedPackage: the package under Packages/ a path belongs to. What VCC / ALCOM installed there is never
+// written over by a unitypackage (a shop's bundled copy of lilToon must not replace the installed one).
+func installedPackage(paths ...string) (pkg string, ok bool) {
+	for _, p := range paths {
+		segs := strings.Split(strings.ReplaceAll(p, `\`, "/"), "/")
+		if len(segs) >= 2 && strings.EqualFold(segs[0], "Packages") {
+			return segs[1], true
+		}
+	}
+	return "", false
 }
 
 // target: where the item goes in the project (Unity keeps an asset it already has where it is).
@@ -199,6 +213,7 @@ func importUnityPackage(pkg string, idx *projIndex) (importStats, error) {
 	}
 	dest := map[string]string{}
 	tops := map[string]bool{}
+	kept := map[string]bool{}
 	// folders first (shortest paths first), so their .meta keep the package's GUIDs
 	var folders []*pkgItem
 	for _, it := range items {
@@ -211,6 +226,9 @@ func importUnityPackage(pkg string, idx *projIndex) (importStats, error) {
 		rel := idx.target(it, true)
 		if rel == "" {
 			stats.Skipped++
+			continue
+		}
+		if _, ok := installedPackage(rel, it.path); ok {
 			continue
 		}
 		full := filepath.Join(idx.root, filepath.FromSlash(rel))
@@ -232,6 +250,11 @@ func importUnityPackage(pkg string, idx *projIndex) (importStats, error) {
 		rel := idx.target(it, false)
 		if rel == "" {
 			stats.Skipped++
+			continue
+		}
+		if pkg, ok := installedPackage(rel, it.path); ok { // where it is now, or where the package wants it
+			stats.Kept++
+			kept[pkg] = true
 			continue
 		}
 		dest[it.guid] = rel
@@ -297,7 +320,19 @@ func importUnityPackage(pkg string, idx *projIndex) (importStats, error) {
 		stats.Tops = append(stats.Tops, t)
 	}
 	sort.Strings(stats.Tops)
+	for p := range kept {
+		stats.KeptPkgs = append(stats.KeptPkgs, p)
+	}
+	sort.Strings(stats.KeptPkgs)
 	return stats, nil
+}
+
+// keptNote: what the result says about files that were left alone ("" when there were none).
+func keptNote(n int, pkgs []string) string {
+	if n == 0 {
+		return ""
+	}
+	return fmt.Sprintf("已跳过 %d 个属于已安装插件（Packages）的文件，未覆盖：%s", n, strings.Join(pkgs, "、"))
 }
 
 // ---------- the import job ----------
@@ -325,6 +360,8 @@ type ImportJob struct {
 	Imported []string    `json:"imported,omitempty"`
 	Files    int         `json:"files,omitempty"`
 	Tops     []string    `json:"tops,omitempty"`
+	Kept     int         `json:"kept,omitempty"`     // files of installed packages that were not written over
+	KeptPkgs []string    `json:"keptPkgs,omitempty"` // the packages they belong to
 	Err      string      `json:"err,omitempty"`
 	At       int64       `json:"at"`
 
@@ -618,7 +655,9 @@ func runImport(st *core.Store, assetBases []string) {
 	impMu.Unlock()
 	var remove func([]string) error
 	if recycle {
-		remove = core.RecycleFiles // the player's own files: to the Recycle Bin, never deleted for good
+		// the player's own files: to the Recycle Bin, never deleted for good — on a drive without one
+		// (a removable or network drive) they stay where they are
+		remove = core.RecycleOnly
 	}
 	res := archive.UnpackAll(places, pwd, remove, func(name string, i, n int) {
 		setImp(func(j *ImportJob) { j.Msg, j.Done, j.Total = "正在解压 "+name, i, n })
@@ -682,8 +721,8 @@ func runImport(st *core.Store, assetBases []string) {
 	setImp(func(j *ImportJob) { j.Stage, j.Msg = "import", "正在读取工程" })
 	TaskImport.Set(0, len(pick), "正在读取工程")
 	idx := indexProject(j.Project)
-	var files int
-	var tops, done []string
+	var files, kept int
+	var tops, done, keptPkgs []string
 	for i, p := range pick {
 		name := filepath.Base(p)
 		setImp(func(j *ImportJob) { j.Msg, j.Done, j.Total = "正在导入 "+name, i, len(pick) })
@@ -694,13 +733,20 @@ func runImport(st *core.Store, assetBases []string) {
 			return
 		}
 		files += stats.New + stats.Updated
+		kept += stats.Kept
 		tops = core.UniqStrings(append(tops, stats.Tops...))
+		keptPkgs = core.UniqStrings(append(keptPkgs, stats.KeptPkgs...))
 		done = append(done, name)
-		core.Logf("导入 %s → %s：新 %d，更新 %d", name, j.Project, stats.New, stats.Updated)
+		core.Logf("导入 %s → %s：新 %d，更新 %d，未覆盖 Packages 中的 %d", name, j.Project, stats.New, stats.Updated, stats.Kept)
 	}
+	sort.Strings(keptPkgs)
 	msg := fmt.Sprintf("已导入 %d 个 unitypackage，共 %d 个文件", len(done), files)
+	if n := keptNote(kept, keptPkgs); n != "" {
+		msg += "；" + n
+	}
 	setImp(func(j *ImportJob) {
 		j.Stage, j.Msg, j.Imported, j.Files, j.Tops, j.Done, j.Total = "done", msg, done, files, tops, len(pick), len(pick)
+		j.Kept, j.KeptPkgs = kept, keptPkgs
 	})
 	TaskImport.Set(1, 1, msg+"，目标工程："+filepath.Base(j.Project))
 	AfterImport(j.Project, j.Key, tops) // the pipeline page starts from what was just imported

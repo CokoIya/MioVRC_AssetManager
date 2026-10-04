@@ -2,8 +2,10 @@ package naming
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unicode"
 
 	"vrclib/internal/core"
@@ -68,13 +70,26 @@ type BaseDef struct {
 // parsed tables are cached: they are read for every card on every refresh
 var DefsCache sync.Map
 
+// lastBases: the table asked for last. It is nearly always the same one again (several times per card),
+// and comparing the list costs less than building the cache key from it.
+var lastBases atomic.Pointer[parsedBases]
+
+type parsedBases struct {
+	list []string
+	defs []BaseDef
+}
+
 func ParseBases(list []string) []BaseDef {
-	key := "b\x00" + strings.Join(list, "\n")
-	if v, ok := DefsCache.Load(key); ok {
-		return v.([]BaseDef)
+	if p := lastBases.Load(); p != nil && slices.Equal(p.list, list) {
+		return p.defs
 	}
-	out := parseBasesNow(list)
-	DefsCache.Store(key, out)
+	key := "b\x00" + strings.Join(list, "\n")
+	v, ok := DefsCache.Load(key)
+	if !ok {
+		v, _ = DefsCache.LoadOrStore(key, parseBasesNow(list)) // one table per list, whoever gets here first
+	}
+	out := v.([]BaseDef)
+	lastBases.Store(&parsedBases{slices.Clone(list), out})
 	return out
 }
 

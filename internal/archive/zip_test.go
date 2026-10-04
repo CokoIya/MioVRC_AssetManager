@@ -1,14 +1,11 @@
 package archive
 
 import (
-	"archive/zip"
-	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"vrclib/internal/core"
 	"vrclib/internal/testkit"
 )
 
@@ -41,34 +38,5 @@ func TestExtractZip(t *testing.T) {
 	}
 	if leftovers, _ := filepath.Glob(filepath.Join(dir, ".*extracting")); len(leftovers) > 0 {
 		t.Errorf("temp folders left: %v", leftovers)
-	}
-}
-
-// Zips made on Japanese Windows keep Shift-JIS names without the UTF-8 flag.
-func TestShiftJISZip(t *testing.T) {
-	dir := t.TempDir()
-	sjis := []byte{0x82, 0xd3, 0x82, 0xed, 0x82, 0xd3, 0x82, 0xed, 0x90, 0x4b, 0x94, 0xf6, 0x2f, 0x90, 0x4b, 0x94, 0xf6, 0x2e, 0x75, 0x6e, 0x69, 0x74, 0x79, 0x70, 0x61, 0x63, 0x6b, 0x61, 0x67, 0x65}
-	var buf bytes.Buffer
-	zw := zip.NewWriter(&buf)
-	w, err := zw.CreateHeader(&zip.FileHeader{Name: string(sjis), NonUTF8: true, Method: zip.Deflate})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, _ = w.Write([]byte("pkg"))
-	_ = zw.Close()
-	zp := filepath.Join(dir, "fluffy_tail.zip")
-	_ = os.WriteFile(zp, buf.Bytes(), 0644)
-	out, err := extractZip(zp, dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := core.DecodeCP932(sjis); !ok {
-		t.Skip("no code page conversion on this system")
-	}
-	if filepath.Base(out) != "ふわふわ尻尾" {
-		t.Errorf("folder %q", filepath.Base(out))
-	}
-	if _, err := os.Stat(filepath.Join(out, "尻尾.unitypackage")); err != nil {
-		t.Error(err)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -76,6 +77,7 @@ type scrapeResult struct {
 	Gifts      []scrapeItem  `json:"gifts"`
 	Orders     []scrapeOrder `json:"orders"`
 	OrderError string        `json:"orderError"`
+	Incomplete string        `json:"incomplete"` // why the lists may not be whole (a page that did not load, fewer pages than Booth shows)
 	Debug      string        `json:"debug"`
 }
 
@@ -179,7 +181,7 @@ func boothLoop(st *core.Store, prog *core.Task, d webpane.PageDriver, quiet bool
 		deadline = time.Now().Add(25 * time.Second)
 	}
 	var lastNav, signInSince time.Time
-	left, _ := d.(interface{ userLeft() bool })
+	left, _ := d.(interface{ UserLeft() bool })
 	prog.Set(0, 0, waitingMsg)
 	var res *scrapeResult
 	for res == nil {
@@ -221,7 +223,7 @@ func boothLoop(st *core.Store, prog *core.Task, d webpane.PageDriver, quiet bool
 			}
 		}
 		if !onAccounts || strings.Contains(u.Path, "sign_in") {
-			if !quiet && left != nil && left.userLeft() {
+			if !quiet && left != nil && left.UserLeft() {
 				prog.Set(0, 0, "未登录，同步已取消")
 				return false
 			}
@@ -265,10 +267,10 @@ func boothLoop(st *core.Store, prog *core.Task, d webpane.PageDriver, quiet bool
 	}
 	saveSessionFrom(d)
 
-	n := mergePurchases(st, res)
+	n, partial := mergePurchases(st, res)
 	if n == 0 {
 		if res.Debug != "" {
-			_ = os.WriteFile(filepath.Join(core.DataDir, "booth-debug.html"), []byte(res.Debug), 0644)
+			_ = os.WriteFile(filepath.Join(core.DataDir, "booth-debug.html"), []byte(redactPage(res.Debug)), 0600)
 		}
 		prog.Set(1, 1, "未获取到已购商品（如确有已购，请将数据文件夹中的 booth-debug.html 发送给作者）")
 		return false
@@ -280,12 +282,30 @@ func boothLoop(st *core.Store, prog *core.Task, d webpane.PageDriver, quiet bool
 	_ = st.Save()
 	core.BumpRev()
 	msg := fmt.Sprintf("完成：已同步 %d 件 Booth 已购", n)
+	if partial {
+		msg += "（" + syncPartialNote + "）"
+	}
 	if res.OrderError != "" {
 		msg += "（订单页未完整获取：" + res.OrderError + "）"
 	}
 	prog.Set(1, 1, msg)
-	core.Logf("Booth 已购同步完成：%d 件，%d 个订单", n, len(res.Orders))
+	core.Logf("Booth 已购同步完成：%d 件，%d 个订单，未读全：%v %s", n, len(res.Orders), partial, res.Incomplete)
 	return true
+}
+
+// syncPartialNote: said in the sync's status when what was read cannot be all of it.
+const syncPartialNote = "同步未完整，已保留原有记录"
+
+var (
+	rePageToken = regexp.MustCompile(`(?i)((?:csrf-token|csrf-param|authenticity_token)"[^>]{0,80}?(?:content|value)=")[^"]*`)
+	rePageMail  = regexp.MustCompile(`[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}`)
+)
+
+// redactPage: the library page kept for the author to look at, without the form tokens and e-mail addresses
+// in it.
+func redactPage(html string) string {
+	html = rePageToken.ReplaceAllString(html, "${1}…")
+	return rePageMail.ReplaceAllString(html, "…@…")
 }
 
 func runScraper(d webpane.PageDriver, prog *core.Task) (*scrapeResult, error) {
@@ -334,7 +354,13 @@ func runScraper(d webpane.PageDriver, prog *core.Task) (*scrapeResult, error) {
 	}
 }
 
-func mergePurchases(st *core.Store, r *scrapeResult) int {
+// lostTooMany: a Booth library does not shrink by itself, so a list that is much shorter than the one kept is
+// taken for a sync that did not read everything.
+func lostTooMany(lost, had int) bool { return lost >= 3 && lost*5 > had }
+
+// mergePurchases puts what a sync read into the store. partial: the lists were not read whole (or shrank more
+// than a library does), so the purchases kept before were not dropped.
+func mergePurchases(st *core.Store, r *scrapeResult) (n int, partial bool) {
 	now := time.Now().Unix()
 	st.Mu.Lock()
 	defer st.Mu.Unlock()
@@ -382,7 +408,7 @@ func mergePurchases(st *core.Store, r *scrapeResult) int {
 		add(it)
 	}
 	if len(next) == 0 {
-		return 0
+		return 0, false
 	}
 	for _, o := range r.Orders {
 		for _, id := range o.Items {
@@ -391,19 +417,40 @@ func mergePurchases(st *core.Store, r *scrapeResult) int {
 			}
 		}
 	}
-	for _, p := range next {
+	// orders known before stay when this sync did not read them (the order pages failed, or were not reached)
+	for id, p := range next {
+		if o := old[id]; o != nil {
+			for _, po := range o.Orders {
+				if !containsOrder(p.Orders, po.ID) {
+					p.Orders = append(p.Orders, po)
+				}
+			}
+		}
 		sort.SliceStable(p.Orders, func(i, j int) bool { return p.Orders[i].Date > p.Orders[j].Date })
 	}
-	n := len(next)
-	for id, p := range old { // what was bought on Gumroad is not Booth's to forget
-		if core.IsGumID(id) {
+	n = len(next)
+	had, lost := 0, 0
+	for id := range old {
+		if !core.IsGumID(id) {
+			had++
+			if next[id] == nil {
+				lost++
+			}
+		}
+	}
+	partial = r.Incomplete != "" || lostTooMany(lost, had)
+	for id, p := range old {
+		if core.IsGumID(id) { // what was bought on Gumroad is not Booth's to forget
 			next[id] = p
+		} else if partial && next[id] == nil {
+			next[id] = p
+			n++
 		}
 	}
 	st.Purchases = next
 	st.PurchaseSync = now
 	library.ApplyPurchases(st)
-	return n
+	return n, partial
 }
 
 func containsOrder(l []core.PurchaseOrder, id string) bool {

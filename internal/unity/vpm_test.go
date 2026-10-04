@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"vrclib/internal/core"
+	"vrclib/internal/semver"
 	"vrclib/internal/testkit"
 )
 
@@ -417,5 +418,213 @@ func TestVPMRealListings(t *testing.T) {
 	}
 	if picked["com.vrchat.avatars"].Version == "" || picked["nadena.dev.ndmf"].Version == "" || picked["com.vrchat.base"].Version != picked["com.vrchat.avatars"].Version {
 		t.Errorf("picked %v", picked)
+	}
+}
+
+func waitNewProject(t *testing.T) *NewProjectJob {
+	t.Helper()
+	for i := 0; i < 3000; i++ {
+		if j := NewProjectSnapshot(); j != nil && (j.Stage == "done" || j.Stage == "failed") {
+			return j
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("the job did not end")
+	return nil
+}
+
+// a job that fails takes its folders away again, so the same name can be tried once more; what an older
+// version left behind (the bare folders) does not stand in the way either
+func TestNewProjectRetry(t *testing.T) {
+	st := testkit.NewStore(t)
+	t.Setenv("VRCLIB_VCC_DIR", t.TempDir())
+	t.Setenv("VRCLIB_UNITY_DIRS", t.TempDir())
+	EdMu.Lock()
+	EdCache = nil
+	EdMu.Unlock()
+	old := vpmBuiltinRepos
+	vpmBuiltinRepos = []vpmRepo{{ID: "x", Name: "X", URL: "http://127.0.0.1:9/x.json"}} // nothing answers there
+	t.Cleanup(func() { vpmBuiltinRepos = old })
+	parent := t.TempDir()
+	req := NewProjectReq{Name: "Mio", Parent: parent}
+	if err := StartNewProject(st, req); err != nil {
+		t.Fatal(err)
+	}
+	if j := waitNewProject(t); j.Stage != "failed" || !strings.Contains(j.Err, "插件仓库") {
+		t.Fatalf("offline: %+v", j)
+	}
+	DismissNewProject()
+	if core.StatOK(filepath.Join(parent, "Mio")) {
+		t.Error("the failed job left its folder behind")
+	}
+	// a folder that was there before the job stays, empty as it was
+	_ = os.MkdirAll(filepath.Join(parent, "Kept"), 0755)
+	if err := StartNewProject(st, NewProjectReq{Name: "Kept", Parent: parent}); err != nil {
+		t.Fatal(err)
+	}
+	waitNewProject(t)
+	DismissNewProject()
+	if ents, err := os.ReadDir(filepath.Join(parent, "Kept")); err != nil || len(ents) != 0 {
+		t.Errorf("the player's empty folder: %v %v", ents, err)
+	}
+	// what 1.7.5 left behind, and a job that was cut short (its marker is still there): both free
+	for _, d := range newSkeleton {
+		_ = os.MkdirAll(filepath.Join(parent, "Mio", d), 0755)
+	}
+	_ = os.MkdirAll(filepath.Join(parent, "Mio", "Packages", "com.vrchat.base"), 0755)
+	_ = os.MkdirAll(filepath.Join(parent, "Cut", "Assets", "Imported"), 0755)
+	_ = os.WriteFile(filepath.Join(parent, "Cut", "Assets", "Imported", "a.prefab"), []byte("x"), 0644)
+	_ = os.WriteFile(filepath.Join(parent, "Cut", newMarker), nil, 0644)
+	if NewProjectTaken(filepath.Join(parent, "Mio")) || NewProjectTaken(filepath.Join(parent, "Cut")) || NewProjectTaken(filepath.Join(parent, "Nope")) {
+		t.Error("a leftover counts as taken")
+	}
+	// the player's own folders are never free
+	mk := func(name string, files ...string) string {
+		for _, f := range files {
+			_ = os.MkdirAll(filepath.Dir(filepath.Join(parent, name, f)), 0755)
+			_ = os.WriteFile(filepath.Join(parent, name, f), []byte("x"), 0644)
+		}
+		return filepath.Join(parent, name)
+	}
+	for _, p := range []string{
+		mk("Docs", "notes.txt"),
+		mk("Proj", "Assets/a.prefab", "Packages/manifest.json", "ProjectSettings/ProjectSettings.asset"),
+		mk("Done", "Packages/manifest.json", "ProjectSettings/ProjectVersion.txt"),
+		mk("Opened", newMarker, "Library/x", "Assets/a.prefab"),
+		mk("Extra", "Packages/x/package.json", "readme.md"),
+	} {
+		if !NewProjectTaken(p) {
+			t.Errorf("%s counts as free", filepath.Base(p))
+		}
+	}
+	if err := StartNewProject(st, NewProjectReq{Name: "Proj", Parent: parent}); err == nil || !strings.Contains(err.Error(), "不为空") {
+		t.Errorf("over a project: %v", err)
+	}
+	// with the repositories back the retry goes through, over the leftover
+	f := newFakeVPM(t)
+	useFakeVPM(t, f)
+	if err := StartNewProject(st, req); err != nil {
+		t.Fatalf("retry refused: %v", err)
+	}
+	if j := waitNewProject(t); j.Stage != "done" {
+		t.Fatalf("retry: %+v", j)
+	}
+	DismissNewProject()
+	p := filepath.Join(parent, "Mio")
+	if core.StatOK(filepath.Join(p, newMarker)) || !core.StatOK(filepath.Join(p, "Packages", "com.vrchat.base", "package.json")) || !NewProjectTaken(p) {
+		t.Error("the finished project")
+	}
+	if _, ok := KnownProject(st, p); !ok {
+		t.Error("not registered")
+	}
+	// stopped by the player: the same
+	if err := StartNewProject(st, NewProjectReq{Name: "Stopped", Parent: parent}); err != nil {
+		t.Fatal(err)
+	}
+	CancelNewProject()
+	if j := waitNewProject(t); j.Stage != "failed" || j.Err != "已取消" {
+		t.Fatalf("stopped: %+v", j)
+	}
+	DismissNewProject()
+	if core.StatOK(filepath.Join(parent, "Stopped")) {
+		t.Error("the stopped job left its folder behind")
+	}
+	if _, ok := KnownProject(st, filepath.Join(parent, "Stopped")); ok {
+		t.Error("a stopped project is registered")
+	}
+	// a required package that cannot be fetched: nothing is left, nothing is registered
+	f.fails["/dl/com.vrchat.avatars-3.10.5.zip"] = true
+	_ = os.Remove(filepath.Join(core.DataDir, "vpm", "vrc-get-com.vrchat.avatars-3.10.5.zip"))
+	if err := StartNewProject(st, NewProjectReq{Name: "Half", Parent: parent}); err != nil {
+		t.Fatal(err)
+	}
+	if j := waitNewProject(t); j.Stage != "failed" {
+		t.Fatalf("required failure: %+v", j)
+	}
+	DismissNewProject()
+	if core.StatOK(filepath.Join(parent, "Half")) {
+		t.Error("half a project was left behind")
+	}
+	if _, ok := KnownProject(st, filepath.Join(parent, "Half")); ok {
+		t.Error("a project that was not made is registered")
+	}
+}
+
+// the project's name goes into the settings as it is, whatever characters it has
+func TestProductName(t *testing.T) {
+	st := testkit.NewStore(t)
+	f := newFakeVPM(t)
+	useFakeVPM(t, f)
+	t.Setenv("VRCLIB_VCC_DIR", t.TempDir())
+	for name, want := range map[string]string{
+		"Mio":          "  productName: Mio",
+		"My Avatar":    "  productName: My Avatar",
+		"天川澪_FT":       "  productName: 天川澪_FT",
+		"Mio$Avatar":   "  productName: 'Mio$Avatar'",
+		"${1}":         "  productName: '${1}'",
+		"[VRC] Mio #2": "  productName: '[VRC] Mio #2'",
+		"a: b":         "  productName: 'a: b'",
+		"Mio's":        "  productName: 'Mio''s'",
+		"true":         "  productName: 'true'",
+		"-x":           "  productName: '-x'",
+	} {
+		dir := t.TempDir()
+		_ = os.MkdirAll(filepath.Join(dir, "ProjectSettings"), 0755)
+		if _, err := writeProjectSettings(t.Context(), st, dir, name); err != nil {
+			t.Fatal(err)
+		}
+		b, _ := os.ReadFile(filepath.Join(dir, "ProjectSettings", "ProjectSettings.asset"))
+		var got []string
+		for _, l := range strings.Split(string(b), "\n") {
+			if strings.Contains(l, "productName") {
+				got = append(got, l)
+			}
+		}
+		if len(got) != 1 || got[0] != want || !strings.Contains(string(b), "m_ActiveColorSpace: 1") {
+			t.Errorf("%q → %q, want %q", name, got, want)
+		}
+		if m := minimalProjectSettings(name); !strings.Contains(m, "\n"+want+"\n") {
+			t.Errorf("minimal settings for %q: %s", name, m)
+		}
+	}
+}
+
+// a download past the size limit is said to be that, not a checksum or proxy problem; versions made for a
+// later Unity are passed over
+func TestVPMLimits(t *testing.T) {
+	core.DataDir = t.TempDir()
+	f := newFakeVPM(t)
+	useFakeVPM(t, f)
+	t.Setenv("VRCLIB_VCC_DIR", t.TempDir())
+	idx, err := loadIndex(t.Context(), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lil := idx.pkgs["jp.lilxyzw.liltoon"]["2.3.4"]
+	oldMax := vpmZipMax
+	vpmZipMax = 100
+	_, err = fetchZip(t.Context(), nil, lil, nil)
+	vpmZipMax = oldMax
+	if err == nil || !strings.Contains(err.Error(), "大小上限") || strings.Contains(err.Error(), "校验") {
+		t.Errorf("too big: %v", err)
+	}
+	if _, err := fetchZip(t.Context(), nil, lil, nil); err != nil {
+		t.Errorf("within the limit: %v", err)
+	}
+	for min, want := range map[string]bool{"": true, "2019.4": true, "2022.3": true, "2022.2": true, "2022.4": false, "2023.1": false, "6000.0": false, "x": true} {
+		if unityFits(min) != want {
+			t.Errorf("unityFits(%q) = %v", min, !want)
+		}
+	}
+	// the newest version asks for Unity 6: the one before it is taken
+	next := lil
+	next.Version, next.Unity = "3.0.0", "6000.0"
+	next.sv, _ = semver.ParseSemver("3.0.0")
+	idx.pkgs["jp.lilxyzw.liltoon"]["3.0.0"] = next
+	if v, err := idx.best("jp.lilxyzw.liltoon", []string{"*"}); err != nil || v.Version != "2.3.4" {
+		t.Errorf("best: %v %v", v.Version, err)
+	}
+	if _, err := idx.best("jp.lilxyzw.liltoon", []string{">=3.0.0"}); err == nil || !strings.Contains(err.Error(), "更新的 Unity") {
+		t.Errorf("only for a later Unity: %v", err)
 	}
 }

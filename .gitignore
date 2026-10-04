@@ -13,3 +13,6 @@ covers/
 booth-profile/
 webview/
 *.part
+
+# what running the tests leaves behind
+__pycache__/

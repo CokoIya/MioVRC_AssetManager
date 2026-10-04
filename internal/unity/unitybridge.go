@@ -88,7 +88,7 @@ func waitAlive(ctx context.Context, p string) error {
 		return nil
 	}
 	if !core.StatOK(filepath.Join(p, "Packages", PipePkg, "package.json")) {
-		return errors.New("该工程尚未安装 AI 插件，请先点击「安装并打开 Unity」")
+		return errors.New("该工程尚未安装 Unity 插件，请先点击「安装并打开 Unity」")
 	}
 	for until := time.Now().Add(60 * time.Second); ProjectRunning(p) && time.Now().Before(until); {
 		select {
@@ -301,7 +301,7 @@ func AIKitStatus(p string) AIKit {
 	}
 	switch {
 	case !k.Pipeline:
-		k.Hint = "该工程尚未安装 AI 插件"
+		k.Hint = "该工程尚未安装 Unity 插件"
 	case !k.Running && k.Unity == "":
 		k.Hint = "该工程尚未在 Unity 中打开，请从 Unity Hub 或 VCC 打开"
 	case !k.Running && !k.Editor:
@@ -467,7 +467,7 @@ func InstallAIKit(p string) (note string, err error) {
 		return "", errors.New("工程的 Packages 中已存在 " + PipePkg + "，但不是由本软件安装，未作改动")
 	}
 	if err := putPackage(p, PipePkg, writeEmbeddedPackage(PipePkg)); err != nil {
-		return "", fmt.Errorf("流水线插件安装失败：%v（文件可能被 Unity 占用，请关闭 Unity 后重试）", err)
+		return "", fmt.Errorf("Unity 插件安装失败：%v（文件可能被 Unity 占用，请关闭 Unity 后重试）", err)
 	}
 	kind, ver := skillsInProject(p)
 	switch {
@@ -482,7 +482,7 @@ func InstallAIKit(p string) (note string, err error) {
 	if err := os.MkdirAll(BridgeDir(p), 0755); err == nil {
 		_ = os.WriteFile(filepath.Join(BridgeDir(p), "want_skills"), []byte("1"), 0644)
 	}
-	core.Logf("AI 插件已放进 %s", p)
+	core.Logf("Unity 插件已放进 %s", p)
 	if ProjectRunning(p) {
 		if _, ok := ReadBridgeAlive(p); ok { // an older copy is running: have Unity pick the new files up
 			go func() {
@@ -515,7 +515,7 @@ func RemoveAIKit(p string) error {
 			return errors.New("工程中的 " + PipePkg + " 不是由本软件安装，未作改动")
 		}
 		if err := os.RemoveAll(dir); err != nil {
-			return fmt.Errorf("流水线插件移除失败：%v（请关闭 Unity 后重试）", err)
+			return fmt.Errorf("Unity 插件移除失败：%v（请关闭 Unity 后重试）", err)
 		}
 	}
 	sk := filepath.Join(p, "Packages", SkillsPkg)
@@ -527,7 +527,7 @@ func RemoveAIKit(p string) error {
 	_ = os.RemoveAll(BridgeDir(p))
 	_ = os.RemoveAll(filepath.Join(p, "UserSettings", "MioVRCA", "shots")) // the plugin's own pictures, normally empty
 	_ = os.Remove(filepath.Join(p, "UserSettings", "MioVRCA"))             // only when nothing else (cover pictures) is in it
-	core.Logf("AI 插件已从 %s 移除", p)
+	core.Logf("Unity 插件已从 %s 移除", p)
 	return nil
 }
 

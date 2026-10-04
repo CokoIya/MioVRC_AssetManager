@@ -67,6 +67,7 @@ func TestBaiduSessionFile(t *testing.T) {
 
 // The download goes on where a broken connection left it, and only with the netdisk client's name.
 func TestPCSDownloadResume(t *testing.T) {
+	quickRetries(t)
 	data := bytes.Repeat([]byte("0123456789abcdef"), 40000)
 	var cut atomic.Bool
 	cut.Store(true)

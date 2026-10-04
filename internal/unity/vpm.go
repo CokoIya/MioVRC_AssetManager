@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -201,6 +202,10 @@ var vpmHTTP = &http.Client{Timeout: 60 * time.Second}
 var vpmUA = "MioVRCA/" + core.AppVersion + " (VPM client; +https://miovrc.com/vrca/)"
 
 func vpmGet(ctx context.Context, st *core.Store, u string, timeout time.Duration) ([]byte, error) {
+	return vpmGetMax(ctx, st, u, timeout, vpmListingMax)
+}
+
+func vpmGetMax(ctx context.Context, st *core.Store, u string, timeout time.Duration, max int64) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 	if err != nil {
 		return nil, err
@@ -220,7 +225,25 @@ func vpmGet(ctx context.Context, st *core.Store, u string, timeout time.Duration
 	if resp.StatusCode/100 != 2 {
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-	return io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+	if resp.ContentLength > max {
+		return nil, errTooBig(max)
+	}
+	b, err := io.ReadAll(io.LimitReader(resp.Body, max+1))
+	if err == nil && int64(len(b)) > max { // said as what it is: cut off, it would look like a damaged file
+		return nil, errTooBig(max)
+	}
+	return b, err
+}
+
+// what one answer may weigh: a repository's listing, and a package's zip (the VRChat SDK is some 30 MB,
+// shader packages go past 100)
+var (
+	vpmListingMax int64 = 64 << 20
+	vpmZipMax     int64 = 512 << 20
+)
+
+func errTooBig(max int64) error {
+	return fmt.Errorf("文件超过 %d MB 的大小上限", max>>20)
 }
 
 // loadIndex reads every repository: fresh from the web when it can, else the cache ALCOM / VCC keep.
@@ -358,9 +381,14 @@ func (idx *vpmIndex) best(name string, ranges []string) (vpmVersion, error) {
 		parsed = append(parsed, pr)
 	}
 	var best *vpmVersion
+	newer := 0 // versions made for a later Unity than the one a new project uses
 	for ver := range vers {
 		v := vers[ver]
 		if v.sv.Pre != "" || v.URL == "" {
+			continue
+		}
+		if !unityFits(v.Unity) {
+			newer++
 			continue
 		}
 		ok := true
@@ -384,9 +412,33 @@ func (idx *vpmIndex) best(name string, ranges []string) (vpmVersion, error) {
 		if len(have) > 6 {
 			have = have[len(have)-6:]
 		}
-		return vpmVersion{}, fmt.Errorf("%s 没有同时满足 %s 的正式版本（仓库中现有 %s）", name, strings.Join(ranges, " 和 "), strings.Join(have, "、"))
+		more := ""
+		if newer > 0 {
+			more = fmt.Sprintf("，其中 %d 个需要比 %s 更新的 Unity", newer, vrcUnity)
+		}
+		return vpmVersion{}, fmt.Errorf("%s 没有同时满足 %s 的正式版本（仓库中现有 %s%s）", name, strings.Join(ranges, " 和 "), strings.Join(have, "、"), more)
 	}
 	return *best, nil
+}
+
+// unityFits: a version's "unity" field ("2022.3", the oldest editor it works in) against the editor new
+// projects are made for. A field that is empty or not a version rules nothing out.
+func unityFits(min string) bool {
+	num := func(s string) (major, minor int, ok bool) {
+		p := strings.SplitN(strings.TrimSpace(s), ".", 3)
+		if len(p) < 2 {
+			return 0, 0, false
+		}
+		a, e1 := strconv.Atoi(p[0])
+		b, e2 := strconv.Atoi(p[1])
+		return a, b, e1 == nil && e2 == nil
+	}
+	wa, wb, ok := num(min)
+	if !ok {
+		return true
+	}
+	ha, hb, _ := num(vrcUnity)
+	return wa < ha || (wa == ha && wb <= hb)
 }
 
 // ---------- the zip of a version ----------
@@ -430,7 +482,7 @@ func fetchZip(ctx context.Context, st *core.Store, v vpmVersion, progress func(s
 	if progress != nil {
 		progress("正在下载 " + v.Name + " " + v.Version)
 	}
-	b, err := vpmGet(ctx, st, v.URL, 10*time.Minute)
+	b, err := vpmGetMax(ctx, st, v.URL, 10*time.Minute, vpmZipMax)
 	if err != nil {
 		return "", fmt.Errorf("%s %s 下载失败：%v", v.Name, v.Version, core.TrimErr(err))
 	}

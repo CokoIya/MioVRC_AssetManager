@@ -1,6 +1,7 @@
 package purchases
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -24,15 +25,16 @@ import (
 // the same JSON in data-page), a library of 15 purchases a page, download pages, and file redirects to
 // another host.
 type fakeGumroad struct {
-	mu       sync.Mutex
-	t        *testing.T
-	files    *httptest.Server
-	cards    []map[string]any // newest first
-	archived []map[string]any
-	hits     map[string]int
-	loggedIn bool
-	blocked  bool
-	fileAuth []string // the Cookie header the file host saw
+	mu        sync.Mutex
+	t         *testing.T
+	files     *httptest.Server
+	cards     []map[string]any // newest first
+	archived  []map[string]any
+	hits      map[string]int
+	loggedIn  bool
+	blocked   bool
+	emptyPage int      // this page of the library comes back without purchases
+	fileAuth  []string // the Cookie header the file host saw
 }
 
 func gumCardJSON(id, name, creator string) map[string]any {
@@ -87,6 +89,9 @@ func (f *fakeGumroad) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if to > len(list) {
 			to = len(list)
 		}
+		if page == f.emptyPage {
+			to = from
+		}
 		var res []map[string]any
 		for _, c := range list[from:to] {
 			id := strings.TrimSuffix(c["purchase"].(map[string]any)["id"].(string), "==")
@@ -128,6 +133,9 @@ func (f *fakeGumroad) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func newFakeGumroad(t *testing.T, n int) (*fakeGumroad, *core.Store) {
 	t.Helper()
 	st := testkit.NewStore(t)
+	listGap, pageGap := gumListGap, gumPageGap
+	gumListGap, gumPageGap = time.Millisecond, time.Millisecond
+	t.Cleanup(func() { gumListGap, gumPageGap = listGap, pageGap })
 	f := &fakeGumroad{t: t, hits: map[string]int{}, loggedIn: true}
 	f.files = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
@@ -225,7 +233,7 @@ func TestGumroadSync(t *testing.T) {
 	}
 	st.Mu.RUnlock()
 	// a Booth sync does not forget what was bought on Gumroad
-	if n := mergePurchases(st, &scrapeResult{Library: []scrapeItem{{ID: "5550002", Name: "Other", Files: []string{"o.zip"}, Downloads: []string{"901"}}}}); n != 1 {
+	if n, _ := mergePurchases(st, &scrapeResult{Library: []scrapeItem{{ID: "5550002", Name: "Other", Files: []string{"o.zip"}, Downloads: []string{"901"}}}}); n != 1 {
 		t.Errorf("booth merge counted %d", n)
 	}
 	st.Mu.RLock()
@@ -267,7 +275,7 @@ func TestGumroadLoginGone(t *testing.T) {
 	if LoadGumSession() != nil || !strings.Contains(prog.Msg, "重新登录") {
 		t.Errorf("session kept, or no word about it: %q", prog.Msg)
 	}
-	if _, _, err := resolveGumDownload(st, "gr_x"); err != errGumLogin {
+	if _, _, err := resolveGumDownload(context.Background(), st, "gr_x"); err != errGumLogin {
 		t.Errorf("download without a login: %v", err)
 	}
 }
@@ -286,7 +294,7 @@ func TestGumroadBlocked(t *testing.T) {
 	st.Mu.Lock()
 	st.Purchases["gr_x"] = &core.Purchase{ID: "gr_x", Source: "gumroad", Downloads: []string{"gr_x_1"}, DLPaths: []string{"/r/tok/product_files?product_file_ids[]=1"}}
 	st.Mu.Unlock()
-	if _, _, err := resolveGumDownload(st, "gr_x_1"); err != errGumBlocked {
+	if _, _, err := resolveGumDownload(context.Background(), st, "gr_x_1"); err != errGumBlocked {
 		t.Errorf("download through the protection page: %v", err)
 	}
 	if LoadGumSession() == nil {
@@ -303,11 +311,11 @@ func TestGumroadDownload(t *testing.T) {
 	if !RunGumroadSync(st, &core.Task{}) {
 		t.Fatal("sync failed")
 	}
-	u, name, err := resolveGumDownload(st, "gr_fp01b")
+	u, name, err := resolveGumDownload(context.Background(), st, "gr_fp01b")
 	if err != nil || !strings.HasPrefix(u, f.files.URL+"/files/fp01b.bin") || name != "Real Name fp01b.zip" {
 		t.Fatalf("resolve: %q %q %v", u, name, err)
 	}
-	if _, _, err := resolveGumDownload(st, "gr_nosuch"); err == nil {
+	if _, _, err := resolveGumDownload(context.Background(), st, "gr_nosuch"); err == nil {
 		t.Error("an unknown file resolved")
 	}
 	n, err := QueueDownloads(st, "gr_p01", nil)

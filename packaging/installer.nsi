@@ -13,7 +13,7 @@ Target amd64-unicode
 !define MIDNAME "MioVRC素材托管工具"
 ; builds between 1.7.1 and 1.7.2
 !define PREVNAME "MioVRCA素材托管Tools"
-!define VERSION "1.7.4"
+!define VERSION "1.7.6"
 ; registry keys keep their pre-1.6 names, so installing over an older version updates it
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\VRCAssetLibrary"
 !define DIRKEY "Software\VRCAssetLibrary"
@@ -26,7 +26,7 @@ RequestExecutionLevel user
 SetCompressor /SOLID lzma
 BrandingText "${APPNAME} ${VERSION}"
 
-VIProductVersion "1.7.4.0"
+VIProductVersion "1.7.6.0"
 VIAddVersionKey /LANG=2052 "ProductName" "${APPNAME}"
 VIAddVersionKey /LANG=2052 "FileDescription" "${APPNAME} 安装程序"
 VIAddVersionKey /LANG=2052 "CompanyName" "Coko_Iya"
@@ -342,7 +342,13 @@ Section "Uninstall"
   IfFileExists "$LOCALAPPDATA\${APPID}\library.json" askdata
   IfFileExists "$LOCALAPPDATA\${OLDNAME}\library.json" askdata done
   askdata:
-    MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "是否同时删除素材库数据？$\r$\n（网盘链接、备注、Booth 已购记录和封面缓存）$\r$\n$\r$\n选择「否」将保留数据，重新安装后可继续使用。" /SD IDNO IDNO done
+    ; downloads made before any asset folder was set went into the data folder: say that they go too
+    StrCpy $1 ""
+    ${If} ${FileExists} "$LOCALAPPDATA\${APPID}\downloads\*.*"
+    ${OrIf} ${FileExists} "$LOCALAPPDATA\${OLDNAME}\downloads\*.*"
+      StrCpy $1 "$\r$\n$\r$\n注意：数据文件夹内的「downloads」文件夹（未设置下载位置时使用的默认下载文件夹）及其中已下载的素材文件也将一并删除。"
+    ${EndIf}
+    MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "是否同时删除素材库数据？$\r$\n（网盘链接、备注、Booth 已购记录和封面缓存）$1$\r$\n$\r$\n选择「否」将保留数据，重新安装后可继续使用。" /SD IDNO IDNO done
     RMDir /r "$LOCALAPPDATA\${APPID}"
     RMDir /r "$LOCALAPPDATA\${OLDNAME}"
   done:

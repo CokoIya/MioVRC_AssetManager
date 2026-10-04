@@ -5,13 +5,43 @@ import (
 	"strings"
 	"time"
 
+	"vrclib/internal/booth"
 	"vrclib/internal/core"
 	"vrclib/internal/naming"
 	"vrclib/internal/netdisk"
 	"vrclib/internal/update"
 )
 
-const shareRecheck = 24 * time.Hour
+const (
+	shareRecheck = 24 * time.Hour
+	// a share that is gone (or whose code is wrong) does not come back by being asked for every day
+	deadShareRecheck = 7 * 24 * time.Hour
+)
+
+// dueShares: the shares to read again — not read for a day; for a week when the last answer was that the
+// share is gone or its code is wrong. Caller holds st.mu.
+func dueShares(st *core.Store, now time.Time) []string {
+	var due []string
+	for _, key := range core.SortedKeys(st.User) {
+		u := st.User[key]
+		if u == nil || u.ShareURL == "" || strings.Contains(key, "#") {
+			continue
+		}
+		surl := netdisk.ShareID(u.ShareURL)
+		if surl == "" {
+			continue
+		}
+		l := st.Pan[surl]
+		every := shareRecheck
+		if l != nil && netdisk.PanErrSettled(l.Err) {
+			every = deadShareRecheck
+		}
+		if l == nil || now.Sub(time.Unix(l.Fetched, 0)) > every {
+			due = append(due, key)
+		}
+	}
+	return due
+}
 
 // SyncLoop queues shares that have not been read for a day, and once a day lets the Booth step
 // look for pages due for their weekly re-fetch (needsBooth), for windows left open for days.
@@ -21,25 +51,14 @@ func SyncLoop(st *core.Store) {
 	for {
 		st.Mu.RLock()
 		off, auto := st.Settings.NoSync, st.Settings.AutoBooth
-		var due []string
-		now := time.Now()
-		for _, key := range core.SortedKeys(st.User) {
-			u := st.User[key]
-			if u == nil || u.ShareURL == "" || strings.Contains(key, "#") {
-				continue
-			}
-			surl := netdisk.ShareSurl(u.ShareURL)
-			l := st.Pan[surl]
-			if surl != "" && (l == nil || now.Sub(time.Unix(l.Fetched, 0)) > shareRecheck) {
-				due = append(due, key)
-			}
-		}
+		due := dueShares(st, time.Now())
 		st.Mu.RUnlock()
-		if !off && len(due) > 0 {
+		if !off && len(due) > 0 && !PanFetchPaused() {
 			core.Logf("重新读取 %d 个网盘分享", len(due))
 			QueuePanFetch(st, due...)
 		}
-		if !off && auto && time.Since(lastBooth) > shareRecheck && StartPipeline(st, false, false, true, false, nil) {
+		// daily, and sooner when a batch was broken off because Booth turned requests away and has had its rest
+		if !off && auto && (time.Since(lastBooth) > shareRecheck || booth.ResumeDue()) && StartPipeline(st, false, false, true, false, nil) {
 			lastBooth = time.Now()
 		}
 		time.Sleep(30 * time.Minute)

@@ -38,6 +38,10 @@ func setWindowContext(wnd uintptr, data interface{}) {
 // MoveHook runs when the window moves (vrclib patch).
 var MoveHook func()
 
+// CloseHook is asked when the window is about to close (the X, Alt+F4, Destroy); false keeps it open
+// (vrclib patch).
+var CloseHook func() bool
+
 // IconLoaded says whether the window's icon was found in the exe's resources (vrclib patch).
 var IconLoaded bool
 
@@ -253,6 +257,9 @@ func wndproc(hwnd, msg, wp, lp uintptr) uintptr {
 				w.browser.Focus()
 			}
 		case w32.WMClose:
+			if CloseHook != nil && !CloseHook() { // vrclib patch: the program may have a reason to stay open
+				break
+			}
 			_, _, _ = w32.User32DestroyWindow.Call(hwnd)
 		case w32.WMDestroy:
 			w.Terminate()

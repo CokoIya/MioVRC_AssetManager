@@ -196,6 +196,61 @@ type sceneUnity struct {
 	refresh int
 	empty   bool         // the scene has no avatar until one is placed
 	extra   []prefabInfo // prefabs beyond testPrefabs()
+
+	// live: the scene remembers. What was dressed is a child of the avatar (and "existing" the next time), a
+	// name that is taken gives the next object another one, and the menus that were built show in maMenu.
+	live     bool
+	objects  [][2]string      // name, prefab
+	undos    []map[string]any // the undo requests
+	bits     int              // parameterBits, as build_menu reports them
+	bones    int              // physBones, as dress reports them
+	menuErr  string           // build_menu fails with this
+	undoErr  string           // undo fails with this
+	dressErr map[string]string
+	places   []map[string]any  // the place requests (plugin prefabs put under the avatar as they are)
+	ft       bool              // the avatar has face tracking on it
+	rename   map[string]string // prefab → the name its object gets here (as when the name is taken)
+}
+
+// maMenu: the menus built so far, the way inspect shows them (one flat level is enough for what reads it).
+func (u *sceneUnity) maMenu() []any {
+	var kids []any
+	n := 0
+	for _, m := range u.menus {
+		items, _ := m["items"].([]any)
+		for _, it := range items {
+			o := it.(map[string]any)
+			n++
+			node := map[string]any{"object": fmt.Sprint("Avatar Menu/", o["label"], n), "label": o["label"], "type": "Toggle", "value": n}
+			var tg []any
+			for _, p := range asStrings(o["objects"]) {
+				tg = append(tg, p+"=on")
+			}
+			node["toggles"] = tg
+			if o["kind"] == "outfit" {
+				node["parameter"] = m["parameter"]
+				if p, _ := o["parameter"].(string); p != "" {
+					node["parameter"] = p
+				}
+				if d, _ := o["default"].(bool); d {
+					node["default"] = true
+				}
+			} else {
+				node["auto"] = true
+			}
+			if o["kind"] == "strip" { // marked for its parameter, as the plugin marks it
+				node["strip"] = m["parameter"]
+				if p, _ := o["parameter"].(string); p != "" {
+					node["strip"] = p
+				}
+			}
+			kids = append(kids, node)
+		}
+	}
+	if len(kids) == 0 {
+		return []any{}
+	}
+	return []any{map[string]any{"object": "Avatar Menu", "label": "Avatar Menu", "type": "MenuInstaller", "children": kids}}
 }
 
 func (u *sceneUnity) answer(cmd string, args map[string]any) (any, string) {
@@ -210,9 +265,41 @@ func (u *sceneUnity) answer(cmd string, args map[string]any) (any, string) {
 		if u.empty && len(u.placed) == 0 {
 			return map[string]any{"modularAvatar": "1.18.3", "vrcSdk": true, "avatars": []any{}}, ""
 		}
+		kids := []any{map[string]any{"name": "Body", "kind": "mesh", "active": true}, map[string]any{"name": "Hair", "kind": "mesh", "active": true, "prefab": "Assets/IKUSIA/kaguya/kaguya.prefab"}}
+		menu := []any{}
+		if u.live {
+			for _, o := range u.objects {
+				kids = append(kids, map[string]any{"name": o[0], "kind": "outfit", "active": true, "prefab": o[1]})
+			}
+			menu = u.maMenu()
+		}
 		return map[string]any{"modularAvatar": "1.18.3", "vrcSdk": true, "avatars": []any{map[string]any{
-			"name": "Kaguya_Test", "path": "Kaguya_Test", "active": true, "prefab": "Assets/IKUSIA/kaguya/kaguya.prefab",
-			"children": []any{map[string]any{"name": "Body", "kind": "mesh", "active": true}, map[string]any{"name": "Hair", "kind": "mesh", "active": true, "prefab": "Assets/IKUSIA/kaguya/kaguya.prefab"}}, "maMenu": []any{}}}}, ""
+			"name": "Kaguya_Test", "path": "Kaguya_Test", "active": true, "prefab": "Assets/IKUSIA/kaguya/kaguya.prefab", "parameterBits": u.bits, "physBones": u.bones,
+			"faceTracking": u.ft, "children": kids, "maMenu": menu}}}, ""
+	case "place":
+		u.places = append(u.places, args)
+		prefab := fmt.Sprint(args["prefab"])
+		if e := u.dressErr[prefab]; e != "" {
+			return nil, e
+		}
+		name, existing := strings.TrimSuffix(filepath.Base(prefab), ".prefab"), false
+		res := map[string]any{"warnings": []string{}, "menuInstallers": []string{}, "parameterBits": u.bits, "physBones": u.bones}
+		for _, x := range u.extra {
+			if strings.EqualFold(x.Path, prefab) {
+				if x.MenuInstallers > 0 {
+					res["menuInstallers"] = []string{name}
+				}
+				res["vrcFury"], res["faceTracking"] = x.VRCFury, x.FaceTracking
+			}
+		}
+		for _, o := range u.objects {
+			existing = existing || o[1] == prefab
+		}
+		if !existing {
+			u.objects = append(u.objects, [2]string{name, prefab})
+		}
+		res["existing"], res["changed"], res["object"], res["name"] = existing, !existing, name, name
+		return res, ""
 	case "prefabs":
 		all := append(testPrefabs(), u.extra...)
 		return map[string]any{"prefabs": all, "total": len(all)}, ""
@@ -221,7 +308,31 @@ func (u *sceneUnity) answer(cmd string, args map[string]any) (any, string) {
 		return map[string]any{"scene": "Assets/P/P.unity", "avatar": "Kaguya_Test", "prefab": args["prefab"]}, ""
 	case "dress":
 		u.dressed = append(u.dressed, args)
-		name := strings.TrimSpace(strings.TrimSuffix(filepath.Base(fmt.Sprint(args["prefab"])), ".prefab"))
+		prefab := fmt.Sprint(args["prefab"])
+		if e := u.dressErr[prefab]; e != "" {
+			return nil, e
+		}
+		name := strings.TrimSpace(strings.TrimSuffix(filepath.Base(prefab), ".prefab"))
+		if n := u.rename[prefab]; n != "" {
+			name = n
+		}
+		existing, warnings := false, []string{}
+		if u.live {
+			taken := false
+			for _, o := range u.objects {
+				if o[1] == prefab {
+					name, existing = o[0], true
+				}
+				taken = taken || o[0] == name
+			}
+			if !existing {
+				if taken { // as the plugin does: named after the folder that sets the prefab apart
+					name += "_" + filepath.Base(filepath.Dir(prefab))
+					warnings = append(warnings, "模型下已有名为「"+strings.TrimSuffix(filepath.Base(prefab), ".prefab")+"」的物体（不是同一个 prefab），新装配的物体已命名为「"+name+"」")
+				}
+				u.objects = append(u.objects, [2]string{name, prefab})
+			}
+		}
 		var meshes []any
 		names := testPrefabs()[0].MeshNames
 		for _, x := range u.extra {
@@ -232,7 +343,11 @@ func (u *sceneUnity) answer(cmd string, args map[string]any) (any, string) {
 		for _, m := range names {
 			meshes = append(meshes, map[string]any{"path": name + "/" + m, "active": true, "height": []float64{0, 1}})
 		}
-		return map[string]any{"setUp": true, "warnings": []string{}, "outfit": map[string]any{"object": name, "meshes": meshes}}, ""
+		res := map[string]any{"setUp": true, "warnings": warnings, "outfit": map[string]any{"object": name, "meshes": meshes}}
+		if u.live {
+			res["existing"], res["changed"], res["name"], res["physBones"] = existing, !existing, name, u.bones
+		}
+		return res, ""
 	case "inspect_object":
 		return map[string]any{"object": args["path"], "meshes": []any{map[string]any{"path": fmt.Sprint(args["path"]) + "/UV2_Sandal", "height": []float64{0, 0.1}}}}, ""
 	case "build_menu":
@@ -245,13 +360,54 @@ func (u *sceneUnity) answer(cmd string, args map[string]any) (any, string) {
 				}
 			}
 		}
+		if u.menuErr != "" {
+			return nil, u.menuErr
+		}
+		res := map[string]any{"created": []string{"Avatar Menu"}, "warnings": []string{}, "icons": len(items), "root": "Avatar Menu", "parameter": "Clothtoggle",
+			"menu": map[string]any{"big": strings.Repeat("x", 5000)}}
+		if r, _ := args["root"].(string); r != "" {
+			res["root"] = r
+		}
+		if u.live { // the same plan a second time finds everything in place
+			same := false
+			for _, m := range u.menus {
+				same = same || planKey(m["items"]) == planKey(args["items"])
+			}
+			res["changed"], res["parameterBits"] = !same, u.bits
+			if same {
+				res["created"], res["icons"] = []string{}, 0
+			}
+		}
 		u.menus = append(u.menus, args)
-		return map[string]any{"created": []string{"Avatar Menu"}, "warnings": []string{}, "icons": len(items), "root": "Avatar Menu", "parameter": "Clothtoggle",
-			"menu": map[string]any{"big": strings.Repeat("x", 5000)}}, ""
+		return res, ""
 	case "undo":
+		u.undos = append(u.undos, args)
+		if u.undoErr != "" {
+			return nil, u.undoErr
+		}
 		return map[string]any{"undone": "MioVRCA 生成菜单"}, ""
 	}
 	return nil, "不认识的操作：" + cmd
+}
+
+// planKey: a plan's items without what a second run says differently (nothing is the default any more).
+func planKey(items any) string {
+	l, _ := items.([]any)
+	var out []any
+	for _, it := range l {
+		c := map[string]any{}
+		for k, v := range it.(map[string]any) {
+			if k != "default" {
+				c[k] = v
+			}
+		}
+		if c["kind"] == "strip" { // the avatar has it after the first run, so the second plan leaves it out
+			continue
+		}
+		out = append(out, c)
+	}
+	b, _ := json.Marshal(out)
+	return string(b)
 }
 
 func asStrings(v any) []string {
@@ -307,13 +463,17 @@ func TestQuickDress(t *testing.T) {
 		labels = append(labels, strings.Join(asStrings(o["path"]), "/")+":"+fmt.Sprint(o["label"]))
 	}
 	want := []string{"换装/SailorSet/配色:Envy cat", "换装/SailorSet/配色:Heart Catcher", "换装/SailorSet/配色:Melty Devil",
-		"换装/SailorSet:外套", "换装/SailorSet:上衣", "换装/SailorSet:裙子", "换装/SailorSet:袜子", "换装/SailorSet:鞋子", "换装/SailorSet:尾巴", "换装/SailorSet:饰品"}
+		"换装/SailorSet:外套", "换装/SailorSet:上衣", "换装/SailorSet:裙子", "换装/SailorSet:袜子", "换装/SailorSet:鞋子", "换装/SailorSet:尾巴", "换装/SailorSet:饰品", "换装:一键脱光"}
 	if !reflect.DeepEqual(labels, want) {
 		t.Errorf("menu items %v\n%v", labels, kinds)
 	}
 	// what was merged away is in 饰品: the choker, the horn and the wings
 	if acc := asStrings(items[9].(map[string]any)["objects"]); len(acc) != 3 {
 		t.Errorf("饰品 holds %v", acc)
+	}
+	// "take everything off" closes the outfit menu: last on its level, on the outfits' parameter, nothing of its own to name
+	if strip := items[10].(map[string]any); strip["kind"] != "strip" || strip["parameter"] != "Clothtoggle" || strip["objects"] != nil || !strings.Contains(last.Text, "一键脱光") {
+		t.Errorf("strip %v\n%s", strip, last.Text)
 	}
 	first := items[0].(map[string]any)
 	second := items[1].(map[string]any)
@@ -396,6 +556,7 @@ func TestQuickPipelineKinds(t *testing.T) {
 	want := []string{
 		"outfit 衣服/水手服/配色:Envy cat @Clothtoggle *", "outfit 衣服/水手服/配色:Heart Catcher @Clothtoggle", "outfit 衣服/水手服/配色:Melty Devil @Clothtoggle",
 		"part 衣服/水手服:外套", "part 衣服/水手服:上衣", "part 衣服/水手服:裙子", "part 衣服/水手服:袜子", "part 衣服/水手服:鞋子", "part 衣服/水手服:尾巴", "part 衣服/水手服:饰品",
+		"strip 衣服:一键脱光 @Clothtoggle",
 		"outfit 头发:原装头发 @Hair_Choose", "outfit 头发/樱发:戴上 @Hair_Choose *", "part 头发/樱发:头饰", "outfit 头发:蓝耳发 @Hair_Choose",
 		"toggle 配饰:眼镜 *", "toggle 道具/球棒:显示",
 	}
@@ -488,16 +649,22 @@ func TestOutfitMenuReuse(t *testing.T) {
 
 // mockLLM answers like an OpenAI-compatible or an Anthropic-compatible service, following a script of turns.
 type mockLLM struct {
-	mu     sync.Mutex
-	wire   string
-	script []mockTurn
-	seen   []map[string]any
-	auth   []string
+	mu      sync.Mutex
+	wire    string
+	script  []mockTurn
+	seen    []map[string]any
+	auth    []string
+	limit   int // a request longer than this is refused as past the model's context (0 = none is)
+	refused int // … how many were (they are not in seen, and take no turn of the script)
 }
 
 type mockTurn struct {
-	text  string
-	calls []aiCall
+	text   string
+	calls  []aiCall
+	status int    // refuse with this HTTP status…
+	said   string // …and these words
+	after  string // … and this Retry-After
+	cut    bool   // the output limit ended the turn (finish_reason=length, stop_reason=max_tokens)
 }
 
 func (m *mockLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -509,7 +676,14 @@ func (m *mockLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body map[string]any
-	_ = json.NewDecoder(r.Body).Decode(&body)
+	raw, _ := io.ReadAll(r.Body)
+	_ = json.Unmarshal(raw, &body)
+	if m.limit > 0 && len(raw) > m.limit {
+		m.refused++
+		w.WriteHeader(400)
+		_, _ = fmt.Fprintf(w, `{"error":{"message":"This model's maximum context length is %d tokens. However, you requested %d tokens. Please reduce the length of the messages or completion.","type":"invalid_request_error"}}`, m.limit/4, len(raw)/4)
+		return
+	}
 	m.seen = append(m.seen, body)
 	m.auth = append(m.auth, r.Header.Get("Authorization")+"|"+r.Header.Get("x-api-key"))
 	if body["model"] == "bad-model" {
@@ -522,6 +696,14 @@ func (m *mockLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		i = len(m.script) - 1
 	}
 	turn := m.script[i]
+	if turn.status != 0 {
+		if turn.after != "" {
+			w.Header().Set("Retry-After", turn.after)
+		}
+		w.WriteHeader(turn.status)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"message": turn.said}})
+		return
+	}
 	if m.wire == "claude" {
 		if r.URL.Path != "/v1/messages" || r.Header.Get("anthropic-version") == "" {
 			w.WriteHeader(404)
@@ -540,6 +722,9 @@ func (m *mockLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if len(turn.calls) > 0 {
 			stop = "tool_use"
 		}
+		if turn.cut {
+			stop = "max_tokens"
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"role": "assistant", "content": blocks, "stop_reason": stop})
 		return
 	}
@@ -556,7 +741,11 @@ func (m *mockLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		msg["tool_calls"] = cs
 		msg["reasoning_content"] = "thinking…"
 	}
-	_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": msg, "finish_reason": "stop"}}})
+	finish := "stop"
+	if turn.cut {
+		finish = "length"
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": msg, "finish_reason": finish}}})
 }
 
 func dressScript() []mockTurn {
@@ -717,7 +906,7 @@ func TestAIServiceErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	steps := waitRun(t, aiSessionFor(proj))
-	if last := steps[len(steps)-1]; last.Kind != "error" || !strings.Contains(last.Text, "AI 插件") {
+	if last := steps[len(steps)-1]; last.Kind != "error" || !strings.Contains(last.Text, "Unity 插件") {
 		t.Errorf("without Unity: %+v", steps)
 	}
 	llm.mu.Lock()

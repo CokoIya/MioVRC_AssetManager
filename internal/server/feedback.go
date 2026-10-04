@@ -54,22 +54,37 @@ func feedbackInfo(st *core.Store) string {
 		fmt.Fprintf(&b, "默认浏览器：%s\n", br)
 	}
 	fmt.Fprintf(&b, "素材 %d，网盘分享 %d，Booth 已购 %d，素材文件夹 %d，Unity 工程文件夹 %d\n", nAssets, nShares, nPurch, nRoots, nProj)
-	// the last lines of the log (paths in it are local folder names)
-	if f, err := os.Open(filepath.Join(core.DataDir, "library.log")); err == nil {
-		var lines []string
+	if lines := logTail(60); len(lines) > 0 {
+		b.WriteString("\n最近的日志：\n" + strings.Join(lines, "\n") + "\n")
+	}
+	return b.String()
+}
+
+var reUserDir = regexp.MustCompile(`(?i)([a-z]:[\\/]Users[\\/])[^\\/\s"]+`)
+
+// logTail: the last lines of the log, as they are sent to the author. Addresses, signed links, login data
+// and the Windows account name in paths are masked again here: lines written by an earlier version are not.
+func logTail(n int) []string {
+	var lines []string
+	log := filepath.Join(core.DataDir, "library.log")
+	for _, p := range []string{log + ".1", log} { // the log has just started anew: the end of the one before
+		f, err := os.Open(p)
+		if err != nil {
+			continue
+		}
 		sc := bufio.NewScanner(f)
 		for sc.Scan() {
 			lines = append(lines, sc.Text())
-			if len(lines) > 60 {
+			if len(lines) > n {
 				lines = lines[1:]
 			}
 		}
 		f.Close()
-		if len(lines) > 0 {
-			b.WriteString("\n最近的日志：\n" + strings.Join(lines, "\n") + "\n")
-		}
 	}
-	return b.String()
+	for i, l := range lines {
+		lines[i] = reUserDir.ReplaceAllString(core.Scrub(l), "${1}***")
+	}
+	return lines
 }
 
 // fbInputError: a message the window can fix by itself (too short, sent too soon), as opposed

@@ -52,6 +52,7 @@ type scanCtx struct {
 	order     []string
 	warnings  []string
 	now       int64
+	homes     map[string]int // folders asked about so far: which asset manager's they are (managerHome)
 }
 
 // RunFolderScan walks all roots and rebuilds the asset list (keeping usage info from the previous run).
@@ -64,7 +65,8 @@ func RunFolderScan(st *core.Store, prog *core.Task) {
 	}
 	st.Mu.RUnlock()
 
-	ctx := &scanCtx{settings: settings, overrides: ov, assets: map[string]*core.Asset{}, alt: map[string]string{}, now: time.Now().Unix()}
+	ctx := &scanCtx{settings: settings, overrides: ov, assets: map[string]*core.Asset{}, alt: map[string]string{}, now: time.Now().Unix(), homes: map[string]int{}}
+	forgetManagers()
 	for i, root := range settings.Roots {
 		prog.Set(i, len(settings.Roots), "正在扫描 "+root)
 		fi, err := os.Stat(root)
@@ -73,6 +75,9 @@ func RunFolderScan(st *core.Store, prog *core.Task) {
 			continue
 		}
 		ctx.scanContainer(root, root, 0, nil)
+	}
+	if core.Quitting.Load() {
+		return // stopped half way: the list of the last scan stays, not a part of a new one
 	}
 
 	// finalize
@@ -114,9 +119,10 @@ func RunFolderScan(st *core.Store, prog *core.Task) {
 		st.ScanStart = ctx.now
 	}
 	ApplyPurchases(st)
-	st.Warnings = ctx.warnings
+	st.Warnings = core.UniqStrings(ctx.warnings) // each once, also when two asset folders overlap
 	st.LastScan = ctx.now
 	st.Mu.Unlock()
+	forgetDirs()
 	prog.Set(len(settings.Roots), len(settings.Roots), "完成")
 }
 
@@ -162,11 +168,25 @@ func siblingCover(imgKey string, groups map[string]*group) *group {
 }
 
 func (c *scanCtx) scanContainer(dir, root string, depth int, hints []string) {
+	if core.Quitting.Load() {
+		return
+	}
+	// another asset manager's folder (Avatar Explorer's, KonoAsset's): its database, pictures and backups are
+	// not assets, and each folder in its item folder is one. Everything else in it is scanned like anywhere —
+	// the folder may be the player's own asset folder, with the manager pointed at it or unpacked into it.
+	home := c.managerHome(dir)
+	if home == homeAE1Datas { // Avatar Explorer's own Datas folder: nothing of the player's but the items
+		if items := filepath.Join(dir, "Items"); core.IsDir(items) {
+			c.scanContainer(items, root, depth+1, hints)
+		}
+		return
+	}
 	ents, err := os.ReadDir(dir)
 	if err != nil {
 		c.warnings = append(c.warnings, "无法读取："+dir)
 		return
 	}
+	var itemDirs []string // the manager's item folders in dir
 	groups := map[string]*group{}
 	var order []string
 	var pictures [][2]string // name key, path
@@ -194,11 +214,27 @@ func (c *scanCtx) scanContainer(dir, root string, depth int, hints []string) {
 			continue
 		}
 		if e.IsDir() {
-			if skipDirNames[strings.ToLower(name)] {
+			if skipDirNames[strings.ToLower(name)] || aeBackup(full, true) {
 				continue
 			}
+			if home != homeNone {
+				what, items := managerChild(home, name, full)
+				if what == childItems {
+					itemDirs = append(itemDirs, items)
+				}
+				if what != childScan {
+					continue
+				}
+			}
 			add(name, full, true)
+		} else if e.Type()&(fs.ModeSymlink|fs.ModeIrregular) != 0 && core.IsDir(full) {
+			// a link to a folder (symbolic link, junction): not followed — it may lead back into itself, or to
+			// a folder that is scanned anyway — but said, so the folder is not missed without a word
+			c.warnings = append(c.warnings, "未扫描链接文件夹（符号链接或目录联接）："+full+"；如需收录，请将其实际位置添加为素材文件夹")
 		} else {
+			if aeBackup(full, false) {
+				continue
+			}
 			if naming.LooseAssetExt[core.LowerExt(name)] || strings.HasSuffix(strings.ToLower(name), ".tar.gz") {
 				add(name, full, false)
 			} else if ImageExt[core.LowerExt(name)] {
@@ -213,6 +249,9 @@ func (c *scanCtx) scanContainer(dir, root string, depth int, hints []string) {
 			g.covers = append(g.covers, p[1])
 		}
 	}
+	for _, d := range itemDirs {
+		c.scanContainer(d, root, depth+1, hints)
+	}
 	for _, k := range order {
 		g := groups[k]
 		if c.overrides[core.PathKey(firstOf(g))] == "ignore" {
@@ -222,6 +261,13 @@ func (c *scanCtx) scanContainer(dir, root string, depth int, hints []string) {
 			d := g.dirs[0]
 			mode := c.overrides[core.PathKey(d)]
 			if core.IsUnityProject(d) {
+				continue
+			}
+			if c.managerHome(d) != homeNone {
+				c.scanContainer(d, root, depth+1, hints)
+				if len(g.files) > 0 { // (an archive of the same name beside it is an asset of its own)
+					c.addAsset(&group{key: g.key, files: g.files}, root, hints)
+				}
 				continue
 			}
 			if mode == "split" || (mode == "" && c.isContainer(d, depth)) {
@@ -443,6 +489,9 @@ func (c *scanCtx) addAsset(g *group, root string, hints []string) {
 	// booth id: folder/file names first (outer → inner), then .url shortcuts (display/fetch only, never identity)
 	nameID := ""
 	for _, n := range names {
+		if isUUIDName(n) {
+			continue // KonoAsset's item ids hold digit runs that are no item numbers
+		}
 		if id := naming.BoothIDFromName(n); id != "" {
 			nameID = id
 			break
@@ -456,8 +505,8 @@ func (c *scanCtx) addAsset(g *group, root string, hints []string) {
 		}
 	}
 	a.Name = naming.CleanName(rawName)
-	// wrapper folders like "4016/7825319/…" or "材质/_Material_X.zip": prefer the inner, more descriptive name
-	if (naming.IsMostlyDigits(a.Name) || naming.IsGenericName(a.Name)) && len(names) > 1 {
+	// wrapper folders like "4016/7825319/…", "材质/_Material_X.zip" or KonoAsset's "<id>/": prefer the inner, more descriptive name
+	if (naming.IsMostlyDigits(a.Name) || naming.IsGenericName(a.Name) || isUUIDName(a.Name)) && len(names) > 1 {
 		for _, n := range names[1:] {
 			if cn := naming.CleanName(n); !naming.IsMostlyDigits(cn) && !naming.IsGenericName(cn) {
 				a.Name = cn
@@ -639,7 +688,7 @@ func walkAsset(root string) walkInfo {
 			}
 			return nil
 		}
-		if info.files > 60000 {
+		if info.files > 60000 || core.Quitting.Load() {
 			return filepath.SkipAll
 		}
 		fi, err := d.Info()

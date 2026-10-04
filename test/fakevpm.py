@@ -4,13 +4,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 47994
 BASE = "http://127.0.0.1:%d" % PORT
 zips = {}
-def pkg(name, version, deps=None, top=""):
+def pkg(name, version, deps=None, top="", unity="2022.3"):
     bio = io.BytesIO()
     with zipfile.ZipFile(bio, "w") as zf:
         zf.writestr(top + "package.json", json.dumps({"name": name, "version": version, "displayName": name}))
         zf.writestr(top + "Editor/x.cs", "// " + name)
     b = bio.getvalue(); path = "/dl/%s-%s.zip" % (name, version); zips[path] = b
-    v = {"name": name, "version": version, "url": BASE + path, "zipSHA256": hashlib.sha256(b).hexdigest(), "unity": "2022.3", "displayName": name}
+    v = {"name": name, "version": version, "url": BASE + path, "zipSHA256": hashlib.sha256(b).hexdigest(), "unity": unity, "displayName": name}
     if deps: v["vpmDependencies"] = deps
     return v
 def listing(id, name, pkgs):
@@ -24,7 +24,8 @@ L = {
     "lyuma.av3emulator": [pkg("lyuma.av3emulator", "3.4.13", {"com.vrchat.avatars": "^3.1.0"})]}),
  "dev.nadena.vpm": listing("dev.nadena.vpm", "bd_", {
     "nadena.dev.ndmf": [pkg("nadena.dev.ndmf", "1.14.8")], "nadena.dev.modular-avatar": [pkg("nadena.dev.modular-avatar", "1.18.7", {"nadena.dev.ndmf": ">=1.14.7 <2.0.0-a", "com.vrchat.avatars": ">=3.7.4"})]}),
- "io.github.lilxyzw.vpm": listing("io.github.lilxyzw.vpm", "lil", {"jp.lilxyzw.liltoon": [pkg("jp.lilxyzw.liltoon", "2.3.4")]}),
+ # 3.0.0 is made for a later Unity than new projects use: 2.3.4 is the one that goes in
+ "io.github.lilxyzw.vpm": listing("io.github.lilxyzw.vpm", "lil", {"jp.lilxyzw.liltoon": [pkg("jp.lilxyzw.liltoon", "2.3.4"), pkg("jp.lilxyzw.liltoon", "3.0.0", unity="6000.0")]}),
  "com.anatawa12.vpm": listing("com.anatawa12.vpm", "anatawa12", {"com.anatawa12.avatar-optimizer": [pkg("com.anatawa12.avatar-optimizer", "1.9.20", {"nadena.dev.ndmf": ">=1.8.0 <2.0.0", "com.vrchat.avatars": ">=3.7.0 <3.11.0"})]}),
  "com.vrcfury.vcc": listing("com.vrcfury.vcc", "VRCFury", {"com.vrcfury.vrcfury": [pkg("com.vrcfury.vrcfury", "1.1430.0")]}),
 }

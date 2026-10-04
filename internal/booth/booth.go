@@ -2,6 +2,7 @@ package booth
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"vrclib/internal/core"
@@ -26,6 +28,19 @@ type boothItem struct {
 	Image                            string
 	Shop, ShopURL                    string
 	Adult                            bool
+	// what it costs, for the wish list: the lowest variation's price in yen (-1: not told), every variation,
+	// and whether the shop still sells it
+	PriceNum           int64
+	Vars               []boothVar
+	SoldOut, EndOfSale bool
+}
+
+// boothVar: one variation of an item ("フルセット", a size …). An item with one price has one, without a name.
+type boothVar struct {
+	ID    string
+	Name  string
+	Price int64
+	Empty bool // out of stock
 }
 
 func jStr(m map[string]any, k string) string {
@@ -57,6 +72,23 @@ func parseBoothItem(body []byte) (*boothItem, error) {
 		return nil, fmt.Errorf("no name")
 	}
 	it.Adult, _ = m["is_adult"].(bool)
+	it.SoldOut, _ = m["is_sold_out"].(bool)
+	it.EndOfSale, _ = m["is_end_of_sale"].(bool)
+	it.PriceNum = priceNumber(it.Price)
+	vars, _ := m["variations"].([]any)
+	for _, x := range vars {
+		o, _ := x.(map[string]any)
+		n, ok := o["price"].(float64)
+		if !ok || n < 0 {
+			continue // an older shape, or not a variation with a price
+		}
+		v := boothVar{ID: jStr(o, "id"), Name: strings.TrimSpace(jStr(o, "name")), Price: int64(n)}
+		v.Empty, _ = o["is_empty_stock"].(bool)
+		it.Vars = append(it.Vars, v)
+		if len(it.Vars) == 1 || v.Price < it.PriceNum {
+			it.PriceNum = v.Price
+		}
+	}
 	cat := jObj(m, "category")
 	it.Category = jStr(cat, "name")
 	shop := jObj(m, "shop")
@@ -100,6 +132,29 @@ func parseBoothItem(body []byte) (*boothItem, error) {
 		}
 	}
 	return it, nil
+}
+
+// priceNumber: "¥ 6,000" or "¥ 1,060~" → 6000, 1060; -1 when there is no number in it.
+func priceNumber(s string) int64 {
+	n, any := int64(0), false
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9':
+			if n > 1e12 {
+				return -1
+			}
+			n, any = n*10+int64(r-'0'), true
+		case r == ',' || r == ' ' || r == '¥' || r == '\u00a0' || r == '￥':
+		default:
+			if any {
+				return n // "~", "円" … after the number
+			}
+		}
+	}
+	if !any {
+		return -1
+	}
+	return n
 }
 
 var (
@@ -171,23 +226,19 @@ func fetchBooth(c *http.Client, id string) (*core.BoothInfo, error) {
 // FetchBoothInfo reads an item; withCover also saves its picture as a cover.
 func FetchBoothInfo(c *http.Client, id string, withCover bool) (*core.BoothInfo, error) {
 	bi := &core.BoothInfo{ID: id, URL: "https://booth.pm/ja/items/" + id, Fetched: time.Now().Unix(), Ver: BoothInfoVer}
-	req, _ := http.NewRequest("GET", core.BoothWebBase()+"/ja/items/"+id+".json", nil)
-	req.Header.Set("User-Agent", core.UA)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Accept-Language", "ja,zh-CN;q=0.8")
-	req.Header.Set("Cookie", "adult=t")
-	resp, err := c.Do(req)
+	body, status, err := boothItemJSON(c, id)
 	if err != nil {
 		return bi, err
 	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
-	resp.Body.Close()
-	if resp.StatusCode == 404 {
+	if status == 404 {
 		bi.Gone = true
 		return bi, fmt.Errorf("Booth 上未找到该商品（可能已下架）")
 	}
-	if resp.StatusCode != 200 {
-		return bi, fmt.Errorf("Booth 返回错误（HTTP %d）", resp.StatusCode)
+	if status == 429 || status == 403 {
+		return bi, busyErr{status}
+	}
+	if status != 200 {
+		return bi, fmt.Errorf("Booth 返回错误（HTTP %d）", status)
 	}
 	it, jerr := parseBoothItem(body)
 	// the item page carries the long description blocks (and is the fallback when the JSON is unreadable)
@@ -232,6 +283,22 @@ func FetchBoothInfo(c *http.Client, id string, withCover bool) (*core.BoothInfo,
 		}
 	}
 	return bi, nil
+}
+
+// boothItemJSON asks Booth for an item's JSON: the one request an item's name, price and variations take.
+func boothItemJSON(c *http.Client, id string) ([]byte, int, error) {
+	req, _ := http.NewRequest("GET", core.BoothWebBase()+"/ja/items/"+id+".json", nil)
+	req.Header.Set("User-Agent", core.UA)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept-Language", "ja,zh-CN;q=0.8")
+	req.Header.Set("Cookie", "adult=t")
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	resp.Body.Close()
+	return body, resp.StatusCode, nil
 }
 
 func htmlUnescape(s string) string { return html.UnescapeString(s) }
@@ -310,8 +377,63 @@ func DownloadTo(c *http.Client, u, name string) (string, error) {
 	return dst, os.Rename(dst+".part", dst)
 }
 
+// busyErr: Booth turns requests away — too many of them (429), or its protection stepped in (403).
+type busyErr struct{ status int }
+
+func (e busyErr) Error() string {
+	return fmt.Sprintf("Booth 暂时限制了访问（HTTP %d），请稍后重试", e.status)
+}
+
+// A batch that Booth turned away stops there: the items not asked for yet stay due, and nothing is fetched by
+// itself until the pause is over (twice as long every time it happens again). Tests shorten the times.
+var (
+	boothMu         sync.Mutex
+	boothPauseFirst = 15 * time.Minute
+	boothPauseMax   = 6 * time.Hour
+	boothGap        = 700 * time.Millisecond // between two items
+	boothPauseStep  time.Duration
+	boothPausedTill time.Time
+	boothBrokenOff  bool
+	boothBrokeAt    string // the item the last batch stopped at
+)
+
+func boothPaused() bool {
+	boothMu.Lock()
+	defer boothMu.Unlock()
+	return time.Now().Before(boothPausedTill)
+}
+
+// turnedAway: Booth refused a request made outside a batch (a wish list price check). The same rest as for a
+// batch, so that nothing asks again before it is over.
+func turnedAway() {
+	boothMu.Lock()
+	boothPauseStep = min(max(boothPauseStep*2, boothPauseFirst), boothPauseMax)
+	boothPausedTill = time.Now().Add(boothPauseStep)
+	boothMu.Unlock()
+}
+
+// answeredAgain: Booth answers again and no batch is waiting to go on: the next rest starts short again.
+func answeredAgain() {
+	boothMu.Lock()
+	if !boothBrokenOff {
+		boothPauseStep = 0
+	}
+	boothMu.Unlock()
+}
+
+// ResumeDue: a batch was broken off, and Booth has had its rest: the remaining items can be asked for.
+func ResumeDue() bool {
+	boothMu.Lock()
+	defer boothMu.Unlock()
+	return boothBrokenOff && !time.Now().Before(boothPausedTill)
+}
+
 // RunBoothFetch fetches Booth info for assets with an item id. force=true refetches everything.
 func RunBoothFetch(st *core.Store, prog *core.Task, force bool, only []string) {
+	if !force && len(only) == 0 && boothPaused() { // what the player asks for by hand is still tried
+		prog.Set(1, 1, "Booth 暂时限制了访问，稍后将自动继续获取")
+		return
+	}
 	st.Mu.RLock()
 	weekly := !st.Settings.NoSync
 	var ids []string
@@ -370,8 +492,30 @@ func RunBoothFetch(st *core.Store, prog *core.Task, force bool, only []string) {
 	c := core.HTTPClient(st)
 	fails := 0
 	for i, id := range ids {
+		if core.Quitting.Load() {
+			return // what is left is asked for at the next start
+		}
 		prog.Set(i, len(ids), "Booth #"+id)
 		bi, err := fetchBooth(c, id)
+		var busy busyErr
+		if errors.As(err, &busy) {
+			boothMu.Lock()
+			// refused again as the first one asked for after the rest, and not for asking too often: it is this
+			// item Booth does not show — it gets the error like any other, and the batch goes on
+			own := busy.status == 403 && i == 0 && id == boothBrokeAt
+			if !own {
+				boothPauseStep = min(max(boothPauseStep*2, boothPauseFirst), boothPauseMax)
+				boothPausedTill, boothBrokenOff, boothBrokeAt = time.Now().Add(boothPauseStep), true, id
+			}
+			boothMu.Unlock()
+			if !own {
+				// not written down as this item's error: it stays due, like the ones after it
+				core.Logf("Booth 限制了访问（HTTP %d）：本次还有 %d 件商品未获取，稍后继续", busy.status, len(ids)-i)
+				prog.Set(i, len(ids), fmt.Sprintf("Booth 暂时限制了访问（HTTP %d），已暂停获取，稍后将自动继续", busy.status))
+				core.BumpRev()
+				return
+			}
+		}
 		if err != nil {
 			bi.Err = core.FriendlyNetErr(err)
 			if !bi.Gone {
@@ -398,8 +542,11 @@ func RunBoothFetch(st *core.Store, prog *core.Task, force bool, only []string) {
 			prog.Set(len(ids), len(ids), "无法连接 Booth，请在设置中配置代理")
 			return
 		}
-		time.Sleep(700 * time.Millisecond)
+		time.Sleep(boothGap)
 	}
+	boothMu.Lock()
+	boothPauseStep, boothBrokenOff, boothBrokeAt = 0, false, ""
+	boothMu.Unlock()
 	prog.Set(len(ids), len(ids), "完成")
 }
 

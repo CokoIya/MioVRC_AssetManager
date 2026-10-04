@@ -332,6 +332,7 @@ func (s *aiSession) present(ctx context.Context, imgs []aiImage, question string
 	}
 	vc, err := visionClientWith(st, eye, eyeKey)
 	if err == nil {
+		vc.retry = s.retryStep
 		var desc string
 		if desc, err = describeImages(ctx, vc, imgs, question); err == nil {
 			return "你自己看不了图。下面是视觉模型（" + vc.model + "）对这些截图的描述；它只描述画面，可能看漏或看错，拿不准的地方请玩家自己看截图确认：\n" + desc, nil, "由视觉模型（" + vc.model + "）代为描述"
@@ -511,7 +512,7 @@ func takeShots(ctx context.Context, project string, args map[string]any) ([]aiIm
 	raw, err := unity.BridgeCall(ctx, project, "snapshot", args, 2*time.Minute)
 	if err != nil {
 		if strings.Contains(err.Error(), "不认识的操作") {
-			err = errors.New("该工程的 AI 插件为旧版，不支持截图：请在流水线页点击「更新」，待 Unity 编译完成后重试")
+			err = errors.New("该工程的 Unity 插件为旧版，不支持截图：请在流水线页点击「更新」，待 Unity 编译完成后重试")
 		}
 		return nil, o, err
 	}

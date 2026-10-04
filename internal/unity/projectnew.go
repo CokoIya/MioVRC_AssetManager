@@ -15,8 +15,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"vrclib/internal/core"
+	"vrclib/internal/library"
 )
 
 const (
@@ -55,6 +57,7 @@ type Toolchain struct {
 	Plugins    []vpmPlugin  `json:"plugins"`        // what can go into a base project
 	Templates  bool         `json:"vccTemplates"`   // VCC's own templates are on this computer
 	HubInstall string       `json:"hubInstallLink"` // unityhub:// link that installs the right Unity
+	Skills     string       `json:"skillsVersion"`  // the UnitySkills that comes with the program
 }
 
 type baseChoice struct {
@@ -83,7 +86,7 @@ func vccSetting(key string) string {
 
 func FindToolchain(st *core.Store) Toolchain {
 	t := Toolchain{UnityWant: vrcUnity, Alcom: FindAlcom(), VCC: FindVCC(), Hub: FindUnityHub(), Plugins: basePlugins,
-		HubInstall: "unityhub://" + vrcUnity + "/" + vrcUnityRevision}
+		HubInstall: "unityhub://" + vrcUnity + "/" + vrcUnityRevision, Skills: SkillsVersion}
 	t.AlcomSeen = t.Alcom != "" || alcomConfigured()
 	eds := unityEditors()
 	for v := range eds {
@@ -191,7 +194,7 @@ func StartNewProject(st *core.Store, req NewProjectReq) error {
 		return errors.New("保存位置不存在：" + parent)
 	}
 	path := filepath.Join(parent, name)
-	if ents, err := os.ReadDir(path); err == nil && len(ents) > 0 {
+	if NewProjectTaken(path) {
 		return errors.New("目标文件夹不为空：" + path)
 	}
 	if req.Base != "" {
@@ -220,6 +223,63 @@ func StartNewProject(st *core.Store, req NewProjectReq) error {
 		}
 	})
 	return nil
+}
+
+// newMarker lies in a project folder while a job of ours is still making the project.
+const newMarker = ".miovrca-new"
+
+var newSkeleton = []string{"Assets", "Packages", "ProjectSettings"}
+
+// NewProjectTaken: something is in the folder that a new project must not be put over. An empty folder is
+// free, and so is one that holds only what a job of ours that failed left behind.
+func NewProjectTaken(path string) bool {
+	ents, err := os.ReadDir(path)
+	return err == nil && len(ents) > 0 && !newLeftover(path, ents)
+}
+
+// newLeftover: the folder holds nothing but an unfinished job's own files. A folder Unity has opened (Library),
+// or one with anything else in it, is the player's.
+func newLeftover(path string, ents []os.DirEntry) bool {
+	marked := false
+	for _, e := range ents {
+		switch {
+		case e.Name() == newMarker:
+			marked = true
+		case e.Name() == "Library":
+			return false
+		}
+	}
+	if marked {
+		return true
+	}
+	// from a version that left no marker: the three folders, no settings written yet, nothing in Assets
+	for _, e := range ents {
+		if !e.IsDir() || !core.ContainsStr(newSkeleton, e.Name()) {
+			return false
+		}
+	}
+	if core.StatOK(filepath.Join(path, "ProjectSettings", "ProjectVersion.txt")) {
+		return false
+	}
+	empty := true
+	_ = filepath.WalkDir(filepath.Join(path, "Assets"), func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			empty = false
+		}
+		return nil
+	})
+	return empty
+}
+
+// removeNewProject takes away what a job put into the folder, and the folder itself when the job made it.
+func removeNewProject(path string, existed bool) {
+	for _, d := range newSkeleton {
+		_ = os.RemoveAll(filepath.Join(path, d))
+	}
+	_ = os.Remove(filepath.Join(path, newMarker))
+	if !existed {
+		_ = os.Remove(path) // only when nothing else is in it
+	}
 }
 
 func CancelNewProject() {
@@ -255,18 +315,35 @@ func assetByKey(st *core.Store, key string) *core.Asset {
 	return nil
 }
 
-func runNewProject(ctx context.Context, st *core.Store, req NewProjectReq, path string) error {
+func runNewProject(ctx context.Context, st *core.Store, req NewProjectReq, path string) (err error) {
 	stage := func(s, msg string, done, total int) {
 		setNP(func(j *NewProjectJob) { j.Stage, j.Msg, j.Done, j.Total = s, msg, done, total })
 		TaskNP.Set(done, total, msg)
 	}
 	note := func(s string) { setNP(func(j *NewProjectJob) { j.Notes = append(j.Notes, s) }) }
-	// 1. the folders
-	for _, d := range []string{"Assets", "Packages", "ProjectSettings"} {
+	name := strings.TrimSpace(req.Name)
+	// 1. the folders. Until the project is whole they are this job's alone: a job that fails or is stopped
+	// takes them away again, so the same name can be tried once more.
+	_, statErr := os.Stat(path)
+	existed, whole := statErr == nil, false
+	if existed {
+		removeNewProject(path, true) // what an earlier attempt left behind
+	}
+	stopped := errors.New("已取消")
+	defer func() {
+		if err != nil && ctx.Err() != nil {
+			err = stopped // whatever failed, it failed because the player stopped the job
+		}
+		if err != nil && !whole {
+			removeNewProject(path, existed)
+		}
+	}()
+	for _, d := range newSkeleton {
 		if err := os.MkdirAll(filepath.Join(path, d), 0755); err != nil {
 			return fmt.Errorf("无法创建工程文件夹：%v", err)
 		}
 	}
+	_ = os.WriteFile(filepath.Join(path, newMarker), []byte("MioVRCA 正在创建该工程，完成后此文件将自动删除。\n"), 0644)
 	// 2. which packages
 	stage("repos", "正在读取插件仓库", 0, 0)
 	idx, err := loadIndex(ctx, st, func(m string) { stage("repos", m, 0, 0) })
@@ -315,6 +392,9 @@ func runNewProject(ctx context.Context, st *core.Store, req NewProjectReq, path 
 	// 3. in they go, dependencies first; an optional plugin that cannot be fetched is left out with a note
 	failed := map[string]string{}
 	for i, n := range names {
+		if ctx.Err() != nil { // stopped: not carried on with what is in the cache already
+			return stopped
+		}
 		v := picked[n]
 		for d := range v.Deps {
 			if why, bad := failed[d]; bad {
@@ -354,8 +434,11 @@ func runNewProject(ctx context.Context, st *core.Store, req NewProjectReq, path 
 		return err
 	}
 	// 4. the project's own files
+	if ctx.Err() != nil {
+		return stopped
+	}
 	stage("settings", "正在写入工程设置", len(names), len(names))
-	how, err := writeProjectSettings(ctx, st, path, req.Name)
+	how, err := writeProjectSettings(ctx, st, path, name)
 	if err != nil {
 		return err
 	}
@@ -363,13 +446,8 @@ func runNewProject(ctx context.Context, st *core.Store, req NewProjectReq, path 
 	if err := writeUnityManifest(path); err != nil {
 		return err
 	}
-	_ = os.MkdirAll(filepath.Join(path, "Assets", safeFileName(req.Name)), 0755) // the player's own folder, VRCAM style
-	// 5. known to this program and to ALCOM / VCC
-	registerProject(st, path)
-	if err := addToVCCList(path); err == nil {
-		note("已加入 ALCOM / VCC 的工程列表")
-	}
-	// 6. the base body
+	_ = os.MkdirAll(filepath.Join(path, "Assets", safeFileName(name)), 0755) // the player's own folder, VRCAM style
+	// 5. the base body
 	if req.Base != "" {
 		stage("base", "正在导入素体", 0, 0)
 		a := assetByKey(st, req.Base)
@@ -394,16 +472,30 @@ func runNewProject(ctx context.Context, st *core.Store, req NewProjectReq, path 
 			setNP(func(np *NewProjectJob) { np.Msg = j.Msg })
 			select {
 			case <-ctx.Done():
-				return errors.New("已取消")
+				waitImportEnd(func(m string) { setNP(func(np *NewProjectJob) { np.Msg = m }) })
+				return stopped
 			case <-time.After(700 * time.Millisecond):
 			}
 		}
 	}
+	// 6. whole from here on: known to this program and to ALCOM / VCC
+	if ctx.Err() != nil {
+		return stopped
+	}
+	whole = true
+	_ = os.Remove(filepath.Join(path, newMarker))
+	registerProject(st, path)
+	if err := addToVCCList(path); err == nil {
+		note("已加入 ALCOM / VCC 的工程列表")
+	}
+	if req.Base != "" { // the import looked for the asset's use before the project was known
+		library.StartPipeline(st, false, true, false, false, nil)
+	}
 	// 7. the AI plugins and Unity
 	if req.AIKit {
-		stage("kit", "正在安装 AI 插件并打开 Unity", 0, 0)
+		stage("kit", "正在安装 Unity 插件并打开 Unity", 0, 0)
 		if n, err := InstallAIKit(path); err != nil {
-			note("AI 插件：" + err.Error())
+			note("Unity 插件：" + err.Error())
 		} else {
 			note(n)
 		}
@@ -415,6 +507,21 @@ func runNewProject(ctx context.Context, st *core.Store, req NewProjectReq, path 
 	TaskNP.Set(1, 1, "工程创建完成："+req.Name)
 	core.Logf("新工程 %s：%d 个包", path, len(names))
 	return nil
+}
+
+// waitImportEnd: a stopped job lets the import it started come to an end before its folder is taken away
+// (an import cannot be stopped half way; a choice it is waiting for is answered with "none").
+func waitImportEnd(say func(string)) {
+	say("正在取消，等待素体导入结束")
+	for until := time.Now().Add(10 * time.Minute); time.Now().Before(until); time.Sleep(300 * time.Millisecond) {
+		j := ImportSnapshot()
+		if j == nil || j.Stage == "done" || j.Stage == "failed" {
+			return
+		}
+		if j.Stage == "choose" {
+			DismissImport()
+		}
+	}
 }
 
 func validPkgName(s string) bool {
@@ -582,18 +689,44 @@ func writeProjectSettings(ctx context.Context, st *core.Store, project, name str
 	}
 	// the product name is the project's
 	if b, err := os.ReadFile(filepath.Join(dir, "ProjectSettings.asset")); err == nil {
-		s := regexp.MustCompile(`(?m)^(\s*productName:).*$`).ReplaceAllString(string(b), "${1} "+name)
+		s := reProductName.ReplaceAllStringFunc(string(b), func(line string) string { // the name as it is: "$" in it is no group
+			return line[:strings.Index(line, "productName:")] + "productName: " + yamlScalar(name)
+		})
 		_ = os.WriteFile(filepath.Join(dir, "ProjectSettings.asset"), []byte(s), 0644)
 	}
 	ver := "m_EditorVersion: " + vrcUnity + "\nm_EditorVersionWithRevision: " + vrcUnity + " (" + vrcUnityRevision + ")\n"
 	return how, os.WriteFile(filepath.Join(dir, "ProjectVersion.txt"), []byte(ver), 0644)
 }
 
+var reProductName = regexp.MustCompile(`(?m)^[ \t]*productName:[^\r\n]*`)
+
+// yamlScalar: a string as a YAML value. Plain when nothing in it can be read as YAML syntax, else in single
+// quotes ("[VRC] Mio #2" would start a list and end in a comment, "a: b" would be a mapping).
+func yamlScalar(s string) string {
+	plain := s != "" && strings.TrimSpace(s) == s
+	for i, c := range s {
+		switch {
+		case c == '_' || unicode.IsLetter(c) || unicode.IsDigit(c):
+		case i > 0 && (c == ' ' || c == '-' || c == '.' || c == '(' || c == ')' || c == '+'):
+		default:
+			plain = false
+		}
+	}
+	switch strings.ToLower(s) { // words YAML reads as something other than text
+	case "true", "false", "yes", "no", "on", "off", "null", "y", "n":
+		plain = false
+	}
+	if plain {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+}
+
 func minimalProjectSettings(name string) string {
 	id := make([]byte, 16)
 	_, _ = rand.Read(id)
 	return "%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n--- !u!129 &1\nPlayerSettings:\n  m_ObjectHideFlags: 0\n  serializedVersion: 26\n" +
-		"  productGUID: " + hex.EncodeToString(id) + "\n  companyName: DefaultCompany\n  productName: " + name + "\n" +
+		"  productGUID: " + hex.EncodeToString(id) + "\n  companyName: DefaultCompany\n  productName: " + yamlScalar(name) + "\n" +
 		"  defaultScreenWidth: 1024\n  defaultScreenHeight: 768\n  m_ActiveColorSpace: 1\n  gpuSkinning: 1\n" +
 		"  apiCompatibilityLevelPerPlatform:\n    Standalone: 6\n  apiCompatibilityLevel: 6\n"
 }

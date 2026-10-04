@@ -2,9 +2,12 @@ package library
 
 import (
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"unicode"
+	"unicode/utf8"
 
 	"vrclib/internal/core"
 	"vrclib/internal/naming"
@@ -162,7 +165,9 @@ func groupViews(st *core.Store, views []AssetView) {
 		if skip(v) {
 			continue
 		}
-		s := stemOf(v.AutoName, defs, v.AutoBases)
+		s := stemMemo.get(memoKey{defs: defsID(defs), name: v.AutoName + "\x00" + strings.Join(v.AutoBases, "\x00")}, func() string {
+			return stemOf(v.AutoName, defs, v.AutoBases)
+		})
 		if s == "" {
 			continue
 		}
@@ -194,7 +199,7 @@ func groupViews(st *core.Store, views []AssetView) {
 		}
 		sort.Strings(keys)
 		gid := "g:" + keys[0]
-		gname := groupName(names)
+		gname := groupMemo.get(memoKey{name: strings.Join(names, "\x00")}, func() string { return groupName(names) })
 		if gname == "" {
 			for _, i := range m {
 				if b := views[i].Booth; b != nil && b.Name != "" {
@@ -311,17 +316,40 @@ func variantLabel(v *AssetView, gname string) string {
 		}
 		return strings.Join(v.Bases[:3], " / ") + " 等 " + core.Itoa(n) + " 个"
 	}
-	rest := naming.CleanName(v.AutoName)
-	if gname != "" {
-		if i := strings.Index(strings.ToLower(rest), strings.ToLower(gname)); i >= 0 {
-			rest = rest[:i] + rest[i+len(gname):]
+	return restMemo.get(memoKey{name: v.AutoName + "\x00" + gname}, func() string {
+		rest := naming.CleanName(v.AutoName)
+		if gname != "" {
+			if i, n := indexFold(rest, gname); i >= 0 {
+				rest = rest[:i] + rest[i+n:]
+			}
+		}
+		rest = strings.Trim(reVerAny.ReplaceAllString(rest, ""), " _-.·")
+		if r := []rune(rest); len(r) > 0 && len(r) <= 24 {
+			return rest
+		}
+		return ""
+	})
+}
+
+// indexFold: where sub is in s whatever the letter case, and how many bytes of s it takes there; -1 when it
+// is not. (A place found in the lower-cased text is not a place in the text itself: "Ⱥ" and "ⱥ" differ in
+// length.)
+func indexFold(s, sub string) (int, int) {
+	for i := range s {
+		rest, matched := s[i:], true
+		for _, want := range sub {
+			r, size := utf8.DecodeRuneInString(rest)
+			if size == 0 || unicode.ToLower(r) != unicode.ToLower(want) {
+				matched = false
+				break
+			}
+			rest = rest[size:]
+		}
+		if matched && sub != "" {
+			return i, len(s) - i - len(rest)
 		}
 	}
-	rest = strings.Trim(reVerAny.ReplaceAllString(rest, ""), " _-.·")
-	if r := []rune(rest); len(r) > 0 && len(r) <= 24 {
-		return rest
-	}
-	return ""
+	return -1, 0
 }
 
 // ---------- style tags for outfits ----------
@@ -329,13 +357,24 @@ func variantLabel(v *AssetView, gname string) string {
 // styleDefs parses the style table. Unlike base bodies, a one-letter name ("H") is not used as a
 // search word by itself.
 func styleDefs(list []string) []naming.BaseDef {
-	key := "s\x00" + strings.Join(list, "\n")
-	if v, ok := naming.DefsCache.Load(key); ok {
-		return v.([]naming.BaseDef)
+	if p := lastStyles.Load(); p != nil && slices.Equal(p.list, list) {
+		return p.defs // asked for once per card, and nearly always the same table
 	}
-	out := styleDefsNow(list)
-	naming.DefsCache.Store(key, out)
+	key := "s\x00" + strings.Join(list, "\n")
+	v, ok := naming.DefsCache.Load(key)
+	if !ok {
+		v, _ = naming.DefsCache.LoadOrStore(key, styleDefsNow(list))
+	}
+	out := v.([]naming.BaseDef)
+	lastStyles.Store(&parsedStyles{slices.Clone(list), out})
 	return out
+}
+
+var lastStyles atomic.Pointer[parsedStyles]
+
+type parsedStyles struct {
+	list []string
+	defs []naming.BaseDef
 }
 
 func styleDefsNow(list []string) []naming.BaseDef {
@@ -395,19 +434,23 @@ func autoStyles(v *AssetView, defs []naming.BaseDef) []string {
 	if v.Purchase != nil {
 		parts = append(parts, v.Purchase.Name)
 	}
-	hit := map[string]bool{}
-	for _, n := range naming.DetectBases(strings.Join(parts, " | "), defs) {
-		hit[n] = true
-	}
-	if adult {
-		hit[naming.AdultStyle] = true
-	}
-	var out []string
-	for _, d := range defs { // in the table's order
-		if hit[d.Name] {
-			out = append(out, d.Name)
-			hit[d.Name] = false
+	text := strings.Join(parts, " | ")
+	// the list is shared by every card of the same text: read, never changed
+	return styleMemo.get(memoKey{defsID(defs), adult, text}, func() []string {
+		hit := map[string]bool{}
+		for _, n := range naming.DetectBases(text, defs) {
+			hit[n] = true
 		}
-	}
-	return out
+		if adult {
+			hit[naming.AdultStyle] = true
+		}
+		var out []string
+		for _, d := range defs { // in the table's order
+			if hit[d.Name] {
+				out = append(out, d.Name)
+				hit[d.Name] = false
+			}
+		}
+		return out
+	})
 }

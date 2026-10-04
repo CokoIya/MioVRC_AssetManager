@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -132,5 +133,49 @@ func TestChoosePackages(t *testing.T) {
 	c, ask = choosePackages(st, []string{"/x/Hair.unitypackage"}, []string{"Plum"}, nil)
 	if ask || !c[0].Pick {
 		t.Errorf("single package: %+v", c)
+	}
+}
+
+// a unitypackage that bundles files of a package installed in Packages/ (same GUIDs, as a shop's copy of lilToon
+// has) leaves the installed package alone, and the result says so
+func TestImportKeepsInstalledPackages(t *testing.T) {
+	proj := newProject(t)
+	lil := filepath.Join(proj, "Packages", "jp.lilxyzw.liltoon", "Shader")
+	_ = os.MkdirAll(lil, 0755)
+	meta := "fileFormatVersion: 2\nguid: " + g("d") + "\nShaderImporter:\n  new: 1\n"
+	_ = os.WriteFile(filepath.Join(lil, "lts.shader"), []byte("lilToon 2.3 (VPM)"), 0644)
+	_ = os.WriteFile(filepath.Join(lil, "lts.shader.meta"), []byte(meta), 0644)
+	_ = os.WriteFile(filepath.Join(proj, "Packages", "jp.lilxyzw.liltoon", "Shader.meta"), []byte("fileFormatVersion: 2\nguid: "+g("9")+"\nfolderAsset: yes\n"), 0644)
+	pkg := filepath.Join(t.TempDir(), "Dress.unitypackage")
+	makeUnityPackage(t, pkg, []pkgFile{
+		{guid: g("b"), path: "Assets/Dress/Dress.prefab", body: "prefab"},
+		{guid: g("9"), path: "Assets/lilToon/Shader", dir: true},
+		{guid: g("d"), path: "Assets/lilToon/Shader/lts.shader", body: "lilToon 1.3 (bundled by the shop)"},
+		{guid: g("e"), path: "Packages/com.example.tool/Editor/x.cs", body: "// a package of the unitypackage's own"},
+	})
+	stats, err := importUnityPackage(pkg, indexProject(proj))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.New != 1 || stats.Updated != 0 || stats.Kept != 2 || !reflect.DeepEqual(stats.KeptPkgs, []string{"com.example.tool", "jp.lilxyzw.liltoon"}) {
+		t.Errorf("stats %+v", stats)
+	}
+	if b, _ := os.ReadFile(filepath.Join(lil, "lts.shader")); string(b) != "lilToon 2.3 (VPM)" {
+		t.Errorf("the installed shader was replaced: %q", b)
+	}
+	if b, _ := os.ReadFile(filepath.Join(lil, "lts.shader.meta")); string(b) != meta {
+		t.Errorf("its meta was rewritten: %q", b)
+	}
+	if b, _ := os.ReadFile(filepath.Join(proj, "Packages", "jp.lilxyzw.liltoon", "Shader.meta")); !strings.Contains(string(b), "folderAsset") {
+		t.Errorf("the folder's meta was rewritten: %q", b)
+	}
+	if core.StatOK(filepath.Join(proj, "Packages", "com.example.tool")) || core.StatOK(filepath.Join(proj, "Assets", "lilToon", "Shader", "lts.shader")) {
+		t.Error("a file went where it should not")
+	}
+	if !reflect.DeepEqual(stats.Tops, []string{"Assets/Dress"}) {
+		t.Errorf("tops %v", stats.Tops)
+	}
+	if n := keptNote(stats.Kept, stats.KeptPkgs); n != "已跳过 2 个属于已安装插件（Packages）的文件，未覆盖：com.example.tool、jp.lilxyzw.liltoon" || keptNote(0, nil) != "" {
+		t.Errorf("note %q", n)
 	}
 }

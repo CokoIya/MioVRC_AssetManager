@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -51,7 +52,15 @@ func CleanPaths(in []string) []string {
 
 var winBad = strings.NewReplacer("<", "", ">", "", ":", "：", "\"", "", "/", "／", "\\", "＼", "|", "｜", "?", "？", "*", "＊")
 
-// SafeName makes a Windows-safe file or folder name.
+var (
+	// names Windows keeps for devices, whatever the extension ("NUL.zip" cannot be created)
+	reWinDevice = regexp.MustCompile(`(?i)^(con|prn|aux|nul|(com|lpt)[0-9¹²³])$`)
+	// what a name cut short keeps at its end: its extension, or the two of a volume or a tarball
+	reKeepExt = regexp.MustCompile(`(?i)(\.tar\.[a-z0-9]{1,4}|\.part[0-9]+\.rar|\.(zip|7z|rar|tar)\.[0-9]{3}|\.[^.\s]{1,16})$`)
+)
+
+// SafeName makes a Windows-safe file or folder name of at most max characters. A longer name is cut
+// before its extension, so a download is still recognised as the archive it is.
 func SafeName(s string, max int) string {
 	s = winBad.Replace(strings.Map(func(r rune) rune {
 		if r < 32 {
@@ -61,11 +70,15 @@ func SafeName(s string, max int) string {
 	}, s))
 	s = strings.Join(strings.Fields(s), " ")
 	if r := []rune(s); len(r) > max {
-		s = string(r[:max])
+		ext := []rune(reKeepExt.FindString(s))
+		if len(ext)*2 > max {
+			ext = nil
+		}
+		s = strings.TrimRight(string(r[:max-len(ext)]), ". ") + string(ext)
 	}
 	s = strings.TrimRight(s, ". ")
-	switch strings.ToUpper(s) {
-	case "", "CON", "PRN", "AUX", "NUL", "COM1", "LPT1":
+	stem, _, _ := strings.Cut(s, ".")
+	if s == "" || reWinDevice.MatchString(strings.TrimSpace(stem)) {
 		return "_" + s
 	}
 	return s

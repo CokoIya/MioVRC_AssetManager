@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -228,7 +229,7 @@ func aiView() AIView {
 	c := loadAIConfigLocked()
 	keys := loadAIKeysLocked()
 	v := AIView{Provider: c.Provider, Providers: aiProviders, Profiles: map[string]AIProfile{}, Keys: map[string]string{},
-		Hierarchy: c.Hierarchy, DefaultHi: defaultHierarchy, Recent: c.Recent}
+		Hierarchy: localHierarchy(menuLang(), c.Hierarchy), DefaultHi: hierarchyIn(menuLang()), Recent: c.Recent}
 	for _, p := range aiProviders {
 		v.Profiles[p.ID] = c.profile(p.ID)
 		if t := keyTail(keys[p.ID]); t != "" {
@@ -367,15 +368,23 @@ type aiTurn struct {
 	Results []aiResult // tool: the answers to the calls of the turn before
 	think   string     // openai wire: reasoning_content, handed back as it came
 	blocks  json.RawMessage
+	cut     bool // assistant: the output limit ended the turn in the middle of its last call
 }
 
 type aiClient struct {
-	info  aiProviderInfo
-	base  string
-	model string
-	key   string
-	hc    *http.Client
+	info   aiProviderInfo
+	base   string
+	model  string
+	key    string
+	hc     *http.Client
+	outKey string                        // what this service calls the output limit ("" = max_tokens)
+	outMax int                           // the limit asked for (0 = aiOutputMax, -1 = none sent)
+	retry  func(n, of int) func(ok bool) // told before a request is sent again (nil = sent once only)
 }
+
+// aiOutputMax: how long one answer may get. Without a limit some services stop at a few hundred tokens and
+// others at 4096; a menu plan needs more room than that.
+const aiOutputMax = 8192
 
 func aiHTTP(st *core.Store, base string) *http.Client {
 	tr := &http.Transport{ResponseHeaderTimeout: 180 * time.Second}
@@ -474,28 +483,95 @@ func (c *aiClient) headers(r *http.Request) {
 type aiHTTPError struct {
 	Status int
 	Msg    string
+	Said   string        // the service's own words, lower case
+	After  time.Duration // Retry-After, -1 when the service names none
 }
 
 func (e *aiHTTPError) Error() string { return e.Msg }
 
+func hasAny(s string, words ...string) bool {
+	for _, w := range words {
+		if strings.Contains(s, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// overflow: the conversation no longer fits the model's context.
+func (e *aiHTTPError) overflow() bool {
+	return (e.Status == 400 || e.Status == 413 || e.Status == 422) && hasAny(e.Said, "maximum context length", "context_length_exceeded", "context length",
+		"context window", "context limit", "range of input length", "prompt is too long", "input is too long", "input too long", "too many tokens", "token limit", "tokens exceed",
+		"reduce the length", "上下文长度", "超出最大长度", "超过最大长度", "输入过长", "长度超过")
+}
+
+// noPictures: the service (or the model) does not take pictures.
+func (e *aiHTTPError) noPictures() bool {
+	return (e.Status == 400 || e.Status == 415 || e.Status == 422) && !e.overflow() && hasAny(e.Said, "image", "vision", "multimodal", "multi-modal",
+		"picture", "unknown variant", "expected a string", "must be a string", "invalid type: sequence", "content type", "图片", "图像", "视觉", "多模态")
+}
+
+// busy: worth sending again in a moment (too many requests, or the service's own trouble). A 429 that is about
+// money is not.
+func (e *aiHTTPError) busy() bool {
+	if e.Status == 429 {
+		return !hasAny(e.Said, "insufficient", "balance", "quota", "余额", "额度", "欠费")
+	}
+	return e.Status == 408 || e.Status >= 500
+}
+
+// how long to wait before a request is sent again, when the service does not say (a var: tests wait less)
+var aiRetryWait = []time.Duration{2 * time.Second, 6 * time.Second}
+
+// do sends one request. A service that is busy (429, 5xx) or does not answer in time is asked again after a
+// pause — its own Retry-After when it gives one — when the caller set c.retry to be told about it.
 func (c *aiClient) do(ctx context.Context, method, path string, body any) ([]byte, error) {
-	var rd io.Reader
+	var payload []byte
 	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
+		var err error
+		if payload, err = json.Marshal(body); err != nil {
 			return nil, err
 		}
-		rd = bytes.NewReader(b)
+	}
+	var done func(ok bool)
+	for try := 0; ; try++ {
+		b, timeout, err := c.once(ctx, method, path, payload)
+		if done != nil {
+			done(err == nil)
+		}
+		var he *aiHTTPError
+		again := timeout && try == 0 || errors.As(err, &he) && he.busy() // a second timeout is the end of it
+		if err == nil || !again || c.retry == nil || try >= len(aiRetryWait) || ctx.Err() != nil {
+			return b, err
+		}
+		wait := aiRetryWait[try]
+		if he != nil && he.After >= 0 {
+			wait = min(he.After, time.Minute)
+		}
+		done = c.retry(try+2, len(aiRetryWait)+1)
+		select {
+		case <-ctx.Done():
+			done(false)
+			return nil, errors.New("已停止")
+		case <-time.After(wait):
+		}
+	}
+}
+
+func (c *aiClient) once(ctx context.Context, method, path string, payload []byte) (b []byte, timeout bool, err error) {
+	var rd io.Reader
+	if payload != nil {
+		rd = bytes.NewReader(payload)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.base+path, rd)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	c.headers(req)
 	resp, err := c.hc.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, errors.New("已停止")
+			return nil, false, errors.New("已停止")
 		}
 		host := c.base
 		if u, e := url.Parse(c.base); e == nil {
@@ -503,20 +579,33 @@ func (c *aiClient) do(ctx context.Context, method, path string, body any) ([]byt
 		}
 		var ne net.Error
 		if errors.As(err, &ne) && ne.Timeout() {
-			return nil, fmt.Errorf("%s 响应超时，请稍后重试或更换模型", host)
+			return nil, true, fmt.Errorf("%s 响应超时，请稍后重试或更换模型", host)
 		}
-		return nil, fmt.Errorf("无法连接 %s，请检查接口地址和网络（如需代理，可在设置中填写）。%v", host, core.TrimErr(err))
+		return nil, false, fmt.Errorf("无法连接 %s，请检查接口地址和网络（如需代理，可在设置中填写）。%v", host, core.TrimErr(err))
 	}
 	defer resp.Body.Close()
-	b, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	b, _ = io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 	if resp.StatusCode/100 != 2 {
-		return nil, &aiHTTPError{Status: resp.StatusCode, Msg: aiErrText(c.info.Label, resp.StatusCode, b)}
+		return nil, false, &aiHTTPError{Status: resp.StatusCode, Msg: aiErrText(c.info.Label, resp.StatusCode, b), Said: strings.ToLower(aiSaid(b)),
+			After: retryAfter(resp.Header.Get("Retry-After"))}
 	}
-	return b, nil
+	return b, false, nil
 }
 
-// aiErrText: the service's refusal in words a player can act on, with what the service said.
-func aiErrText(label string, status int, body []byte) string {
+// retryAfter: the header as a duration (seconds, or a date), -1 when it says nothing usable.
+func retryAfter(h string) time.Duration {
+	h = strings.TrimSpace(h)
+	if n, err := strconv.Atoi(h); err == nil && n >= 0 {
+		return time.Duration(n) * time.Second
+	}
+	if t, err := http.ParseTime(h); err == nil {
+		return max(time.Until(t), 0)
+	}
+	return -1
+}
+
+// aiSaid: what the service itself said about a refusal ("" when its answer says nothing a player can read).
+func aiSaid(body []byte) string {
 	said := ""
 	var e struct {
 		Error json.RawMessage `json:"error"`
@@ -542,12 +631,20 @@ func aiErrText(label string, status int, body []byte) string {
 			said = "" // an HTML error page says nothing useful
 		}
 	}
+	return said
+}
+
+// aiErrText: the service's refusal in words a player can act on, with what the service said.
+func aiErrText(label string, status int, body []byte) string {
+	said := aiSaid(body)
+	low := strings.ToLower(said)
 	if r := []rune(said); len(r) > 240 {
 		said = string(r[:240]) + "…"
 	}
-	low := strings.ToLower(said)
 	var what string
 	switch {
+	case (&aiHTTPError{Status: status, Said: low}).overflow():
+		what = "对话内容已超出模型的上下文长度"
 	case status == 401 || status == 403:
 		what = "API Key 不正确或已失效，或无权使用该模型"
 	case status == 402 || strings.Contains(low, "insufficient") || strings.Contains(low, "balance") || strings.Contains(low, "quota"):
@@ -689,14 +786,23 @@ func (c *aiClient) chatOpenAI(ctx context.Context, system string, turns []aiTurn
 		}
 		body["tools"] = ts
 	}
-	if c.info.ID == "deepseek" {
-		body["max_tokens"] = 8192
-	}
-	b, err := c.do(ctx, "POST", "/chat/completions", body)
-	var he *aiHTTPError
-	if errors.As(err, &he) && he.Status == 400 && strings.Contains(he.Msg, "enable_thinking") {
-		body["enable_thinking"] = false // Qwen's thinking models answer in one piece only with thinking off
+	c.limitOutput(body)
+	var b []byte
+	var err error
+	for {
 		b, err = c.do(ctx, "POST", "/chat/completions", body)
+		var he *aiHTTPError
+		if !errors.As(err, &he) || (he.Status != 400 && he.Status != 422) {
+			break
+		}
+		if _, off := body["enable_thinking"]; !off && strings.Contains(he.Msg, "enable_thinking") {
+			body["enable_thinking"] = false // Qwen's thinking models answer in one piece only with thinking off
+			continue
+		}
+		if !c.lowerOutput(he) {
+			break
+		}
+		c.limitOutput(body)
 	}
 	if err != nil {
 		return aiTurn{}, err
@@ -738,7 +844,43 @@ func (c *aiClient) chatOpenAI(ctx context.Context, system string, turns []aiTurn
 	if out.Text == "" && len(out.Calls) == 0 && r.Choices[0].FinishReason == "length" {
 		return aiTurn{}, errors.New("回答过长被截断：请更换输出上限更高的模型，或拆分要求后重试")
 	}
+	out.cut = r.Choices[0].FinishReason == "length" && len(out.Calls) > 0
 	return out, nil
+}
+
+// limitOutput writes the output limit into a request the way this service takes it.
+func (c *aiClient) limitOutput(body map[string]any) {
+	delete(body, "max_tokens")
+	delete(body, "max_completion_tokens")
+	n, key := c.outMax, c.outKey
+	if n == 0 {
+		n = aiOutputMax
+	}
+	if key == "" {
+		key = "max_tokens"
+	}
+	if n > 0 {
+		body[key] = n
+	}
+}
+
+// lowerOutput: the service refused the output limit itself — it wants it under another name (newer OpenAI
+// models), or smaller, or (in the end) not at all. false: the refusal was about something else, or nothing
+// is left to try. What worked is kept for the rest of the run.
+func (c *aiClient) lowerOutput(he *aiHTTPError) bool {
+	switch {
+	case he.overflow() || !hasAny(he.Said, "max_tokens", "max_completion_tokens"): // too long as a whole is not about the limit
+		return false
+	case strings.Contains(he.Said, "max_completion_tokens") && c.outKey == "" && c.info.Wire != "claude":
+		c.outKey = "max_completion_tokens"
+	case c.outMax == 0:
+		c.outMax = aiOutputMax / 2
+	case c.outMax > 0 && c.info.Wire != "claude": // the Anthropic wire has no request without a limit
+		c.outMax = -1
+	default:
+		return false
+	}
+	return true
 }
 
 func (c *aiClient) chatClaude(ctx context.Context, system string, turns []aiTurn, tools []aiTool) (aiTurn, error) {
@@ -779,7 +921,8 @@ func (c *aiClient) chatClaude(ctx context.Context, system string, turns []aiTurn
 			msgs = append(msgs, map[string]any{"role": "user", "content": bl})
 		}
 	}
-	body := map[string]any{"model": c.model, "max_tokens": 8192, "messages": msgs}
+	body := map[string]any{"model": c.model, "messages": msgs}
+	c.limitOutput(body)
 	if system != "" {
 		body["system"] = system
 	}
@@ -792,8 +935,8 @@ func (c *aiClient) chatClaude(ctx context.Context, system string, turns []aiTurn
 	}
 	b, err := c.do(ctx, "POST", "/v1/messages", body)
 	var he *aiHTTPError
-	if errors.As(err, &he) && he.Status == 400 && strings.Contains(he.Msg, "max_tokens") {
-		body["max_tokens"] = 4096 // an older model with a smaller limit
+	if errors.As(err, &he) && he.Status == 400 && c.lowerOutput(he) { // an older model with a smaller limit
+		c.limitOutput(body)
 		b, err = c.do(ctx, "POST", "/v1/messages", body)
 	}
 	if err != nil {
@@ -825,6 +968,7 @@ func (c *aiClient) chatClaude(ctx context.Context, system string, turns []aiTurn
 	if out.Text == "" && len(out.Calls) == 0 && r.StopReason == "max_tokens" {
 		return aiTurn{}, errors.New("回答过长被截断：请更换输出上限更高的模型，或拆分要求后重试")
 	}
+	out.cut = r.StopReason == "max_tokens" && len(out.Calls) > 0
 	return out, nil
 }
 

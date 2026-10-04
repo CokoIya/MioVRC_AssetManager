@@ -22,7 +22,7 @@ namespace MioVRCA.Pipeline
     [InitializeOnLoad]
     internal static class Bridge
     {
-        public const string Version = "1.2.1";
+        public const string Version = "1.4.0";
         const string Dir = "UserSettings/MioVRCA/bridge";
 
         const string SkillsAsked = "MioVRCA.Pipeline.SkillsAsked";
@@ -186,6 +186,8 @@ namespace MioVRCA.Pipeline
                 case "inspect_object": return AvatarInspect.ObjectDetail(args);
                 case "prefabs": return AvatarInspect.Prefabs(args);
                 case "snapshot": return Snapshot.Run(args);
+                case "checkup": return Checkup.Run(args);
+                case "prefab_shot": return PrefabShot.Run(args);
                 case "refresh":
                     AssetDatabase.Refresh();
                     return new Dictionary<string, object> { { "refreshed", true } };
@@ -195,16 +197,13 @@ namespace MioVRCA.Pipeline
             switch (cmd)
             {
                 case "dress": return Dresser.Dress(args);
+                case "place": return Dresser.Place(args);
                 case "build_menu": return MenuBuilder.Build(args);
                 case "icons": return IconShot.Run(args);
                 case "place_avatar": return PlaceAvatar(args);
-                case "undo":
-                    {
-                        string what = Undo.GetCurrentGroupName();
-                        Undo.PerformUndo();
-                        Undo.IncrementCurrentGroup();
-                        return new Dictionary<string, object> { { "undone", what } };
-                    }
+                case "fix": return Fixes.Run(args);
+                case "fix_revert": return Fixes.Revert(args);
+                case "undo": return UndoOurs(args);
                 case "select":
                     {
                         Component avatar = Refl.FindAvatar(J.Str(args, "avatar"));
@@ -216,6 +215,81 @@ namespace MioVRCA.Pipeline
                     }
             }
             throw new PipelineException("不认识的操作：" + cmd);
+        }
+
+        // Every step this package makes is named "MioVRCA …" in the undo history; UnitySkills names its own "Skill: …".
+        const string OurUndo = "MioVRCA", SkillUndo = "Skill: ";
+
+        // Takes back the last step this package made, and only that. The program's 「撤销上一步」 means "what the
+        // assistant just did": with the player's own work on top of the undo history it would take that back
+        // instead, so it is refused and said. With "skills" a UnitySkills step counts as ours too (the program
+        // sends it when the assistant's last change was made through UnitySkills).
+        static object UndoOurs(Dictionary<string, object> args)
+        {
+            bool skills = J.Bool(args, "skills");
+            if (J.Bool(args, "peek")) // what would be looked at, nothing undone
+            {
+                string record, group;
+                bool listed = UndoTop(out record, out group);
+                return new Dictionary<string, object> { { "listed", listed }, { "record", record }, { "group", group } };
+            }
+            for (int stepped = 0; ; stepped++)
+            {
+                List<string> tops = TopUndoNames();
+                foreach (string n in tops)
+                {
+                    if (!n.StartsWith(OurUndo) && !(skills && n.StartsWith(SkillUndo))) continue;
+                    Undo.PerformUndo();
+                    Undo.IncrementCurrentGroup();
+                    return new Dictionary<string, object> { { "undone", n } };
+                }
+                string top = tops.Count > 0 ? tops[0] : "";
+                if (top == "") throw new PipelineException("Unity 的撤销记录中没有可撤销的 MioVRCA 操作，未执行撤销");
+                // a change of selection (the player clicked something in Unity) is stepped over: nothing is lost by it
+                if (IsSelectionUndo(top) && stepped < 30) { Undo.PerformUndo(); continue; }
+                throw new PipelineException("Unity 撤销记录中最近的一步是「" + top + "」，不是 MioVRCA 的操作。为避免撤销您自己的改动，未执行撤销。如需继续回退，请在 Unity 中按 Ctrl+Z");
+            }
+        }
+
+        static bool IsSelectionUndo(string name)
+        {
+            return name == "Selection Change" || name == "Clear Selection" || name.StartsWith("Select ") || name.StartsWith("Selection ");
+        }
+
+        // What is on top of the undo history: the newest entry of Unity's own list of records (an internal call,
+        // found by name), and the current group's name, which says the same while nothing happened since. Empty
+        // names are left out.
+        static List<string> TopUndoNames()
+        {
+            string record, group;
+            bool listed = UndoTop(out record, out group);
+            var o = new List<string>();
+            if (!string.IsNullOrEmpty(record)) o.Add(record);
+            if (!string.IsNullOrEmpty(group) && !o.Contains(group)) o.Add(group);
+            return o;
+        }
+
+        // record: the newest entry of Unity's list of undo records ("" when the list is empty); group: the current
+        // group's name; the answer: whether the list could be read at all.
+        static bool UndoTop(out string record, out string group)
+        {
+            record = "";
+            bool listed = false;
+            try
+            {
+                MethodInfo records = typeof(Undo).GetMethod("GetRecords", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static, null,
+                    new[] { typeof(List<string>), typeof(List<string>) }, null);
+                if (records != null)
+                {
+                    var undos = new List<string>();
+                    records.Invoke(null, new object[] { undos, new List<string>() });
+                    listed = true;
+                    if (undos.Count > 0) record = undos[undos.Count - 1] ?? "";
+                }
+            }
+            catch (Exception) { }
+            group = Undo.GetCurrentGroupName() ?? "";
+            return listed;
         }
 
         // A new scene with one avatar in it, saved as Assets/<project>/<project>.unity (numbered when that is taken).

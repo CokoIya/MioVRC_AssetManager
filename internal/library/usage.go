@@ -337,6 +337,9 @@ func RunUsageScan(st *core.Store, prog *core.Task) {
 	projFold := make([]map[string]uint16, len(projects))
 	projDirs := make([][]string, len(projects))
 	for i, p := range projects {
+		if core.Quitting.Load() {
+			return
+		}
 		prog.Set(i, len(projects)+len(assets), "正在索引工程 "+p.Name)
 		set, pkg, fold, dirs := projectGUIDs(p.Path)
 		projFold[i], projDirs[i] = fold, dirs
@@ -360,6 +363,9 @@ func RunUsageScan(st *core.Store, prog *core.Task) {
 		go func() {
 			defer wg.Done()
 			for i := range jobs {
+				if core.Quitting.Load() {
+					continue
+				}
 				a := assets[i]
 				set := map[string]bool{}
 				for _, p := range a.Packages {
@@ -389,6 +395,9 @@ func RunUsageScan(st *core.Store, prog *core.Task) {
 	close(jobs)
 	wg.Wait()
 	cache.save()
+	if core.Quitting.Load() {
+		return // not every asset was looked at: the counts of the last run stay
+	}
 
 	// GUIDs shared by 3+ assets (bundled libraries like lilToon) are ignored for matching
 	freq := map[string]int{}

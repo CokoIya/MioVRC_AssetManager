@@ -56,12 +56,19 @@
     return out;
   }
 
-  function hasNext(doc, page) {
-    return [...doc.querySelectorAll("a[href*='page=']")].some(a => {
+  // The highest page number the page's own links lead to (0 when it has none).
+  function lastPage(doc) {
+    let max = 0;
+    doc.querySelectorAll("a[href*='page=']").forEach(a => {
       const m = (a.getAttribute("href") || "").match(/[?&]page=(\d+)/);
-      return m && +m[1] > page;
+      if (m && +m[1] > max) max = +m[1];
     });
+    return max;
   }
+
+  // What keeps the lists from being whole; with any of it, nothing kept from earlier syncs is dropped.
+  const gaps = [];
+  const gap = s => { if (gaps.length < 8) gaps.push(s); };
 
   function fileNameNear(dl, card) {
     const label = norm(dl.getAttribute("data-label"));
@@ -113,18 +120,36 @@
 
   async function scrapeLibrary(path, gift, base) {
     const items = new Map();
+    const what = gift ? "礼物列表" : "已购列表";
+    let pages = 1, empty = 0;
     for (let page = 1; page <= 300; page++) {
       P.stage = gift ? "gifts" : "library"; P.page = page;
-      const doc = await get(path + "?page=" + page);
-      if (!doc) break;
+      let doc;
+      try { doc = await get(path + "?page=" + page); }
+      catch (e) {
+        if (e.message === "LOGIN" || (page === 1 && !gift)) throw e;
+        gap(what + "第 " + page + " 页未能加载"); // what the other pages give is still worth keeping
+        if (++empty >= 3 || page >= pages) break;
+        continue;
+      }
+      if (!doc) {
+        if (page > 1 && page <= pages) gap(what + "第 " + page + " 页不存在");
+        break;
+      }
       if (page === 1 && !gift) firstHTML = doc.documentElement.outerHTML.slice(0, 400000);
-      let added = 0;
+      pages = Math.max(pages, lastPage(doc));
+      let cards = 0;
       for (const [id, el] of containers(doc, ITEM)) {
-        if (items.has(id)) continue;
-        items.set(id, parseItem(id, el, gift)); added++;
+        cards++;
+        if (!items.has(id)) items.set(id, parseItem(id, el, gift));
       }
       P.items = base + items.size;
-      if (!added || !hasNext(doc, page)) break;
+      if (page >= pages) break;
+      if (!cards) {
+        // a page without cards before the last one Booth shows: a page that did not render, not the end
+        gap(what + "第 " + page + " 页没有内容");
+        if (++empty >= 3) break;
+      }
       await sleep(400);
     }
     return [...items.values()];
@@ -132,10 +157,12 @@
 
   async function scrapeOrders(known) {
     const orders = new Map();
+    let pages = 1, empty = 0;
     for (let page = 1; page <= 300; page++) {
       P.stage = "orders"; P.page = page;
       const doc = await get("/orders?page=" + page);
       if (!doc) break;
+      pages = Math.max(pages, lastPage(doc));
       let added = 0;
       for (const [oid, el] of containers(doc, ORDER)) {
         if (orders.has(oid)) continue;
@@ -143,7 +170,7 @@
         orders.set(oid, { id: oid, date: fmtDate(norm(el.textContent).match(DATE)), items: [...idSet(el, ITEM)].filter(x => known.has(x)) });
       }
       P.orders = orders.size;
-      if (!added || !hasNext(doc, page)) break;
+      if (page >= pages || (!added && ++empty >= 3)) break;
       await sleep(400);
     }
     // only open order pages whose items the list did not show
@@ -166,6 +193,7 @@
   window.__vrclibRun = async () => {
     Object.assign(P, { stage: "start", page: 0, items: 0, orders: 0, ordersTotal: 0, orderDone: 0, done: false, error: "", orderError: "" });
     window.__vrclibResult = null;
+    gaps.length = 0;
     try {
       const library = await scrapeLibrary("/library", false, 0);
       const gifts = await scrapeLibrary("/library/gifts", true, library.length);
@@ -175,7 +203,7 @@
         try { orders = await scrapeOrders(known); }
         catch (e) { if (e.message === "LOGIN") throw e; P.orderError = String(e.message || e); }
       }
-      window.__vrclibResult = JSON.stringify({ library, gifts, orders, orderError: P.orderError, debug: known.size ? "" : firstHTML });
+      window.__vrclibResult = JSON.stringify({ library, gifts, orders, orderError: P.orderError, incomplete: gaps.join("；"), debug: known.size ? "" : firstHTML });
       P.stage = "done";
     } catch (e) {
       P.error = String((e && e.message) || e);

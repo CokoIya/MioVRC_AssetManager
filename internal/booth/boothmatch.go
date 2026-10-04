@@ -292,7 +292,7 @@ func AssetBooth(st *core.Store, key string, a *core.Asset) (string, string) {
 		}
 	}
 	// a share whose folder or files carry the item number ("8099091/AONAMI_….zip")
-	if a == nil && strings.HasPrefix(key, "pan:") {
+	if a == nil && core.IsNetdiskKey(key) {
 		if l, it := netdisk.PanSub(st, key); l != nil {
 			info := netdisk.AnalyzePan(l, naming.ParseBases(st.Settings.Bases))
 			if it == nil && len(netdisk.SplitPanCached(l)) >= 2 {

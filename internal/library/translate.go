@@ -25,6 +25,11 @@ func KickTranslate(st *core.Store) {
 	}()
 }
 
+var (
+	transPause     = 600 * time.Millisecond // between two requests to the translator
+	transBumpEvery = 2 * time.Second        // the window reloads every card at each bump: not after every batch
+)
+
 // RunTranslate translates names that have no cached translation yet, in batches.
 func RunTranslate(st *core.Store, prog *core.Task, sources []string) {
 	st.Mu.RLock()
@@ -48,7 +53,11 @@ func RunTranslate(st *core.Store, prog *core.Task, sources []string) {
 		return
 	}
 	fails := 0
+	shown := time.Now()
 	for i := 0; i < len(todo); {
+		if core.Quitting.Load() {
+			return
+		}
 		// pack lines up to ~800 characters per request
 		j, n := i, 0
 		for j < len(todo) && (j == i || n+len([]rune(todo[j]))+1 <= 800) && j-i < 40 {
@@ -91,9 +100,12 @@ func RunTranslate(st *core.Store, prog *core.Task, sources []string) {
 			st.Trans[src] = t
 		}
 		st.Mu.Unlock()
-		core.BumpRev()
 		i = j
-		time.Sleep(600 * time.Millisecond)
+		if i < len(todo) && time.Since(shown) >= transBumpEvery { // the last batch is shown when the task ends
+			core.BumpRev()
+			shown = time.Now()
+		}
+		time.Sleep(transPause)
 	}
 	prog.Set(len(todo), len(todo), "完成")
 }

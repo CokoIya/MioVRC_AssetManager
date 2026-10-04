@@ -4,7 +4,6 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -75,6 +74,9 @@ type AssetView struct {
 	CanSplit     int               `json:"canSplit,omitempty"`  // kept whole by the player, but holds this many products
 	FromPan      string            `json:"fromPan,omitempty"`   // downloaded by the program from this netdisk card
 	PanGot       []string          `json:"panGot,omitempty"`    // which parts of that card's file list ("/" = all)
+	CoverPkg     bool              `json:"coverPkg,omitempty"`  // the cover is a preview from its unitypackage (pkgcover.go)
+
+	coverGen bool // the cover is one made from a prefab in Unity (gencover.go)
 }
 
 type PanNews struct {
@@ -140,10 +142,6 @@ func purchaseView(st *core.Store, p *core.Purchase, matched bool) *PurchaseView 
 	return v
 }
 
-func thumbURL(p string, w int) string {
-	return "/thumb?w=" + strconv.Itoa(w) + "&p=" + url.QueryEscape(p)
-}
-
 var reWordTok = regexp.MustCompile(`[a-z0-9]{4,}`)
 
 // namesRelated: do two product names share a meaningful word (or two CJK characters in a row)?
@@ -196,9 +194,9 @@ func BuildView(st *core.Store, a *core.Asset) AssetView {
 	}
 	// name
 	v.Name = a.Name
-	if v.Booth != nil && v.Booth.Name != "" && (naming.IsMostlyDigits(a.Name) || len([]rune(a.Name)) <= 2 || naming.IsGenericName(a.Name)) {
+	if v.Booth != nil && v.Booth.Name != "" && saysNothing(a.Name) {
 		v.Name = v.Booth.Name
-	} else if v.Purchase != nil && v.Purchase.Name != "" && (naming.IsMostlyDigits(a.Name) || len([]rune(a.Name)) <= 2 || naming.IsGenericName(a.Name)) {
+	} else if v.Purchase != nil && v.Purchase.Name != "" && saysNothing(a.Name) {
 		v.Name = v.Purchase.Name
 	}
 	// category: booth (except keyword categories it lumps together) > auto
@@ -221,9 +219,9 @@ func BuildView(st *core.Store, a *core.Asset) AssetView {
 		v.Bases = core.UniqStrings(append(append([]string{}, a.Bases...), extra...))
 	}
 	// base bodies only named as "For_X" in the file name
-	v.Bases = core.UniqStrings(append(append([]string{}, v.Bases...), naming.ForBases(a.Name+" "+a.RawName, defs)...))
+	v.Bases = core.UniqStrings(append(append([]string{}, v.Bases...), forBases(a.Name+" "+a.RawName, defs)...))
 	v.AutoBases = v.Bases
-	// cover: user > booth > purchase thumbnail > local image
+	// cover: user > booth > purchase thumbnail > local image > made in Unity > unitypackage preview
 	cover := ""
 	switch {
 	case v.User.Cover != "":
@@ -234,6 +232,13 @@ func BuildView(st *core.Store, a *core.Asset) AssetView {
 		cover = st.Purchases[v.BoothID].Cover
 	case len(a.Covers) > 0:
 		cover = a.Covers[0]
+	default: // no picture anywhere: the one made from a prefab in Unity, when there is one
+		cover = GeneratedCover(a.Key)
+		v.coverGen = cover != ""
+		if cover == "" { // …or the preview found inside its unitypackage
+			cover = PackageCover(st, a.Key)
+			v.CoverPkg = cover != ""
+		}
 	}
 	applyUserView(&v, cover)
 	finishView(st, &v, a.Name)
@@ -243,18 +248,22 @@ func BuildView(st *core.Store, a *core.Asset) AssetView {
 // finishView fills what every kind of card shares: netdisk listing, Booth search words and
 // suggestions, Chinese name.
 func finishView(st *core.Store, v *AssetView, autoName string) {
-	if surl := netdisk.ShareSurl(v.User.ShareURL); surl != "" && v.PanPath == "" {
+	if surl := netdisk.ShareID(v.User.ShareURL); surl != "" && v.PanPath == "" {
 		if l := st.Pan[surl]; l != nil {
 			v.Pan = l
 			v.PanParts = netdisk.AnalyzePan(l, naming.ParseBases(st.Settings.Bases)).Parts
 		}
 	}
 	bases := naming.ParseBases(st.Settings.Bases)
-	v.BoothQuery = booth.BoothQueryFor(autoName, bases, v.Category)
 	if v.PanOnly && (v.Pan == nil || v.Pan.Title == "") {
 		v.BoothQuery = "" // the share has not been read yet: its placeholder name is not worth searching
-	} else if v.BoothQuery == "" {
-		v.BoothQuery = strings.TrimSpace(strings.NewReplacer("_", " ").Replace(naming.CleanName(autoName)))
+	} else {
+		v.BoothQuery = queryMemo.get(memoKey{defsID(bases), v.Category == "素体", autoName}, func() string {
+			if q := booth.BoothQueryFor(autoName, bases, v.Category); q != "" {
+				return q
+			}
+			return strings.TrimSpace(strings.NewReplacer("_", " ").Replace(naming.CleanName(autoName)))
+		})
 	}
 	if v.BoothID == "" {
 		if m := st.BoothMatch[v.Key]; m != nil {
@@ -291,28 +300,56 @@ func finishView(st *core.Store, v *AssetView, autoName string) {
 	}
 }
 
+var (
+	queryMemo nameMemo[string]   // the Booth search words for a name
+	zhMemo    nameMemo[string]   // translate.ZHSource of a name
+	forMemo   nameMemo[[]string] // naming.ForBases of a name (read only)
+	stemMemo  nameMemo[string]   // stemOf a name
+	groupMemo nameMemo[string]   // groupName of the names in a group
+	restMemo  nameMemo[string]   // what variantLabel leaves of a name
+	styleMemo nameMemo[[]string] // autoStyles of a card's text (read only)
+	plainMemo nameMemo[bool]     // saysNothing
+)
+
+// saysNothing: a folder name that gives way to the product's title (an item number, "衣服", two letters, an id).
+func saysNothing(name string) bool {
+	return plainMemo.get(memoKey{name: name}, func() bool {
+		return naming.IsMostlyDigits(name) || len([]rune(name)) <= 2 || naming.IsGenericName(name) || isUUIDName(name)
+	})
+}
+
+func zhSource(name string) string {
+	return zhMemo.get(memoKey{name: name}, func() string { return translate.ZHSource(name) })
+}
+
+// forBases: naming.ForBases, remembered. The slice is shared: callers copy from it.
+func forBases(text string, defs []naming.BaseDef) []string {
+	return forMemo.get(memoKey{defs: defsID(defs), name: text}, func() []string { return naming.ForBases(text, defs) })
+}
+
 // zhSourceOfView: the most descriptive name to translate (the Booth title when there is one).
 func zhSourceOfView(v *AssetView) string {
 	if v.User.Name != "" {
-		return translate.ZHSource(v.User.Name)
+		return zhSource(v.User.Name)
 	}
 	if v.Booth != nil && v.Booth.Name != "" {
-		return translate.ZHSource(v.Booth.Name)
+		return zhSource(v.Booth.Name)
 	}
 	if v.Purchase != nil && v.Purchase.Name != "" {
-		return translate.ZHSource(v.Purchase.Name)
+		return zhSource(v.Purchase.Name)
 	}
-	return translate.ZHSource(v.Name)
+	return zhSource(v.Name)
 }
 
 // AllViews: local assets, purchases that are not on disk, and netdisk-only assets. Caller holds st.mu.
 func AllViews(st *core.Store) []AssetView {
-	var out []AssetView
+	out := make([]AssetView, 0, len(st.Assets)+len(st.Purchases)+16)
 	onDisk := map[string]bool{}
 	// netdisk assets the program downloaded: the folder's card takes their place, with the share link
 	fromPan := map[string]string{}
+	now := time.Now().Unix()
 	for k, u := range st.User {
-		if strings.HasPrefix(k, "pan:") && u.Downloaded != "" && core.IsDir(u.Downloaded) {
+		if core.IsNetdiskKey(k) && u.Downloaded != "" && isDirCached(u.Downloaded, now) {
 			fromPan[core.PathKey(u.Downloaded)] = k
 		}
 	}
@@ -338,7 +375,7 @@ func AllViews(st *core.Store) []AssetView {
 				v.FromPan, claimed[k] = k, true
 				v.PanGot = st.User[k].PanGot
 				surl, _ := netdisk.SplitPanKey(k)
-				if pu := st.User["pan:"+surl]; pu != nil && v.User.ShareURL == "" {
+				if pu := st.User[netdisk.ShareKey(surl)]; pu != nil && v.User.ShareURL == "" {
 					v.User.ShareURL, v.User.SharePwd = pu.ShareURL, pu.SharePwd
 					// the share's file list stays, to download more of it later
 					if pl, _ := netdisk.PanSub(st, k); pl != nil {
@@ -417,13 +454,13 @@ func panAssetName(st *core.Store, key string) string {
 		}
 		return l.Title
 	}
-	return "网盘分享 " + surl
+	return netdisk.SharePlaceholder(surl)
 }
 
 // panOnlyView: an asset that only lives in a Baidu Netdisk share.
 func panOnlyView(st *core.Store, key string) AssetView {
 	surl, path := netdisk.SplitPanKey(key)
-	parentKey := "pan:" + surl
+	parentKey := netdisk.ShareKey(surl)
 	u, pu := st.User[key], st.User[parentKey]
 	l, it := netdisk.PanSub(st, key)
 	name, raw := "", ""
@@ -503,7 +540,7 @@ func panOnlyView(st *core.Store, key string) AssetView {
 		}
 	}
 	v.Category, v.AutoCategory = cat, cat
-	v.Bases = core.UniqStrings(append(append(naming.DetectBases(text+" "+booth.BoothBaseText(v.Booth), defs), naming.ForBases(v.AutoName, defs)...), info.Bases...))
+	v.Bases = core.UniqStrings(append(append(naming.DetectBases(text+" "+booth.BoothBaseText(v.Booth), defs), forBases(v.AutoName, defs)...), info.Bases...))
 	v.AutoBases = v.Bases
 	cover := ""
 	switch {
@@ -553,7 +590,7 @@ func PurchaseOnlyView(st *core.Store, p *core.Purchase) AssetView {
 	}
 	v.Category, v.AutoCategory = cat, cat
 	defs := naming.ParseBases(st.Settings.Bases)
-	v.Bases = core.UniqStrings(append(naming.DetectBases(text+" "+booth.BoothBaseText(v.Booth), defs), naming.ForBases(v.AutoName, defs)...))
+	v.Bases = core.UniqStrings(append(naming.DetectBases(text+" "+booth.BoothBaseText(v.Booth), defs), forBases(v.AutoName, defs)...))
 	v.AutoBases = v.Bases
 	cover := ""
 	switch {
@@ -582,7 +619,8 @@ func applyUserView(v *AssetView, cover string) {
 	v.Tags = v.User.Tags
 	v.Hidden = v.User.Hidden
 	if cover != "" {
-		v.Cover = thumbURL(cover, 420)
-		v.CoverBig = thumbURL(cover, 900)
+		q := url.QueryEscape(cover) // once for both sizes
+		v.Cover = "/thumb?w=420&p=" + q
+		v.CoverBig = "/thumb?w=900&p=" + q
 	}
 }

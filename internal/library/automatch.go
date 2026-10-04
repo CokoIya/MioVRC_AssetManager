@@ -58,6 +58,9 @@ func RunAutoMatch(st *core.Store, prog *core.Task) {
 	c := core.HTTPClient(st)
 	fails := 0
 	for i, j := range jobs {
+		if core.Quitting.Load() {
+			return
+		}
 		prog.Set(i, len(jobs), j.Name)
 		q := booth.BoothQueryFor(j.Name, bases, j.Cat)
 		hits, err := booth.SearchBooth(c, q)

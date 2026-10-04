@@ -105,3 +105,31 @@ func TestGroupName(t *testing.T) {
 		}
 	}
 }
+
+// The group's name is cut out of a download's own name where it is in that name, not where it is in the
+// lower-cased copy: letters whose lower case is longer ("Ⱥ" → "ⱥ") moved the place, up to a crash.
+func TestVariantLabelLetterCase(t *testing.T) {
+	for _, c := range []struct{ name, group, want string }{
+		{"ȺȺȺȺȺȺ x", "X", "ȺȺȺȺȺȺ"},
+		{"ȺȺȺȺ Dress Kaguya", "dress", "ȺȺȺȺ  Kaguya"},
+		{"Summer DRESS Quest", "Summer Dress", "Quest"},
+		{"İpek Dress black", "dress", "İpek  black"},
+		{"Dress", "Dress", ""},
+		{"Dress Long", "", "Dress Long"},
+	} {
+		v := AssetView{AutoName: c.name}
+		if got := variantLabel(&v, c.group); got != c.want {
+			t.Errorf("variantLabel(%q, %q) = %q, want %q", c.name, c.group, got, c.want)
+		}
+	}
+	for _, c := range []struct {
+		s, sub string
+		at, n  int
+	}{
+		{"Summer DRESS v2", "dress", 7, 5}, {"ȺȺ ⱥx", "Ⱥx", 5, 4}, {"abc", "x", -1, 0}, {"abc", "", -1, 0}, {"ab", "abc", -1, 0}, {"衣服Dress", "dress", 6, 5},
+	} {
+		if at, n := indexFold(c.s, c.sub); at != c.at || n != c.n {
+			t.Errorf("indexFold(%q, %q) = %d, %d", c.s, c.sub, at, n)
+		}
+	}
+}

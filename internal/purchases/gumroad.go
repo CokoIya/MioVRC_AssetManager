@@ -1,6 +1,7 @@
 package purchases
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -91,14 +92,20 @@ func forgetGumSession() {
 // ---------- talking to gumroad.com ----------
 
 type gumClient struct {
-	s  *gumSession
-	hc *http.Client
+	s   *gumSession
+	hc  *http.Client
+	ctx context.Context
+}
+
+// gumHTTP: the connection to gumroad.com; whoever asks more than once keeps it and closes it afterwards.
+func gumHTTP(st *core.Store) *http.Client {
+	c := core.HTTPClient(st)
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return c
 }
 
 func newGumClient(st *core.Store, s *gumSession) *gumClient {
-	c := core.HTTPClient(st)
-	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return &gumClient{s: s, hc: c}
+	return &gumClient{s: s, hc: gumHTTP(st), ctx: context.Background()}
 }
 
 func (g *gumClient) cookieHeader() string {
@@ -129,9 +136,9 @@ func (g *gumClient) absorb(resp *http.Response) {
 }
 
 func (g *gumClient) get(u string, inertia bool) (*http.Response, error) {
-	req, err := http.NewRequest("GET", u, nil)
+	req, err := http.NewRequestWithContext(g.ctx, "GET", u, nil)
 	if err != nil {
-		return nil, err
+		return nil, errors.New("Gumroad 地址无效")
 	}
 	req.Header.Set("User-Agent", core.UA)
 	req.Header.Set("Accept-Language", "en,zh-CN;q=0.8")
@@ -143,7 +150,7 @@ func (g *gumClient) get(u string, inertia bool) (*http.Response, error) {
 	}
 	resp, err := g.hc.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("无法连接 Gumroad（%s）", core.FriendlyNetErr(err))
+		return nil, fmt.Errorf("无法连接 Gumroad（%s）", NetErrText(err)) // without the address: it carries the purchase's token
 	}
 	g.absorb(resp)
 	return resp, nil
@@ -172,7 +179,11 @@ func (g *gumClient) page(u string) (string, json.RawMessage, error) {
 	for hop := 0; hop < 6; hop++ {
 		pu, err := url.Parse(u)
 		if err != nil || !gumSameSite(pu) {
-			return "", nil, errors.New("Gumroad 页面被重定向到其他网站：" + u)
+			host := ""
+			if pu != nil {
+				host = pu.Host // not the whole address: it carries the purchase's token
+			}
+			return "", nil, errors.New("Gumroad 页面被重定向到其他网站：" + host)
 		}
 		resp, err := g.get(u, true)
 		if err != nil {
@@ -407,11 +418,12 @@ func userName(m map[string]any) string {
 	return ""
 }
 
-// captureGumroadLogin takes the login from the built-in page (nil: not logged in there).
-func captureGumroadLogin(st *core.Store) (*gumSession, error) {
+// captureGumroadLogin takes the login from the built-in page (nil: not logged in there). asked: gumroad.com
+// was asked about it — the page's cookies alone do not tell a visitor from a buyer.
+func captureGumroadLogin(st *core.Store, hc *http.Client) (s *gumSession, asked bool, err error) {
 	cs, err := webpane.Pane.Cookies([]string{core.GumroadBase() + "/"})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	var keep []core.SavedCookie
 	session := false
@@ -425,18 +437,94 @@ func captureGumroadLogin(st *core.Store) (*gumSession, error) {
 		}
 	}
 	if !session {
-		return nil, nil
+		return nil, false, nil
 	}
-	s := &gumSession{Cookies: keep, At: time.Now().Unix()}
-	lib, err := newGumClient(st, s).library(1, false)
+	s = &gumSession{Cookies: keep, At: time.Now().Unix()}
+	lib, err := (&gumClient{s: s, hc: hc, ctx: context.Background()}).library(1, false)
 	if errors.Is(err, errGumLogin) {
-		return nil, nil // the cookie of a visitor: the player has not logged in yet
+		return nil, true, nil // the cookie of a visitor: the player has not logged in yet
 	}
 	if err != nil {
-		return nil, err
+		return nil, true, err
 	}
 	s.Name = userName(lib.LoggedInUser)
-	return s, saveGumSession(s)
+	return s, true, saveGumSession(s)
+}
+
+// gumWatch: what the wait for a login looks at (tests put their own in).
+type gumWatch struct {
+	running func() bool                                   // the built-in page is still there
+	left    func() bool                                   // the player went elsewhere
+	pageURL func() string                                 // where the page is ("" when it cannot be told)
+	probe   func() (s *gumSession, asked bool, err error) // is the page logged in? (asks gumroad.com)
+	blocked func(msg string)                              // the site's protection turned the question away
+	tick    time.Duration                                 // between looks at the page (nothing leaves the computer)
+	gap     time.Duration                                 // before gumroad.com is asked again; doubles up to maxGap
+	maxGap  time.Duration
+	limit   time.Duration
+}
+
+// gumStillLoggingIn: the page is on the login form (or on another site's, for "log in with …"): there is
+// nothing to ask gumroad.com yet.
+func gumStillLoggingIn(pageURL string) bool {
+	if pageURL == "" {
+		return false
+	}
+	u, err := url.Parse(pageURL)
+	if err != nil {
+		return false
+	}
+	if u.Scheme == "about" || !gumSameSite(u) {
+		return true
+	}
+	p := strings.ToLower(u.Path)
+	for _, pre := range []string{"/login", "/signup", "/two-factor", "/users/", "/oauth", "/forgot_password"} {
+		if strings.HasPrefix(p, pre) {
+			return true
+		}
+	}
+	return false
+}
+
+// wait returns the login once the player is in; nil when they left, closed the page, or the time is up.
+// gumroad.com is only asked when the page has moved on from the login form, and less and less often while
+// the answer stays "not yet"; a protection page in between does not end the wait.
+func (w *gumWatch) wait() *gumSession {
+	end := time.Now().Add(w.limit)
+	gap, next, lastURL, told := w.gap, time.Time{}, "", false
+	for time.Now().Before(end) {
+		time.Sleep(w.tick)
+		if !w.running() || w.left() {
+			return nil
+		}
+		u := w.pageURL()
+		if gumStillLoggingIn(u) {
+			lastURL = u
+			continue
+		}
+		if u != lastURL { // the page moved on: perhaps the login went through
+			lastURL, gap, next = u, w.gap, time.Time{}
+		}
+		if time.Now().Before(next) {
+			continue
+		}
+		s, asked, err := w.probe()
+		if s != nil {
+			return s
+		}
+		if errors.Is(err, errGumBlocked) && !told {
+			told = true
+			w.blocked(err.Error())
+		}
+		if err != nil {
+			core.Logf("Gumroad 登录检查：%v", err)
+		}
+		if asked {
+			next = time.Now().Add(gap)
+			gap = min(gap*2, w.maxGap)
+		}
+	}
+	return nil
 }
 
 // WatchGumroadLogin: the login page is open in the built-in page; once the player is logged in the login is
@@ -451,32 +539,29 @@ func WatchGumroadLogin(st *core.Store) {
 			gumWatching.Store(false)
 			core.BumpRev()
 		}()
-		end := time.Now().Add(20 * time.Minute)
-		for time.Now().Before(end) {
-			time.Sleep(2 * time.Second)
-			webpane.Pane.Mu.Lock()
-			running := webpane.Pane.Port > 0
-			webpane.Pane.Mu.Unlock()
-			if !running {
-				return // the window was closed
-			}
-			s, err := captureGumroadLogin(st)
-			if errors.Is(err, errGumBlocked) {
-				core.Logf("Gumroad 登录检查：%v", err)
-				msg := err.Error() // say it in the status bar, instead of waiting in silence
+		hc := gumHTTP(st)
+		defer hc.CloseIdleConnections()
+		on := &webpane.PaneWatch{Kind: "gumroad", Start: time.Now()}
+		w := &gumWatch{tick: 2 * time.Second, gap: 5 * time.Second, maxGap: time.Minute, limit: 20 * time.Minute,
+			running: func() bool {
+				webpane.Pane.Mu.Lock()
+				defer webpane.Pane.Mu.Unlock()
+				return webpane.Pane.Port > 0 // else the window was closed
+			},
+			left: on.Left,
+			pageURL: func() string {
+				u, _ := webpane.Pane.Act("url")
+				return u
+			},
+			probe: func() (*gumSession, bool, error) { return captureGumroadLogin(st, hc) },
+			blocked: func(msg string) { // say it in the status bar, instead of waiting in silence
 				core.RunTask(TaskGumroad, func() { TaskGumroad.Set(0, 0, msg) })
-				return
-			}
-			if err != nil {
-				core.Logf("Gumroad 登录检查：%v", err)
-				continue
-			}
-			if s != nil {
-				core.Logf("Gumroad 已登录：%s", s.Name)
-				gumWatching.Store(false)
-				StartGumroadSync(st)
-				return
-			}
+			},
+		}
+		if w.wait() != nil {
+			core.Logf("Gumroad 已登录")
+			gumWatching.Store(false)
+			StartGumroadSync(st)
 		}
 	}()
 }
@@ -531,6 +616,12 @@ func gumID(purchaseID string) string {
 	}, purchaseID)
 }
 
+// between two pages of the library, and between two download pages (tests shorten them)
+var (
+	gumListGap = 250 * time.Millisecond
+	gumPageGap = 300 * time.Millisecond
+)
+
 // RunGumroadSync reads every page of the library, and the download page of each purchase it has not read
 // before. True when the purchases were saved.
 func RunGumroadSync(st *core.Store, prog *core.Task) bool {
@@ -540,9 +631,12 @@ func RunGumroadSync(st *core.Store, prog *core.Task) bool {
 		return false
 	}
 	g := newGumClient(st, s)
+	defer g.hc.CloseIdleConnections()
 	prog.Set(0, 0, "正在获取 Gumroad 已购…")
 	var cards []gumCard
+	short := false // fewer purchases came than the site counts: the lists were not read whole
 	for _, archived := range []bool{false, true} {
+		got, want, empty := 0, 0, 0
 		for page := 1; page <= 400; page++ {
 			if GumCancel.Load() {
 				prog.Set(0, 0, "已取消")
@@ -567,12 +661,19 @@ func RunGumroadSync(st *core.Store, prog *core.Task) bool {
 				}
 			}
 			cards = append(cards, lib.Results...)
+			got, want = got+len(lib.Results), max(want, lib.Pagination.Count)
 			prog.Set(0, 0, fmt.Sprintf("正在获取 Gumroad 已购，第 %d 页（%d 件）", page, len(cards)))
-			if len(lib.Results) == 0 || page >= lib.Pagination.Pages {
+			last := page >= lib.Pagination.Pages
+			if len(lib.Results) == 0 {
+				if empty++; last || empty >= 3 { // an empty page before the last one is not the end of the list
+					break
+				}
+			} else if last && lib.Pagination.Pages > 0 {
 				break
 			}
-			time.Sleep(250 * time.Millisecond)
+			time.Sleep(gumListGap)
 		}
+		short = short || got < want
 	}
 	// what was read before stays as it is; a purchase seen for the first time gets its download page read
 	st.Mu.RLock()
@@ -643,15 +744,22 @@ func RunGumroadSync(st *core.Store, prog *core.Task) bool {
 				p.Name = d.Purchase.ProductName
 			}
 		}
-		time.Sleep(300 * time.Millisecond)
+		time.Sleep(gumPageGap)
 	}
+	// a purchase that is no longer listed was refunded or removed from the library — unless the lists were not
+	// read whole (or shrank more than a library does): then what was kept before stays
+	lost := 0
+	for id := range known {
+		if next[id] == nil {
+			lost++
+		}
+	}
+	partial := short || lostTooMany(lost, len(known))
 	st.Mu.Lock()
 	for id := range st.Purchases {
-		if core.IsGumID(id) {
+		if core.IsGumID(id) && next[id] == nil && !partial {
 			delete(st.Purchases, id)
-			if next[id] == nil {
-				delete(st.Booth, id) // refunded, or removed from the library
-			}
+			delete(st.Booth, id)
 		}
 	}
 	for id, p := range next {
@@ -673,8 +781,12 @@ func RunGumroadSync(st *core.Store, prog *core.Task) bool {
 	st.Mu.Unlock()
 	_ = st.Save()
 	core.BumpRev()
-	prog.Set(1, 1, fmt.Sprintf("完成：已同步 %d 件 Gumroad 已购", len(next)))
-	core.Logf("Gumroad 已购同步完成：%d 件，其中 %d 件是新读的", len(next), len(fresh))
+	msg := fmt.Sprintf("完成：已同步 %d 件 Gumroad 已购", len(next))
+	if partial {
+		msg += "（" + syncPartialNote + "）"
+	}
+	prog.Set(1, 1, msg)
+	core.Logf("Gumroad 已购同步完成：%d 件，其中 %d 件是新读的，未读全：%v", len(next), len(fresh), partial)
 	return true
 }
 
@@ -709,12 +821,12 @@ func gumDownloadPath(st *core.Store, id string) string {
 }
 
 // resolveGumDownload asks Gumroad where the file is: its answer is a redirect to the file's (signed) address.
-func resolveGumDownload(st *core.Store, id string) (string, string, error) {
+func resolveGumDownload(ctx context.Context, st *core.Store, id string) (string, string, error) {
 	s := LoadGumSession()
 	if s == nil {
 		return "", "", errGumLogin
 	}
-	url1, name, err := resolveGumWith(st, s, id)
+	url1, name, err := resolveGumWith(ctx, st, s, id)
 	if errors.Is(err, errGumLogin) {
 		forgetGumSession() // the site no longer takes this login: the window offers to log in again
 		core.BumpRev()
@@ -722,7 +834,7 @@ func resolveGumDownload(st *core.Store, id string) (string, string, error) {
 	return url1, name, err
 }
 
-func resolveGumWith(st *core.Store, s *gumSession, id string) (string, string, error) {
+func resolveGumWith(ctx context.Context, st *core.Store, s *gumSession, id string) (string, string, error) {
 	st.Mu.RLock()
 	p := gumDownloadPath(st, id)
 	st.Mu.RUnlock()
@@ -735,6 +847,8 @@ func resolveGumWith(st *core.Store, s *gumSession, id string) (string, string, e
 		return "", "", errors.New("下载地址无效")
 	}
 	g := newGumClient(st, s)
+	g.ctx = ctx
+	defer g.hc.CloseIdleConnections()
 	for hop := 0; hop < 4; hop++ {
 		resp, err := g.get(u.String(), false)
 		if err != nil {

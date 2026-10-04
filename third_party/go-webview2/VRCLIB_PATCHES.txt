@@ -3,4 +3,5 @@ Local changes for vrclib (marked "vrclib patch"):
 - WM_DPICHANGED handling, small icon, arrow cursor, centring on the work area
 - no log.Fatal when WebView2 cannot start: the window is destroyed and New returns nil
 - MoveHook: called when the window moves, for a second web view inside it
+- CloseHook: asked on WM_CLOSE, false keeps the window open (downloads under way)
 Upstream: https://github.com/jchv/go-webview2 @ 56598839c808a2340edee99204db479f410e9bf4

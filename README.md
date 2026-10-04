@@ -4,6 +4,8 @@ Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth �
 
 单个 exe，有自己的窗口，数据只保存在本机。网站：<https://miovrc.com/vrca/>
 
+作者：天川澪（VRC 同名）。QQ 交流群：<https://qm.qq.com/q/5d1fxbkYhy>　Discord：<https://discord.gg/CD8NVJwBA>
+
 ## 功能
 
 - 扫描素材文件夹：识别解压后的文件夹、`.unitypackage` 和压缩包，判断分类（素体、衣服、头发、配饰……）和适配素体（文件名，加上 Booth 商品页的标题、标签和「対応アバター」段落）；素材旁边同名的图片当封面，散放着多个「包 + 同名图片」的文件夹按多个素材收录；「批量整理」可以一次给多个素材改分类、隐藏、不再收录
@@ -14,7 +16,7 @@ Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth �
 - 工程页：每个 Unity 工程一张卡片（Unity 版本、上次打开、用到的素材），用对应版本的 Unity 一键打开；可选的封面插件（`com.miovrc.projectcard`，只在编辑器里运行）在打开工程、保存场景时给模型拍正面照当封面。工程里的插件管理交给 VCC / ALCOM
 - 一键导入 Unity 工程：自动解压素材里的压缩包（PSD 包、分卷、嵌套、带密码），解压完压缩包移到回收站，再把 unitypackage 直接写进工程（按 GUID 就地更新已有资源，重名不覆盖；不同素体的包按工程的素体自动选）。rar、7z、分卷用电脑上默认的解压软件（7-Zip、Bandizip、WinRAR、好压、NanaZip、PeaZip）
 - 流水线页：工程 → 素材 → 装配 → 菜单 → 验收。工程 Assets 里导入过的素材自动列出（带素材库里的名字和类别），勾上要装的，按类别装到模型上（衣服互斥切换 + 部件开关 + 换色；头发单独互斥，素体自带的头发可切回；配饰开关默认显示；道具开关默认隐藏；素体在场景没有模型时放进新场景），再按玩家定的层级生成 Modular Avatar 菜单和图标。给工程装上流水线插件（`com.miovrc.pipeline`）和 [UnitySkills](https://github.com/Besty0728/Unity-Skills) 后，还能让 AI 接着做别的改模操作。AI 服务由玩家自己选：DeepSeek、通义千问、智谱 GLM、Kimi、ChatGPT 兼容（OpenAI 接口）、Claude 兼容（Anthropic 接口）；也可以不用 AI，按网格名字分组。AI 可以给头像拍照检查结果（穿模、错位、材质丢失），截图同时显示在验收记录里：模型能看图就直接把图发给它；看不了图的（DeepSeek）可以另设一个「看图模型」把画面描述给它；第一次用时自动测一次主模型能不能看图
-- 一键创建基础工程：Unity 2022.3.22f1 的 VRChat 头像工程（工程设置取自 VRChat 官方模板），从各插件的官方 VPM 仓库解析并下载最新稳定版（VRChat SDK、Modular Avatar、lilToon、Avatar Optimizer、Gesture Manager、VRCFury，可勾选；复用 ALCOM / VCC 的缓存），可顺带导入素材库里的素体、装 AI 插件并打开 Unity；新工程登记进 ALCOM / VCC 的工程列表。检测本机的 ALCOM、VCC、Unity Hub 和所需 Unity 版本
+- 一键创建基础工程：Unity 2022.3.22f1 的 VRChat 头像工程（工程设置取自 VRChat 官方模板），从各插件的官方 VPM 仓库解析并下载最新稳定版（VRChat SDK、Modular Avatar、lilToon、Avatar Optimizer、Gesture Manager、VRCFury，可勾选；复用 ALCOM / VCC 的缓存），可顺带导入素材库里的素体、装 Unity 插件并打开 Unity；新工程登记进 ALCOM / VCC 的工程列表。检测本机的 ALCOM、VCC、Unity Hub 和所需 Unity 版本
 - Booth 商品：按文件夹名里的编号、Booth 链接、已购记录或名称搜索关联，显示图片、标签和说明（可翻译）
 - Booth 页：点选分类、素体、风格标签逛 Booth（可多选），标出已购和素材库已有的，可以隐藏它们
 - 内置页面：Booth 的商品页、登录、购物车、已购列表和闲鱼都在软件里打开（第二个 WebView2，登录保存在本机），可以直接购买、和卖家聊天
@@ -136,13 +138,13 @@ third_party/      依赖库的副本
 | `internal/purchases/` | Booth 和 Gumroad 已购：在内置页面登录、同步已购（`purchases.go`、`boothpane.go`、`booth_scraper.js`）、下载（`boothdl.go`）；Gumroad 读的是它的 Inertia 页面数据，已购和 Booth 的放在一起，编号带 `gr_` 前缀（`gumroad.go`） |
 | `internal/pandl/` | 百度网盘登录（从内置页面取 Cookie）、转存到自己网盘（全部或勾选的部分）、断点续传下载 |
 | `internal/ai/` | 流水线：AI 服务（`ai.go`：DeepSeek / 通义千问 / 智谱 GLM / Kimi / OpenAI 兼容 / Anthropic 兼容的对话和工具调用，设置和 Key 的保存）、给 AI 看图（`aivision.go`）、对话循环和给 AI 的工具（`aiagent.go`）、不用 AI 时的流程（`pipeline.go`）、工程里的素材列表（`projassets.go`） |
-| `internal/server/` | 界面调用的接口（`api.go`、`pipeapi.go`）、反馈和建议（`feedback.go`） |
+| `internal/server/` | 界面调用的接口（`api.go`、`pipeapi.go`）、反馈与建议（`feedback.go`） |
 | `internal/testkit/`、`internal/unity/unitytest/` | 几个包的测试共用的小工具、测试用的假 Unity |
 | `unityhelper/com.miovrc.pipeline` | Unity 这一侧（C#，只在编辑器里运行）：体检头像、把素体放进新场景、穿戴（Modular Avatar Setup Outfit）、生成菜单（MA Menu Item / Object Toggle / Material Setter；互斥组按参数分，独立开关用反转的 Object Toggle 做默认显示）、拍图标、给头像拍照。改动都走 Undo，不保存场景 |
 | `unityhelper/com.miovrc.projectcard` | 工程封面插件 |
 | `web/` | 界面（HTML / CSS / JS，编译时嵌进 exe） |
 | `packaging/` | 构建脚本（`build.sh`、`build.bat`）、安装包脚本和使用说明 |
-| `test/` | 本地测试用的假 Booth / Gumroad / 网盘 / 翻译服务、假 AI 服务（`mockllm.py`）、假 Unity（`fakeunity.py`） |
+| `test/` | 本地测试用的假 Booth / Gumroad / 网盘 / Google Drive / Dropbox / 翻译服务、假 AI 服务（`mockllm.py`）、假 Unity（`fakeunity.py`） |
 
 包之间只从上往下引用，没有互相引用：`cmd/miovrca` → `server` → `ai`、`pandl` → `purchases` → `unity` → `library` → `booth` → `netdisk`、`translate`、`webpane`、`archive`、`update` → `naming` → `core`。下面的包需要通知上面的包时用回调变量（`webpane.PaneDownloadClicked`、`unity.AfterImport`），由上面的包在 `init` 里填上。
 
@@ -172,6 +174,21 @@ python3 test/mockllm.py                 # 47992：OpenAI 兼容和 Anthropic 兼
 python3 test/fakeunity.py <工程文件夹>   # 扮演工程里的流水线插件（FAKE_EMPTY=1 时场景里没有头像）
 python3 test/fakevpm.py 47994           # 内置仓库的列表、zip 和工程模板；运行软件时设 VRCLIB_VPM_BASE=http://127.0.0.1:47994
 ```
+
+其他店铺、愿望单和界面语言：
+
+```sh
+python3 test/mockjinxxy.py 47995        # 假的 Jinxxy；运行软件时设 VRCLIB_JINXXY_BASE=http://127.0.0.1:47995（mockweb 用 MOCK_JX 指过去）
+VRCLIB_WISH_FAST=1                      # 愿望单的价格检查按秒进行（只用于测试）
+python3 test/mockcloud.py 47993         # 假的 Google Drive 和 Dropbox；运行软件时设 VRCLIB_GDRIVE_BASE、VRCLIB_GDRIVE_API、VRCLIB_DROPBOX_BASE 为 http://127.0.0.1:47993
+python3 test/i18n_harvest.py            # 列出两个词典（web/i18n-en.js、web/i18n-ja.js）还没覆盖的中文文字
+python3 test/i18n_crawl.py --data <数据文件夹>   # 用英文和日文把每个界面走一遍，列出还留在屏幕上的中文
+```
+
+Google Drive 的分享默认按网页的方式读取，不需要 API Key；构建时设置 `cloudshare.GDriveAPIKey`（或运行时设 `VRCLIB_GDRIVE_KEY`）后改用 Drive API 列文件夹。
+
+新增界面文字的做法：源码里照常写中文，再把这句话加进两个词典的 `exact`（整句）或 `patterns`（带数值的句子），跑一遍 `i18n_harvest.py` 确认没有遗漏。
+
 
 ### 流水线怎么和 Unity 传话
 
