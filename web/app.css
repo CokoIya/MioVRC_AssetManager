@@ -1262,3 +1262,25 @@ body.paneon .offline:not([hidden]) ~ .toast { top: 104px; }
   .flrow { grid-template-columns: 44px minmax(0, 1fr) auto; grid-template-areas: "icon main new" "icon acts acts"; }
   .flrow .wlacts { justify-content: flex-end; }
 }
+
+/* A copied link (a netdisk share, a 闲鱼 or Booth page) offered at the top of the page, on every tab. It is part of the
+   page's flow: a built-in page is a window of its own on top of the HTML, so nothing can be laid over one — the row
+   stands above the page area, which moves down. Where the page scrolls, it stays at the top, across the padding at
+   the sides; the padding above it goes while it shows (a sticky box keeps clear of its scroller's padding, and
+   would stand that far down). And 闲鱼: the note about how its pages open */
+.clipbar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 10px; min-height: 44px; margin: 0 -22px 14px; padding: 6px 22px; border-bottom: 1px solid var(--line); background: var(--card); font-size: 13px; }
+.clipbar[hidden] { display: none; }
+.main.withclip { padding-top: 0; }
+.main.webon .clipbar { position: static; flex: none; margin: 0; padding: 6px 12px; }
+.clipbar b { flex: none; font-weight: 600; color: var(--text); }
+.clipbar .t { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clipbar .btn.small { flex: none; }
+.webnote .webacts { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 4px; }
+.xynote p { margin: 0 0 10px; font-size: 13px; line-height: 1.7; color: var(--muted); }
+.xynote h4 { margin: 14px 0 4px; font-size: 13.5px; font-weight: 600; color: var(--text); }
+.xynote .xywarn { margin-top: 14px; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: 8px; background: var(--card); color: var(--text); }
+
+/* 合集包: the tag of a card that holds a collection of products, and the note above its import form */
+.bundletag { font-size: 10.5px; font-weight: 700; letter-spacing: .5px; color: var(--warn); border: 1px solid rgba(255, 181, 71, .5); border-radius: 4px; padding: 0 5px; line-height: 16px; }
+.bundlenote .t { font-weight: 600; }
+.bundlenote .d { line-height: 1.6; }

@@ -512,6 +512,7 @@ func UniquePath(p string) string {
 
 type unpackResult struct {
 	Done    []string // folders made
+	From    []string // the archive each of them was made from (the file that opens it), in the same order
 	Failed  map[string]string
 	Removed int
 }
@@ -579,7 +580,7 @@ func unpack(places []string, pwd string, remove func([]string) error, report fun
 				res.Failed[a.Main] = err.Error()
 				continue
 			}
-			res.Done = append(res.Done, out)
+			res.Done, res.From = append(res.Done, out), append(res.From, a.Main)
 			made[core.PathKey(out)] = true
 			queue = append(queue, out)
 			if remove != nil {

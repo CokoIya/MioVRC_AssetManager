@@ -15,7 +15,7 @@ try {
   if (saved.site === "jinxxy") JX.site = "jinxxy";
   if (["drop", "added", "price"].includes(saved.sort)) W.sort = saved.sort;
   if (saved.q) { JX.q.xianyu = String(saved.q.xianyu || ""); JX.q.jinxxy = String(saved.q.jinxxy || ""); }
-  if (typeof saved.jxLast === "string") { S.web.last.jinxxy = saved.jxLast; JX.saved = saved.jxLast; }
+  if (typeof saved.jxLast === "string" && webKind(saved.jxLast) !== "xianyu") { S.web.last.jinxxy = saved.jxLast; JX.saved = saved.jxLast; }
   // S.web.xq is the query of the site the tab shows; app.js restored 闲鱼's
   if (JX.site === "jinxxy") { JX.q.xianyu = S.web.xq; S.web.xq = JX.q.jinxxy; if (S.view === "xianyu") $("#q").value = S.web.xq; }
 } catch (e) {}
@@ -525,11 +525,12 @@ function jxGo(site) {
   if (S.view !== "xianyu") return setView("xianyu");
   if (same && S.web.st.open) return;
   renderAll();
+  if (site === "xianyu") return xyEnter(); // (its own view, or the default browser: app.js)
   if (!S.data.paneMode) return;
-  return openWeb(S.web.last[site] || (site === "jinxxy" ? jxHome() : XY_HOME), site);
+  return openWeb(lastPage(site) || jxHome(), site);
 }
 function jxOpen(u) { return S.data.paneMode ? openWeb(u, "jinxxy") : openURL(u); }
-function jxReopen() { return jxOpen(S.web.last.jinxxy || jxHome()); }
+function jxReopen() { return jxOpen(lastPage("jinxxy") || jxHome()); }
 function jxSearch(q) {
   S.web.xq = q; storesSave(); saveUI();
   return jxOpen(q && JX.search ? JX.search + encodeURIComponent(q) : jxHome());

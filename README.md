@@ -19,13 +19,15 @@ Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth �
 - 一键创建基础工程：Unity 2022.3.22f1 的 VRChat 头像工程（工程设置取自 VRChat 官方模板），从各插件的官方 VPM 仓库解析并下载最新稳定版（VRChat SDK、Modular Avatar、lilToon、Avatar Optimizer、Gesture Manager、VRCFury，可勾选；复用 ALCOM / VCC 的缓存），可顺带导入素材库里的素体、装 Unity 插件并打开 Unity；新工程登记进 ALCOM / VCC 的工程列表。检测本机的 ALCOM、VCC、Unity Hub 和所需 Unity 版本
 - Booth 商品：按文件夹名里的编号、Booth 链接、已购记录或名称搜索关联，显示图片、标签和说明（可翻译）
 - Booth 页：点选分类、素体、风格标签逛 Booth（可多选），标出已购和素材库已有的，可以隐藏它们
-- 内置页面：Booth 的商品页、登录、购物车、已购列表和闲鱼都在软件里打开（第二个 WebView2，登录保存在本机），可以直接购买、和卖家聊天
+- 内置页面：Booth 的商品页、登录、购物车、已购列表在软件里打开（第二个 WebView2，登录保存在本机），可以直接购买
 - 同步 Booth 已购：在内置页面登录 Booth，读取已购、礼物和订单
 - 下载 Booth 已购：在软件里直接下载（也包括在内置 Booth 页面里点的下载），自动解压到素材文件夹并入库；可以「下载并导入」
 - Gumroad 已购：在内置页面登录 Gumroad，读取已购（含已归档），和 Booth 已购一样显示成卡片、下载、解压、入库
-- 闲鱼：在内置页面搜索、聊天、下单；聊天里选中的网盘分享可以一键收进素材库
+- 闲鱼：在软件内一个独立的内嵌浏览器里搜索、聊天、下单（软件不控制这个浏览器，也不保存它的登录），或者交给默认浏览器；复制卖家发来的网盘分享后可以一键收进素材库
 - 百度网盘：读取分享里的文件列表，只在网盘里的素材也能收录；合集分享按分类文件夹拆成多张卡片
 - 百度网盘下载：在内置页面登录百度网盘（登录加密保存在本机，可以更换账号、退出），分享先存进自己网盘的 `/MioVRCA`，再下载、解压、入库；可以只勾选分享里的部分文件或文件夹；断了可以接着下。速度取决于账号的会员等级
+- 合集包：网盘分享是一个总压缩包、里面是多个素材的压缩包（或分类压缩包）时，下载解压后每个素材各建一张卡片（同一素材的多素体版本包、PSD 包不拆）；没拆开的合集（没自动解压的、以前下载的、自己放进素材文件夹的）卡片上标「合集 · N」，不能一键导入，可以「拆分为 N 个素材」或设成「作为单个素材」；一键导入时解压后才发现是合集的（rar、7z，或里面的压缩包只按分类、编号命名），改成拆分，不导入
+- 复制链接提示：在别的程序里复制闲鱼、Booth 或网盘分享链接后切回软件，任意页面顶部提示「打开」或「收录」（设置里可以关掉）
 - 下载位置：默认是 C 盘以外剩余空间最大的盘的 `MioVRCdownload`（优先素材文件夹所在的盘），设置里可以改
 - 新素材自动整理：软件开着时，素材文件夹里新放入的素材会自动扫描归类
 - 更新提示：网盘分享每天、Booth 商品页每周检查一次变化
@@ -56,9 +58,10 @@ Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth �
 
 - `library.json`：素材库数据，包括备注、链接和翻译缓存
 - `covers\`：封面缓存
-- `web-login\`：内置页面（Booth、Gumroad、闲鱼、百度网盘）的登录和缓存，把它和 `web-session.dat` 一起删掉等于退出登录
-- `booth-profile\`：没有 WebView2 时，Booth / 闲鱼页面所用的 Edge / Chrome 窗口的配置
-- `web-session.dat`：内置页面里各网站「关掉浏览器就失效」的登录 Cookie 的备份（闲鱼的登录就是这种），启动时放回去，所以重启、更新后不用重新登录；同样用 DPAPI 加密，退出某个网站的登录时会删掉对应的部分
+- `web-login\`：内置页面（Booth、Gumroad、Jinxxy、百度网盘）的登录和缓存，把它和 `web-session.dat` 一起删掉等于退出登录
+- `web-xianyu\`：闲鱼页面所用的独立内嵌浏览器的配置和缓存。软件不读写里面的内容，登录能保留多久由闲鱼自己决定；删掉它等于换了一个新的浏览器。以管理员身份运行软件时不使用它（WebView2 此时不接受启动参数，闲鱼改在默认浏览器中打开）
+- `booth-profile\`：没有 WebView2 时，Booth 等内置页面所用的 Edge / Chrome 窗口的配置
+- `web-session.dat`：内置页面里各网站「关掉浏览器就失效」的登录 Cookie 的备份，启动时放回去，所以重启、更新后不用重新登录；同样用 DPAPI 加密，退出某个网站的登录时会删掉对应的部分。1.7.7 起不再包含闲鱼、淘宝的登录，旧版本留下的会在启动时清除
 - `booth-session.dat`：下载 Booth 已购用的登录信息（用 Windows DPAPI 加密，只有本机本用户能解开）
 - `gumroad-session.dat`：读取和下载 Gumroad 已购用的登录信息（同样用 DPAPI 加密）；在设置里退出 Gumroad 会删除它
 - `baidu-session.dat`：下载百度网盘分享用的登录信息（只有网盘需要的几个 Cookie，同样用 DPAPI 加密）；在设置里退出百度网盘会删除它
@@ -81,7 +84,7 @@ go test ./...
 go build -trimpath -ldflags "-H windowsgui -s -w" -o dist\MioVRC_AssetManager.exe ./cmd/miovrca
 ```
 
-**在 Linux / WSL 上交叉编译**，同时生成安装包和便携版（需要 NSIS 3 和 zip）：
+**在 Linux / WSL 上交叉编译**，同时生成安装包和便携版（需要 NSIS 3）：
 
 ```sh
 sh packaging/build.sh
@@ -129,7 +132,7 @@ third_party/      依赖库的副本
 | `internal/semver/` | 版本号和版本范围的比较 |
 | `internal/archive/` | 压缩包：解压 zip（含 Shift-JIS 文件名）、分卷识别、嵌套解压、优先调用电脑上默认的解压软件（7-Zip / Bandizip / WinRAR / 好压 / NanaZip / PeaZip），移到回收站 |
 | `internal/update/` | 检查更新、下载替换、重启；更新公告 |
-| `internal/webpane/` | 内置页面：窗口里的第二个 WebView2（没有时用单独的 Edge / Chrome 窗口），经 127.0.0.1 上的 DevTools 端口控制；浏览器驱动（Chromium 用 CDP，Firefox 用 WebDriver BiDi） |
+| `internal/webpane/` | 内置页面：窗口里的第二个 WebView2（没有时用单独的 Edge / Chrome 窗口），经 127.0.0.1 上的 DevTools 端口控制；浏览器驱动（Chromium 用 CDP，Firefox 用 WebDriver BiDi）。闲鱼不走这个浏览器：`xyview.go`、`xyview_windows.go` 是它自己的 WebView2，没有 DevTools 端口，软件不往里放任何东西 |
 | `internal/translate/` | 中文翻译 |
 | `internal/netdisk/` | 百度网盘分享读取、合集拆分、分享内容分析、和上次相比的变化 |
 | `internal/booth/` | Booth 商品信息、搜索与匹配 |
@@ -143,7 +146,7 @@ third_party/      依赖库的副本
 | `unityhelper/com.miovrc.pipeline` | Unity 这一侧（C#，只在编辑器里运行）：体检头像、把素体放进新场景、穿戴（Modular Avatar Setup Outfit）、生成菜单（MA Menu Item / Object Toggle / Material Setter；互斥组按参数分，独立开关用反转的 Object Toggle 做默认显示）、拍图标、给头像拍照。改动都走 Undo，不保存场景 |
 | `unityhelper/com.miovrc.projectcard` | 工程封面插件 |
 | `web/` | 界面（HTML / CSS / JS，编译时嵌进 exe） |
-| `packaging/` | 构建脚本（`build.sh`、`build.bat`）、安装包脚本和使用说明 |
+| `packaging/` | 构建脚本（`build.sh`、`build.bat`）、便携版的打包工具（`mkzip/`）、安装包脚本和使用说明 |
 | `test/` | 本地测试用的假 Booth / Gumroad / 网盘 / Google Drive / Dropbox / 翻译服务、假 AI 服务（`mockllm.py`）、假 Unity（`fakeunity.py`） |
 
 包之间只从上往下引用，没有互相引用：`cmd/miovrca` → `server` → `ai`、`pandl` → `purchases` → `unity` → `library` → `booth` → `netdisk`、`translate`、`webpane`、`archive`、`update` → `naming` → `core`。下面的包需要通知上面的包时用回调变量（`webpane.PaneDownloadClicked`、`unity.AfterImport`），由上面的包在 `init` 里填上。
@@ -166,6 +169,8 @@ VRCLIB_PCS_BASE=http://127.0.0.1:47991 VRCLIB_BAIDU_LOGIN=http://127.0.0.1:47991
 VRCLIB_BROWSER=<chrome 路径> VRCLIB_HEADLESS=1 \
 go run ./cmd/miovrca --no-window --data ./testdata
 ```
+
+在 Linux 上测试时没有软件自己的窗口，内置页面按「没有 WebView2」的方式运行。加上 `VRCLIB_FAKE_NATIVE=1` 后改用替身：内置页面是一个无界面的浏览器，闲鱼的独立内嵌浏览器是一份只记录操作的地址列表（写进 `library.log`），用来测试页面区域的切换、定位和工具栏；`VRCLIB_CLIP_FILE=<文件>` 让该文件充当剪贴板。这些只存在于非 Windows 的构建里。`VRCLIB_TEST_BROWSER=<chrome 路径> go test ./internal/webpane/` 会用真实浏览器测试内置页面离开闲鱼的行为。
 
 流水线可以接到假的 AI 服务、假的 Unity 和假的 VPM 仓库上测试：
 
@@ -202,7 +207,9 @@ Google Drive 的分享默认按网页的方式读取，不需要 API Key；构�
 - 本工具不会上传你的素材数据。它会连接：Booth、Gumroad（登录过才连）、百度网盘、必应翻译（谷歌翻译备用）、GitHub（检查更新），发送反馈时连接 FormSubmit，用流水线的 AI 时连接你填的 AI 服务接口地址；创建基础工程时连接 GitHub 和各插件的 VPM 仓库（packages.vrchat.com、vpm.nadena.dev、lilxyzw.github.io、vpm.anatawa12.com、vcc.vrcfury.com）（对话内容包括头像下的物体名、网格名、prefab 路径和菜单结构，不含贴图和模型文件；AI 拍照检查时，头像的截图会发给你选的 AI 服务或看图模型，在「看图」里选「不给 AI 看」就不发），以及设置里填写的代理；内置页面打开的网站（Booth、闲鱼等）由页面自己连接。
 - 百度网盘下载用的是网盘网页和客户端的接口，不是开放平台接口；只用你自己账号的正常权限，不绕过限速，也不会删除你网盘里的文件（存进 `/MioVRCA` 的副本需要时自己删）。
 - 流水线用 AI 时的费用由你选的 AI 服务商按用量收取，软件不经手。AI 做的改动都走 Unity 的撤销，软件不会保存场景；会删除东西、保存场景、执行脚本的 UnitySkills 操作要你点「允许」才执行。
-- 内置页面开着时，会在 127.0.0.1 上开一个 DevTools 端口，软件靠它控制页面（后退、读取已购、下载按钮）。只有本机程序能连到它。
+- 内置页面开着时，会在 127.0.0.1 上开一个 DevTools 端口，软件靠它控制页面（后退、读取已购、下载按钮）。只有本机程序能连到它。闲鱼、淘宝、支付宝的页面不在这个浏览器里打开：软件不会把这些地址交给它，它的页面自己跳转过去或弹出这些网站的窗口时，会退回原页面（或关闭窗口）并改用默认浏览器。这个判断发生在页面开始加载之后，所以内置浏览器可能已经向这些网站发出过一次不带登录的请求。
+- 闲鱼页面在独立的内嵌浏览器里打开时，软件不开调试端口、不向页面注入或执行脚本、不读写 Cookie、不使用代理设置，也不接管页面打开的新窗口，只从外部取得当前地址、标题和能否后退。它仍可能被网站认出是应用内的浏览器（WebView2 自身带有可识别的特征），软件不能保证不触发平台的风控。
+- 软件在前台时，会查看剪贴板里有没有闲鱼、Booth 或网盘分享链接（用于顶部的「打开 / 收录」提示和「收录网盘链接」），只认这三类：网盘分享把复制的那段文字交给界面，闲鱼和 Booth 只交出链接本身，别的内容不传给界面、不保存、不记录；被来源程序标记为不供剪贴板监视程序读取的内容（如密码管理器复制的密码）不读取。可以在设置的「自动化」或「闲鱼」页左侧关闭。
 
 ## 第三方代码
 

@@ -23,6 +23,13 @@ func (t *Task) Set(done, total int, msg string) {
 	t.mu.Unlock()
 }
 
+// Relabel: another name for the work, for a task that does two kinds of it (called before it runs).
+func (t *Task) Relabel(label string) {
+	t.mu.Lock()
+	t.Label = label
+	t.mu.Unlock()
+}
+
 func (t *Task) Snapshot() Task {
 	t.mu.Lock()
 	defer t.mu.Unlock()

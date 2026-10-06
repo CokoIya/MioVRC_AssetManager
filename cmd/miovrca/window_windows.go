@@ -124,7 +124,15 @@ func runNativeWindow(url string) bool {
 		core.Logf("窗口图标没有加载到（exe 里的图标资源读不出来）")
 	}
 	nativeUI.Store(true)
-	webpane.NativePane = &webpane.WinPane{Wv: wv} // Booth / 闲鱼 pages open inside this window
+	webpane.NativePane = &webpane.WinPane{Wv: wv} // Booth, netdisk … pages open inside this window
+	// … and so does 闲鱼, in a view of its own that the program leaves alone. Not when the program runs as
+	// administrator: WebView2 then ignores the arguments a view's browser is started with (here: no proxy), and a
+	// view that is not what the player was told it is, is not offered — 闲鱼 opens in the default browser
+	if core.Elevated() {
+		core.Logf("以管理员身份运行：闲鱼页面改用默认浏览器打开（WebView2 此时不接受内嵌浏览器的启动参数）")
+	} else {
+		webpane.NativeXy = &webpane.WinXy{Wv: wv}
+	}
 	webview2.MoveHook = webpane.PaneParentMoved
 	hwnd, asking := uintptr(wv.Window()), false // asking: only touched on this thread, by the window's messages
 	webview2.CloseHook = func() bool {

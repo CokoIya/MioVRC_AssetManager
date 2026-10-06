@@ -13,7 +13,7 @@ Target amd64-unicode
 !define MIDNAME "MioVRC素材托管工具"
 ; builds between 1.7.1 and 1.7.2
 !define PREVNAME "MioVRCA素材托管Tools"
-!define VERSION "1.7.6"
+!define VERSION "1.7.8"
 ; registry keys keep their pre-1.6 names, so installing over an older version updates it
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\VRCAssetLibrary"
 !define DIRKEY "Software\VRCAssetLibrary"
@@ -26,7 +26,7 @@ RequestExecutionLevel user
 SetCompressor /SOLID lzma
 BrandingText "${APPNAME} ${VERSION}"
 
-VIProductVersion "1.7.6.0"
+VIProductVersion "1.7.8.0"
 VIAddVersionKey /LANG=2052 "ProductName" "${APPNAME}"
 VIAddVersionKey /LANG=2052 "FileDescription" "${APPNAME} 安装程序"
 VIAddVersionKey /LANG=2052 "CompanyName" "Coko_Iya"

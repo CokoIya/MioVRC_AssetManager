@@ -100,6 +100,7 @@ func main() {
 	go update.AutoCheckUpdate(st)
 	go library.WatchRoots(st)
 	go library.SyncLoop(st)
+	webpane.DropXianyuLogins() // 闲鱼's login is not the program's to keep any more (webpane/xyview.go)
 	go webpane.KeepLoginsLoop()
 	// an update has started the new exe: hand over to it
 	go func() {

@@ -258,3 +258,23 @@ func TestToolFromExe(t *testing.T) {
 		t.Error("360压缩 has no command line to use")
 	}
 }
+
+// What was unpacked is told with what it was unpacked from: a zip whose one folder has another name than the
+// zip makes a folder of that name, and the two are known to be one thing (library/bundle.go).
+func TestUnpackTellsWhatEachFolderCameFrom(t *testing.T) {
+	asset := filepath.Join(t.TempDir(), "Kaguya Dress")
+	_ = os.MkdirAll(asset, 0755)
+	psd := testkit.ZipBytes(t, map[string][]byte{"PSD/body.psd": []byte("psd")})
+	main := testkit.ZipBytes(t, map[string][]byte{"Dress/Dress_Kaguya.unitypackage": []byte("pkg"), "Dress/Dress_PSD.zip": psd})
+	_ = os.WriteFile(filepath.Join(asset, "Dress_v1.zip"), main, 0644)
+	res := UnpackAll([]string{asset}, "", nil, nil)
+	want := [][2]string{{"Dress", "Dress_v1.zip"}, {filepath.Join("Dress", "PSD"), filepath.Join("Dress", "Dress_PSD.zip")}}
+	if len(res.Done) != len(want) || len(res.From) != len(want) {
+		t.Fatalf("done %v, from %v", res.Done, res.From)
+	}
+	for i, w := range want {
+		if res.Done[i] != filepath.Join(asset, w[0]) || res.From[i] != filepath.Join(asset, w[1]) {
+			t.Errorf("%d: %s from %s, want %s from %s", i, res.Done[i], res.From[i], w[0], w[1])
+		}
+	}
+}

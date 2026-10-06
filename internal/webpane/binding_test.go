@@ -93,7 +93,7 @@ func TestPaneLeft(t *testing.T) {
 	if !d.UserLeft() {
 		t.Error("still waiting with the page off screen for good")
 	}
-	set("xianyu", true)
+	set("jinxxy", true)
 	w := &PaneWatch{Kind: "gumroad", Start: time.Now()}
 	if !w.Left() || !(&PaneDriver{Start: time.Now()}).UserLeft() {
 		t.Error("still waiting after the page area went over to another tab")

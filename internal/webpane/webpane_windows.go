@@ -99,6 +99,9 @@ func (p *WinPane) Ensure(proxy string) (int, error) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
+	if core.Elevated() { // WebView2 ignores the arguments a view's browser is started with when the program is elevated
+		return 0, errors.New("以管理员身份运行时内置浏览器无法启动，请以普通方式启动本软件")
+	}
 	return 0, errors.New("内置浏览器未开启调试端口")
 }
 
@@ -149,6 +152,7 @@ func (p *WinPane) create(proxy string) {
 		_ = os.Unsetenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS")
 	}
 	if !ok {
+		xyKept = append(xyKept, ch) // (the browser may still hold pointers into it: never the garbage collector's)
 		procDestroyWindow.Call(h)
 		p.hwnd, p.ch = 0, nil
 		p.err = errors.New("内置浏览器启动失败")
@@ -186,9 +190,11 @@ func (p *WinPane) Place(x, y, w, h int, show bool) {
 	})
 }
 
-// PaneParentMoved keeps the pane's popups (menus, date pickers) in place when the window moves.
+// PaneParentMoved keeps the popups (menus, date pickers) of the pane and of 闲鱼's view in place when the
+// window moves.
 func PaneParentMoved() {
 	if thePane != nil && thePane.ch != nil {
 		_ = thePane.ch.NotifyParentWindowPositionChanged()
 	}
+	xyParentMoved()
 }

@@ -42,8 +42,8 @@ const S = {
   openKey: null, setup: null, bs: null, desc: {}, dirty: new Set(), coverPick: null, stylePick: null, groups: new Map(), panOpen: new Set(), panClosed: new Set(), panSel: new Set(),
   view: "lib", shopOpen: null, projs: null, pq: "",
   fold: { cat: false, cloth: false, bases: false }, // side bar parts folded away
-  // Booth / 闲鱼 / 百度网盘 pages inside the program: open.shop = a page covers the Booth list, open.lib =
-  // a netdisk page covers the library; loaded = whose page the pane holds; back = where 「返回」 goes
+  // Booth / 百度网盘 … pages inside the program, and 闲鱼's: open.shop = a page covers the Booth list, open.lib =
+  // a netdisk page covers the library; loaded = whose page the page area holds; back = where 「返回」 goes
   web: { open: { shop: false, lib: false }, loaded: "", st: {}, last: { booth: "", xianyu: "", pan: "" }, back: null, xq: "" },
   shop: { cats: new Set(), bases: new Set(), styles: new Set(), q: "", sort: "popular", hideBought: false, hideOwned: false, adult: false,
     page: 1, items: [], more: false, loading: false, err: "", seq: 0, allBases: false, started: false, detail: null },
@@ -52,7 +52,7 @@ try {
   const saved = JSON.parse(localStorage.getItem("vrclib.ui") || "{}");
   if (saved.sort) S.sort = saved.sort;
   if (["shop", "xianyu", "proj", "pipe"].includes(saved.view)) S.view = saved.view;
-  if (saved.web) { S.web.last.xianyu = saved.web.xianyu || ""; S.web.xq = saved.web.xq || ""; }
+  if (saved.web) S.web.xq = saved.web.xq || ""; // (闲鱼's last page is not kept from one run to the next: 1.7.7)
   for (const k in S.fold) if (saved.fold && saved.fold[k]) S.fold[k] = true;
   const sh = saved.shop || {};
   for (const k of ["cats", "bases", "styles"]) if (Array.isArray(sh[k])) S.shop[k] = new Set(sh[k]);
@@ -60,7 +60,7 @@ try {
 } catch (e) {}
 function saveUI() {
   const sh = S.shop;
-  try { localStorage.setItem("vrclib.ui", JSON.stringify({ sort: S.sort, view: S.view, fold: S.fold, web: { xianyu: S.web.last.xianyu, xq: S.web.xq },
+  try { localStorage.setItem("vrclib.ui", JSON.stringify({ sort: S.sort, view: S.view, fold: S.fold, web: { xq: S.web.xq },
     shop: { cats: [...sh.cats], bases: [...sh.bases], styles: [...sh.styles], sort: sh.sort, hideBought: sh.hideBought, hideOwned: sh.hideOwned, adult: sh.adult } })); } catch (e) {}
 }
 
@@ -162,10 +162,11 @@ async function load() {
     if (a.group) { if (!S.groups.has(a.group)) S.groups.set(a.group, []); S.groups.get(a.group).push(a); }
   }
   ltOnLoad();
+  if (window.bundleLoaded) await bundleLoaded(); // a collection that was just split (bundle.js)
   renderAll();
   if (window.storesLoaded) await storesLoaded(); // the wish list and Jinxxy (stores.js)
   if (S.view === "proj") loadProjects();
-  if (prev) announceChanges(prev, d.assets || []);
+  if (prev && !(window.bundleQuiet && bundleQuiet())) announceChanges(prev, d.assets || []);
 }
 // "新增 3 个素材": things the folder watcher or a share re-read brought in while the window was open
 function announceChanges(prev, list) {
@@ -282,6 +283,7 @@ function renderAll() {
   else if (S.view === "pipe") { renderPipeSide(); renderPipeMain(); }
   else { renderSide(); renderGrid(); }
   if (webVisible()) renderWeb();
+  clipDraw();
   renderStatus();
   if (S.openKey) renderDrawer(S.openKey, true);
   else if (S.shopOpen && S.shop.detail) renderShopDrawer();
@@ -462,7 +464,7 @@ function cardHTML(a) {
       <div class="title" data-i18n="text">${a.new ? `<span class="newtag">新</span>` : ""}${ltUpdTag(a)}${esc(a.name)}</div>${zh}
       <div class="sub">${esc(a.panOnly && !shop ? cloudText(a, "百度网盘") : subline)}</div>
       ${(a.bases || []).length || (a.styles || []).length ? `<div class="bases">${(a.bases || []).slice(0, 4).map(b => `<span class="base">${esc(b)}</span>`).join("")}${(a.bases || []).length > 4 ? `<span class="base more">+${a.bases.length - 4}</span>` : ""}${styleTags(a)}</div>` : ""}
-      <div class="meta"><span class="cat"><i style="background:${CAT_COLOR[a.category] || "#8b8fa6"}"></i>${esc(a.category)}</span>${a.psd ? `<span class="psdtag" title="仅 PSD">PSD</span>` : ""}${groupAll(a).length > 1 ? `<button class="vcount link" data-act="edit">共 ${groupAll(a).length} 个版本</button>` : ""}<span>${a.virtual ? "未下载" : a.panOnly && !a.size ? "—" : fmtSize(a.size)}</span>
+      <div class="meta"><span class="cat"><i style="background:${CAT_COLOR[a.category] || "#8b8fa6"}"></i>${esc(a.category)}</span>${a.psd ? `<span class="psdtag" title="仅 PSD">PSD</span>` : ""}${window.bundleTag ? bundleTag(a) : ""}${groupAll(a).length > 1 ? `<button class="vcount link" data-act="edit">共 ${groupAll(a).length} 个版本</button>` : ""}<span>${a.virtual ? "未下载" : a.panOnly && !a.size ? "—" : fmtSize(a.size)}</span>
         <span class="flags">${hasNews(a) ? `<span class="flag upd" title="${esc(newsTitle(a))}">${ICON.upd}</span>` : ""}${pan ? `<span class="flag pan" title="网盘">${ICON.cloud}</span>` : ""}${a.boothId ? `<span class="flag booth" title="${isGum(a) ? "Gumroad" : "Booth #" + esc(a.boothId)}">${ICON.bag}</span>` : ""}</span></div>
     </div></article>`;
 }
@@ -626,15 +628,17 @@ function setView(v) {
   if (v === "proj") loadProjects();
   if (v === "pipe") pipeEnter();
   if (v === "shop" && !S.shop.started) shopSearch(true);
-  if (S.data.paneMode && webVisible()) ensurePaneFor(v);
+  if (webVisible() && (S.data.paneMode || v === "xianyu")) ensurePaneFor(v);
 }
 // coming back to a tab whose page the other tab (or a background login check) replaced: reopen it
-async function ensurePaneFor(v) {
+async function ensurePaneFor(v, atStart) {
   const want = v === "xianyu" ? (window.xySite ? xySite() : "xianyu") : v === "lib" ? "pan" : "booth";
+  if (want === "xianyu") return xyEnter(atStart); // 闲鱼 has a view of its own, or the default browser
+  if (!S.data.paneMode) return;
   let st = {};
   try { st = await api("/api/pane/state", {}); } catch (e) {}
   if (S.view !== v) return;
-  if (!st.open || st.kind !== want) return openWeb(S.web.last[want] || (want === "xianyu" ? XY_HOME : want === "jinxxy" ? jxHome() : want === "pan" ? S.data.panWeb + "/disk/main" : boothHome()), want);
+  if (!st.open || st.kind !== want) return openWeb(lastPage(want) || (want === "jinxxy" ? jxHome() : want === "pan" ? S.data.panWeb + "/disk/main" : boothHome()), want);
   S.web.loaded = want; S.web.st = st; placedKey = ""; renderWeb(); webPoll(true);
 }
 // In a narrow window (860 px and less) the side bar is a drawer over the page, opened by the button at the left of the header.
@@ -783,10 +787,20 @@ function renderShopDrawer() {
   dr.classList.add("on"); dr.setAttribute("aria-hidden", "false"); $("#scrim").classList.add("on");
 }
 
-// ---------- Booth / 闲鱼 pages inside the program ----------
+// ---------- Booth, netdisk … pages inside the program, and 闲鱼 ----------
 // One page area (S.data.paneMode "native": a second web view laid over #webhost; "window": a separate
 // app window driven from the toolbar; "": no built-in browser, links go to the default browser).
+// 闲鱼 is never shown by that browser: it has a view of its own laid over #webhost, which the program leaves
+// alone (S.data.xyMode "embed"), or it opens in the default browser ("external").
 let XY_BASE = "https://www.goofish.com", XY_HOME = XY_BASE + "/";
+const XY = { told: false, pending: "" };          // the note about how 闲鱼 opens: shown by itself once; what was about to open
+// The clipboard: its number seen last; a copied link waiting for an answer ({kind: "share", text}, or {kind: "xianyu" |
+// "booth", url}); the one answered last and what was copied out of this page last (neither is offered); when the program
+// answered last, and whether the window has been hidden since it last answered from the front (it does not ask then)
+const CLIP = { seq: 0, offer: null, done: "", own: "", busy: false, at: 0, away: false };
+function xyTab() { return S.view === "xianyu" && !(window.jxOn && jxOn()); } // the 闲鱼 tab, showing 闲鱼
+function xyEmbed() { return !!S.data && S.data.xyMode === "embed"; }
+function xyLive() { return xyEmbed() && !!(S.data.settings || {}).xyNoticed; } // 闲鱼's own view may hold a page
 function boothHome() { return (S.data.boothWeb || "https://booth.pm") + "/ja"; }
 // a Gumroad purchase or product (its id starts with "gr_"): the Booth-only things on a card do not apply
 function isGum(a) { return !!a && ((a.purchase && a.purchase.source === "gumroad") || String(a.boothId || "").startsWith("gr_")); }
@@ -801,8 +815,11 @@ function webKind(u) {
   if (S.data && S.data.xyBase && u.startsWith(S.data.xyBase)) return "xianyu";
   if (isPanURL(u)) return "pan";
   if (isGumURL(u)) return "gumroad";
-  return /^https?:\/\/([^/]*\.)?(goofish\.com|taobao\.com|tmall\.com|alipay\.com|xianyu\.com)(\/|$)/i.test(u) ? "xianyu" : "booth";
+  return /^https?:\/\/([^/]*\.)?(goofish\.com|taobao\.com|tmall\.com|alipay\.com|xianyu\.com|tb\.cn)(\/|$)/i.test(u) ? "xianyu" : "booth";
 }
+// the page a tab was on last, to open it on again by itself — never one of 闲鱼's for a tab of the pane (the pane
+// is taken out of those, and an address of theirs that stayed behind must not be opened by a change of tab)
+function lastPage(kind) { const u = S.web.last[kind] || ""; return u && (webKind(u) === "xianyu") === (kind === "xianyu") ? u : ""; }
 function isPanURL(u) {
   if (S.data && [S.data.panWeb, S.data.baiduLogin].some(b => b && u.startsWith(b))) return true;
   return /^https?:\/\/([^/]*\.)?baidu\.com(\/|$)/i.test(u);
@@ -817,6 +834,7 @@ function webVisible() { return (S.view === "shop" && S.web.open.shop) || S.view 
 function openLink(u) { if (isBoothURL(u) || webKind(u) !== "booth") return openWeb(u); return openURL(u); }
 async function openWeb(u, kind) {
   kind = kind || webKind(u);
+  if (kind === "xianyu" || webKind(u) === "xianyu") return openXy(u);
   if (window.storeOpening) storeOpening(kind);
   if (!S.data.paneMode) return openURL(u);
   const v = webView(kind), covers = v !== "xianyu"; // a page over the Booth list or over the library
@@ -837,7 +855,14 @@ async function openWeb(u, kind) {
   if (!r.ok) {
     toast(r.err || "页面无法打开", 4000);
     if (covers) { S.web.open[v] = false; renderAll(); }
-    else { S.web.st = { open: false }; renderWeb(); } // 闲鱼 has no list to go back to: 「页面已关闭」 with 「重新打开」
+    else { S.web.st = { open: false }; renderWeb(); } // (Jinxxy has no list to go back to: 「页面已关闭」 with 「重新打开」)
+    return;
+  }
+  if (r.xy) { // the program took the address for one of 闲鱼's after all: this tab is not opening anything
+    if (covers) S.web.open[v] = false;
+    S.web.loaded = ""; S.web.st = { open: false };
+    renderAll();
+    if (r.external) toast("已在默认浏览器中打开", 2500); else if (S.view === "xianyu") xyEnter(); else setView("xianyu");
     return;
   }
   placedKey = ""; webPoll(true);
@@ -858,14 +883,170 @@ function closeWeb() {
   renderAll();
   if (back && back.key && findAsset(back.key)) renderDrawer(back.key);
 }
+// 闲鱼's pages: in their own view inside the window, or in the default browser (the server decides, and says).
+// resume: the tab came into view — the view stays on the page it has, and nothing is opened in a browser.
+async function openXy(u, resume) {
+  if (window.storeOpening && (xyEmbed() || S.view === "xianyu")) storeOpening("xianyu");
+  if (!xyEmbed()) {
+    if (resume) return;
+    let r;
+    try { r = await api("/api/pane/open", { url: u, kind: "xianyu" }); } catch (e) { r = { ok: false }; }
+    toast(r.ok ? "已在默认浏览器中打开" : r.err || "无法打开链接", r.ok ? 2500 : 4000);
+    return;
+  }
+  if (!S.data.settings.xyNoticed) return xyNotice(u);
+  S.web.back = S.openKey ? { view: S.view, key: S.openKey } : null;
+  closeDrawer();
+  S.web.loaded = "xianyu";
+  if (!resume || !S.web.st.open || S.web.st.kind !== "xianyu") S.web.st = { url: resume ? "" : u, title: "", loading: true, open: true, kind: "xianyu" };
+  if (S.view !== "xianyu") { S.view = "xianyu"; saveUI(); $("#q").value = S.web.xq; }
+  renderAll();
+  let r;
+  try { r = await api("/api/pane/open", { url: u, kind: "xianyu", resume: !!resume }); } catch (e) { r = { ok: false, err: "程序内部错误" }; }
+  if (r.notice) { S.web.st = {}; renderWeb(); return xyNotice(u); }
+  if (!r.ok) { toast(r.err || "页面无法打开", 5000); S.web.st = { open: false, failed: true }; renderWeb(); return; }
+  if (r.external) { await load(); if (xyTab()) xyEnter(); return; } // (how 闲鱼 opens was changed elsewhere meanwhile)
+  placedKey = ""; webPoll(true);
+}
+// the 闲鱼 tab, showing 闲鱼, came into view (or how 闲鱼 opens has changed). atStart: the program has just
+// started on this tab — the news of the version may be about to open, and the note waits for it.
+async function xyEnter(atStart) {
+  S.web.loaded = "xianyu";
+  if (!xyLive()) { // the default browser, or the note has not been read yet: nothing to load here
+    S.web.st = {}; $("#webhost").dataset.k = ""; renderAll();
+    if (atStart) setTimeout(xyNoticeAuto, 800); else xyNoticeAuto();
+    return;
+  }
+  if (S.web.st.kind !== "xianyu") { S.web.st = { title: "", loading: true, open: true, kind: "xianyu" }; renderWeb(); } // (not the other tab's title meanwhile)
+  let st = {};
+  try { st = await api("/api/pane/state", {}); } catch (e) {}
+  if (!xyTab() || !xyLive()) return;
+  if (st.open && st.kind === "xianyu") { S.web.st = st; placedKey = ""; renderWeb(); webPoll(true); return; }
+  return openXy(lastPage("xianyu") || XY_HOME, true);
+}
+// The note comes by itself once, when the 闲鱼 tab is in view and no other dialog is open (it is looked for again
+// when a dialog closes); after that it is behind 「查看说明」.
+function xyNoticeAuto() {
+  if (XY.told || !S.data || !xyTab() || !xyEmbed() || xyLive() || S.setup || $("#modal").classList.contains("on")) return;
+  XY.told = true; xyNotice();
+}
+// The note about how 闲鱼's pages open. No 闲鱼 page is loaded inside the window before the player has read it.
+function xyNotice(u) {
+  XY.pending = u || ""; XY.told = true;
+  const m = $("#modal");
+  m.dataset.kind = "xynotice";
+  m.innerHTML = `<div class="mhead">闲鱼页面的打开方式</div><div class="mbody xynote">
+    <p>自 1.7.7 起，闲鱼页面不再使用软件的内置浏览器（Booth、网盘等页面仍在其中打开），改为以下两种方式之一。</p>
+    <h4>在软件内打开</h4>
+    <p>使用独立的内嵌浏览器。软件不向页面注入或执行脚本，不读写 Cookie，不使用代理设置，也不保存登录状态，通常每次启动软件后需重新扫码登录。页面在新标签页中打开的链接（如商品详情）会显示为独立窗口。</p>
+    <h4>在默认浏览器中打开</h4>
+    <p>闲鱼页面交给系统的默认浏览器，与平时使用浏览器相同。</p>
+    <p>两种方式下，复制卖家发来的网盘分享文本后，均可在「闲鱼」页签一键收录。软件位于前台时，会查看剪贴板中是否有闲鱼、Booth 或网盘分享链接，并提示打开或收录，可在设置中关闭。</p>
+    <p class="xywarn">此前的版本中，有用户在内置浏览器登录闲鱼后账号被平台限制。新的内嵌浏览器已去除可能导致该问题的因素，但仍可能被网站识别为应用内浏览器，软件无法保证不触发平台的风控。账号较为重要时，建议选择默认浏览器。</p>
+    <p>之后可随时在「闲鱼」页签左侧的「打开方式」中更改。</p>
+  </div><div class="mfoot"><button class="btn" data-xyp="external">在默认浏览器中打开</button><button class="btn primary" data-xyp="embed">在软件内打开</button></div>`;
+  showModal();
+}
+// how 闲鱼 opens was chosen: in the note (fromNote — which is then read, and what was about to open is opened), or
+// with a box in the side bar (which changes that one thing and opens nothing)
+async function xyPref(what, fromNote) {
+  if (what === "notice") return xyNotice();
+  const body = what === "embed" ? { external: false } : what === "external" ? { external: true } : what === "clipon" ? { clip: true } : what === "clipoff" ? { clip: false } : null;
+  if (!body) return;
+  if (fromNote && body.external !== undefined) body.noticed = true;
+  const u = fromNote ? XY.pending : ""; XY.pending = "";
+  let r;
+  try { r = await api("/api/xy/prefs", body); } catch (e) { r = { ok: false }; }
+  if (!r.ok) { toast("设置未能保存", 3500); await load(); return; }
+  if ($("#modal").dataset.kind === "xynotice") closeModal();
+  await load();
+  if (body.clip !== undefined) { toast(body.clip ? "复制链接后将提示打开或收录" : "已关闭复制提示"); return; }
+  $("#webhost").dataset.k = "";
+  if (u) return openXy(u);
+  if (xyTab()) return xyEnter();
+}
 function renderXySide() {
   if (window.jxOn && jxOn()) return renderJxSide();
+  const emb = xyEmbed(), set = S.data.settings || {};
   put($("#side"), `${window.xySwitchHTML ? xySwitchHTML() : ""}<h3>闲鱼</h3>
     <div class="sidelinks"><button class="navitem" data-xy="home"><span>首页</span></button><button class="navitem" data-xy="im"><span>消息</span></button><button class="navitem" data-xy="login"><span>登录</span></button></div>
-    <p class="sidenote">在顶部搜索框输入关键词，按 Enter 搜索。登录、聊天和下单均可在此完成，登录状态保存在本机。</p>
+    <p class="sidenote">在顶部搜索框输入关键词，按 Enter 搜索。${emb ? "登录、聊天和下单均可在此完成。" : "闲鱼页面在默认浏览器中打开。"}</p>
+    ${emb ? `<p class="sidenote">闲鱼页面使用独立的内嵌浏览器，软件不保存其登录状态，通常每次启动软件后需重新扫码登录。</p>
+    <p class="sidenote">页面在新标签页中打开的链接（如商品详情）会显示为独立窗口。</p>` : ""}
     <h3>收录网盘分享</h3>
-    <p class="sidenote">卖家发送网盘分享后，在聊天中选中完整的分享文本（含链接和提取码），再点击页面上方的「收录网盘链接」。</p>`);
+    <p class="sidenote">${set.noXyClip ? "卖家发送网盘分享后，复制完整的分享文本（含链接和提取码），再点击「收录网盘链接」。" : "卖家发送网盘分享后，复制完整的分享文本（含链接和提取码），页面上方将提示收录；也可在复制后点击「收录网盘链接」。"}可收录百度网盘、Google Drive、Dropbox 的分享。</p>
+    <label class="check"><input type="checkbox" id="xy_clip"${set.noXyClip ? "" : " checked"}> 复制链接后提示打开或收录</label>
+    <p class="sidenote">软件位于前台时查看剪贴板，只识别闲鱼、Booth 和网盘分享链接，不保存其他内容。</p>
+    <h3>打开方式</h3>
+    ${S.data.xyEmbed ? `<label class="check"><input type="checkbox" id="xy_ext"${set.xyExternal ? " checked" : ""}> 在默认浏览器中打开闲鱼</label>
+    <div class="sidelinks"><button class="navitem" data-xyp="notice"><span>查看说明</span></button></div>`
+    : `<p class="sidenote">本机当前无法在软件内显示闲鱼页面（需要 WebView2、软件以自带窗口运行，且未以管理员身份运行），闲鱼页面在默认浏览器中打开。</p>`}`);
 }
+// what the page area shows for 闲鱼 when no page of it is on screen
+function xyHostHTML() {
+  if (!xyEmbed()) return `<div class="webnote"><h2>闲鱼页面在默认浏览器中打开</h2>
+    <p>${S.data.xyEmbed ? "已选择使用默认浏览器打开闲鱼。" : "本机当前无法在软件内显示闲鱼页面（需要 WebView2、软件以自带窗口运行，且未以管理员身份运行）。"}</p>
+    <p>${(S.data.settings || {}).noXyClip ? "卖家发来网盘分享后，复制完整的分享文本（含链接和提取码），回到此页签点击「收录网盘链接」。" : "卖家发来网盘分享后，复制完整的分享文本（含链接和提取码），回到此页签，页面上方将提示收录。"}</p>
+    <div class="webacts"><button class="btn primary" data-xy="home">打开闲鱼</button><button class="btn" data-xy="im">打开消息</button></div></div>`;
+  if (!xyLive()) return `<div class="webnote"><h2>闲鱼页面的打开方式已调整</h2><p>请先查看说明并选择打开方式。</p><button class="btn primary" data-xyp="notice">查看说明</button></div>`;
+  if (S.web.st.failed) return `<div class="webnote"><h2>闲鱼页面无法在软件内打开</h2><p>可在左侧「打开方式」中改为使用默认浏览器。</p><button class="btn" data-w="reopen">重试</button></div>`;
+  return S.web.st.open === false ? `<div class="webnote"><h2>页面已关闭</h2><button class="btn" data-w="reopen">重新打开</button></div>` : `<div class="webnote muted">正在打开…</div>`;
+}
+// ---------- a link the player copied: offered at the top of the page, on every tab ----------
+// While the program is in front it is asked every second whether the clipboard has changed. It answers with a
+// link only: a netdisk share (the text it came in), to make a card of; or the address of a 闲鱼 or a Booth page,
+// to open in its tab — those two when the player comes back to the program with one copied elsewhere, not for
+// what is copied in the program's own pages. Nothing is read from a page.
+// The bar is part of the page's flow (#clipbar, the first thing in .main): the built-in pages are windows of
+// their own on top of the HTML, so nothing can be laid over them — the page area moves down under the bar.
+function clipOn() { return !!S.data && !S.setup && !(S.data.settings || {}).noXyClip; }
+function clipDraw() {
+  const el = $("#clipbar"), o = clipOn() ? CLIP.offer : null, what = o ? o.text || o.url : "", sig = o ? o.kind + " " + what : "";
+  if (el.dataset.t === sig && el.hidden === !o) return;
+  el.dataset.t = sig; el.hidden = !o; $(".main").classList.toggle("withclip", !!o);
+  el.innerHTML = o ? `<b>${o.kind === "share" ? "已复制网盘分享" : o.kind === "xianyu" ? "已复制闲鱼链接" : "已复制 Booth 链接"}</b><span class="t" data-i18n="off" title="${esc(what)}">${esc(what.replace(/\s+/g, " "))}</span>
+    <button class="btn small primary" data-clip="${o.kind === "share" ? "add" : "open"}">${o.kind === "share" ? "收录" : "打开"}</button><button class="btn small ghost" data-clip="skip">忽略</button>` : "";
+  placedKey = ""; // the page area under it has moved
+}
+// Not offered: the one that was answered last (the same text or address twice in a row), what was copied out of this
+// page itself, and the address of the built-in page that is on screen (the player is there already).
+function clipNew(o) {
+  const what = o.text || o.url, st = S.web.st || {}, bare = u => (u || "").replace(/\/$/, ""), flat = t => t.replace(/\s+/g, " ").trim();
+  if (what === CLIP.done) return false;
+  if (o.kind === "share") return flat(what) !== flat(CLIP.own);
+  return !CLIP.own.includes(what) && !(webVisible() && st.open && bare(st.url) === bare(what));
+}
+async function clipTick() {
+  if (CLIP.busy) return;
+  if (!clipOn()) { CLIP.seq = 0; CLIP.offer = null; clipDraw(); return; } // (the first look after the offer is on again only notes what is there)
+  if (document.hidden) { CLIP.away = true; return; } // minimised: asked again, with the number seen last, when the window is back
+  CLIP.busy = true;
+  try {
+    // focus: for an interface that runs in a browser (the program itself knows whether its own window is in front).
+    // away: this page has not been asking for a while (a window that is minimised or asleep does not), so the
+    // program did not see the player leave: what has changed on the clipboard was copied elsewhere
+    const r = await api("/api/clip/share", { seq: CLIP.seq, focus: document.hasFocus(), away: CLIP.away || Date.now() - CLIP.at > 2500 });
+    if (!r || !r.ok) return;
+    CLIP.seq = r.seq || 0; CLIP.at = Date.now();
+    if (r.front) CLIP.away = false;
+    const o = r.kind === "share" ? { kind: "share", text: r.text } : r.kind ? { kind: r.kind, url: r.url } : null;
+    if (o && clipOn() && clipNew(o)) { CLIP.offer = o; clipDraw(); }
+  } catch (e) {} finally { CLIP.busy = false; }
+}
+setInterval(clipTick, 1000);
+function clipAction(what) {
+  const o = CLIP.offer; if (!o) return;
+  CLIP.offer = null; CLIP.done = o.text || o.url; clipDraw(); // (the same one is not offered a second time)
+  if (what === "add") openPanAdd(o.text);
+  if (what === "open") { pipeKeep(); openWeb(o.url, o.kind); } // (openWeb changes the tab without setView: what is typed in the pipeline is kept here)
+}
+// What the page itself puts on the clipboard is remembered: the look at the clipboard does not offer it back. Nor
+// what the player copies out of the page's own fields and texts (the link of a card's share, to send to a friend).
+function clipWrite(s) { CLIP.own = s; return navigator.clipboard.writeText(s); }
+for (const ev of ["copy", "cut"]) document.addEventListener(ev, e => {
+  const t = e.target, s = t && typeof t.value === "string" && typeof t.selectionStart === "number" ? t.value.slice(t.selectionStart, t.selectionEnd) : String(getSelection());
+  if (s) CLIP.own = s;
+});
 // ---------- 工程 ----------
 async function loadProjects() {
   let r;
@@ -954,12 +1135,13 @@ async function projAction(what, path, btn) {
   }
 }
 function renderWeb() {
-  const mode = S.data.paneMode, host = $("#webhost");
-  const key = mode + "|" + S.view + "|" + (S.web.st.open === false);
+  const mode = S.data.paneMode, host = $("#webhost"), xy = xyTab(), st = S.web.st || {};
+  const key = [mode, S.view, st.open === false, xy ? [S.data.xyMode, !!S.data.xyEmbed, xyLive(), !!st.failed].join() : ""].join("|");
   if (host.dataset.k !== key) {
     host.dataset.k = key;
-    host.innerHTML = !mode ? `<div class="webnote"><h2>内置浏览器不可用</h2><p>未检测到 WebView2、Edge 或 Chrome，页面将在默认浏览器中打开。</p><button class="btn" data-w="reopen">${window.jxOn && jxOn() ? "在浏览器中打开 Jinxxy" : "在浏览器中打开闲鱼"}</button></div>`
-      : S.web.st.open === false ? `<div class="webnote"><h2>页面已关闭</h2><button class="btn" data-w="reopen">重新打开</button></div>`
+    host.innerHTML = xy ? xyHostHTML()
+      : !mode ? `<div class="webnote"><h2>内置浏览器不可用</h2><p>未检测到 WebView2、Edge 或 Chrome，页面将在默认浏览器中打开。</p><button class="btn" data-w="reopen">在浏览器中打开 Jinxxy</button></div>`
+      : st.open === false ? `<div class="webnote"><h2>页面已关闭</h2><button class="btn" data-w="reopen">重新打开</button></div>`
       : mode === "window" ? `<div class="webnote"><h2>页面已在独立窗口中打开</h2><p>本机未安装 WebView2，页面在独立窗口中显示，可通过上方按钮操作。</p><button class="btn" data-w="front">显示窗口</button></div>`
       : `<div class="webnote muted">正在打开…</div>`;
   }
@@ -969,11 +1151,15 @@ function renderWebBar() {
   const st = S.web.st || {}, xy = S.view === "xianyu", pan = S.view === "lib", back = S.web.back;
   const backLabel = back ? (back.key ? "返回素材" : back.view === "lib" ? "返回素材库" : back.view === "xianyu" ? "返回闲鱼" : "返回") : pan ? "返回素材库" : "返回列表";
   const bd = S.data.baidu || {}, gm = S.data.gumroad || {};
-  const html = `<button class="wb" data-w="back" title="后退"${st.back ? "" : " disabled"}>${ICON.back}</button>
+  const grab = `<button class="btn small" data-w="grab" title="将已复制的网盘分享收录到素材库">收录网盘链接</button>`;
+  // 闲鱼 with no page inside the window (the default browser, or the note not read yet): only what the tab itself offers
+  const html = xyTab() && !xyLive() ? `<div class="wtitle"><b>闲鱼</b><span>${xyEmbed() ? "" : "在默认浏览器中打开"}</span></div>${grab}
+    ${back ? `<button class="btn small" data-w="close">${backLabel}</button>` : ""}`
+    : `<button class="wb" data-w="back" title="后退"${st.back ? "" : " disabled"}>${ICON.back}</button>
     <button class="wb" data-w="forward" title="前进"${st.fwd ? "" : " disabled"}>${ICON.fwd}</button>
     <button class="wb" data-w="${st.loading ? "stop" : "reload"}" title="${st.loading ? "停止" : "刷新"}">${st.loading ? ICON.x : ICON.upd}</button>
     <div class="wtitle" title="${esc(st.url || "")}"><b>${esc(st.title || (st.loading ? "正在打开…" : st.url || ""))}</b><span>${esc(st.url || "")}</span></div>
-    ${xy && window.jxOn && jxOn() ? jxBarHTML() : xy ? `<button class="btn small" data-w="grab" title="将聊天中选中的网盘分享收录到素材库">收录网盘链接</button>`
+    ${xy && window.jxOn && jxOn() ? jxBarHTML() : xy ? grab
       : pan && S.web.loaded === "gumroad" ? `<span class="wnote">${gm.loggedIn ? "Gumroad：" + esc(gm.name || "已登录") : gm.waiting ? "登录后自动同步已购" : ""}</span>`
       : pan ? `<span class="wnote">${bd.loggedIn ? "百度网盘：" + esc(bd.name || "已登录") : bd.waiting ? "登录后自动保存登录状态" : ""}</span>`
       : `<button class="btn small" data-w="sync"${S.data.purchaseBusy ? " disabled" : ""}>${S.data.purchaseBusy ? "正在同步…" : "同步已购"}</button>`}
@@ -988,41 +1174,50 @@ async function webAction(w) {
   switch (w) {
     case "close": return closeWeb();
     case "sync": return startSync();
-    case "copy": try { await navigator.clipboard.writeText(st.url || ""); toast("已复制链接"); } catch (e) { toast("复制失败"); } return;
+    case "copy": try { await clipWrite(st.url || ""); toast("已复制链接"); } catch (e) { toast("复制失败"); } return;
     case "reopen":
       if (window.jxOn && jxOn()) return jxReopen();
-      if (!S.data.paneMode) return openURL(S.web.last.xianyu || XY_HOME);
-      if (S.view === "lib" && S.web.loaded === "gumroad") return openWeb(S.web.last.gumroad || S.data.gumroad.libraryUrl, "gumroad");
-      if (S.view === "lib") return openWeb(S.web.last.pan || S.data.panWeb + "/disk/main", "pan");
-      return openWeb(S.view === "xianyu" ? S.web.last.xianyu || XY_HOME : S.web.last.booth || boothHome(), S.view === "xianyu" ? "xianyu" : "booth");
-    case "grab": {
-      const r = await api("/api/pane/act", { act: "selection" });
-      const text = (r.text || "").trim();
-      if (!/pan\.baidu\.com|pan\.quark\.cn|aliyundrive|alipan|123pan|lanzou|drive\.google\.com|dropbox\.com/i.test(text)) { toast("请先在聊天中选中网盘分享文本（含链接和提取码）", 4000); return; }
-      openPanAdd(text); return;
+      if (S.view === "xianyu") return openXy(lastPage("xianyu") || XY_HOME);
+      if (!S.data.paneMode) return;
+      if (S.view === "lib" && S.web.loaded === "gumroad") return openWeb(lastPage("gumroad") || S.data.gumroad.libraryUrl, "gumroad");
+      if (S.view === "lib") return openWeb(lastPage("pan") || S.data.panWeb + "/disk/main", "pan");
+      return openWeb(lastPage("booth") || boothHome(), "booth");
+    case "grab": { // the share the player copied (nothing is read from the page)
+      let r = {};
+      try { r = await api("/api/clip/share", { read: true }); } catch (e) {}
+      if (r.seq) CLIP.seq = r.seq;
+      if (!r.text) { // (other: a share is there, on a netdisk no card can be made of)
+        toast(r.other ? "暂不支持该网盘，可收录百度网盘、Google Drive、Dropbox 的分享" : "请先复制卖家发来的网盘分享文本（含链接和提取码），再点击「收录网盘链接」", 5000); return;
+      }
+      CLIP.offer = null; CLIP.done = r.text; clipDraw(); openPanAdd(r.text); return;
     }
   }
-  const r = await api("/api/pane/act", { act: w });
+  const r = await api("/api/pane/act", { act: w, xy: xyTab() });
   if (!r.ok && r.err) toast(r.err, 3000);
   webPoll(true);
 }
 let webTimer;
 async function webPoll(now) {
   clearTimeout(webTimer);
-  if (!S.data || !S.data.paneMode || !webVisible()) return;
+  if (!S.data || !webVisible()) return;
+  if (xyTab() ? !xyLive() : !S.data.paneMode) return; // nothing inside the window to ask about
   try {
-    const st = await api("/api/pane/state", {});
+    const st = await api("/api/pane/state", {}), xy = xyTab();
     const was = S.web.st || {};
-    if (st.open && st.url) S.web.last[S.web.loaded || (S.view === "xianyu" ? "xianyu" : S.view === "lib" ? "pan" : "booth")] = st.url;
-    if (st.dl !== S.web.dl) { if (st.dl > (S.web.dl || 0)) poll(true); S.web.dl = st.dl; }
-    if (S.web.loaded === "xianyu" && st.url !== was.url) saveUI();
-    if (!st.open && was.open && !was.loading && S.data.paneMode === "window") { // the window was closed
-      S.web.st = { open: false };
-      if (S.view !== "xianyu") { S.web.open[S.view] = false; S.web.loaded = ""; renderAll(); return; }
-      renderWeb();
-    } else if (st.open || !was.loading) {
-      if (!was.open && st.open) placedKey = "";
-      S.web.st = st; renderWeb();
+    if (st.moved && st.movedAt !== S.web.movedAt) { S.web.movedAt = st.movedAt; toast(`${st.moved} 的页面不在内置浏览器中打开，已改用默认浏览器`, 6000); }
+    if ((st.kind === "xianyu") !== xy) { /* the other view's state: this tab's page is still on its way */ }
+    else {
+      const slot = xy ? "xianyu" : S.web.loaded && S.web.loaded !== "xianyu" ? S.web.loaded : S.view === "lib" ? "pan" : S.view === "xianyu" ? "jinxxy" : "booth";
+      if (st.open && st.url && (webKind(st.url) === "xianyu") === xy) S.web.last[slot] = st.url; // (never one of 闲鱼's for a tab of the pane)
+      if (st.dl !== S.web.dl) { if (st.dl > (S.web.dl || 0)) poll(true); S.web.dl = st.dl; }
+      if (!st.open && was.open && !was.loading && S.data.paneMode === "window") { // the window was closed
+        S.web.st = { open: false };
+        if (S.view !== "xianyu") { S.web.open[S.view] = false; S.web.loaded = ""; renderAll(); return; }
+        renderWeb();
+      } else if (st.open || !was.loading) {
+        if (!was.open && st.open) placedKey = "";
+        S.web.st = st; renderWeb();
+      }
     }
   } catch (e) {}
   webTimer = setTimeout(webPoll, 900);
@@ -1031,15 +1226,15 @@ async function webPoll(now) {
 let placedKey = "";
 function placePane() {
   if (!S.data || S.data.paneMode !== "native") return;
-  const lb = $("#lightbox");
-  const show = webVisible() && S.web.st.open !== false && !$("#modal").classList.contains("on") && !$("#drawer").classList.contains("on") && !(lb && lb.classList.contains("on")) && !document.body.classList.contains("sideopen");
+  const lb = $("#lightbox"), xy = xyTab(); // xy: the page area is 闲鱼's — only 闲鱼's own view is shown in it, and only when it may hold a page
+  const show = webVisible() && S.web.st.open !== false && (!xy || xyLive()) && !$("#modal").classList.contains("on") && !$("#drawer").classList.contains("on") && !(lb && lb.classList.contains("on")) && !document.body.classList.contains("sideopen");
   let r = { x: 0, y: 0, w: 0, h: 0 };
   if (show) { const b = $("#webhost").getBoundingClientRect(); r = { x: b.left, y: b.top, w: b.width, h: b.height }; }
   document.body.classList.toggle("paneon", show);
-  const key = [show, r.x, r.y, r.w, r.h, devicePixelRatio].join(",");
+  const key = [show, xy, r.x, r.y, r.w, r.h, devicePixelRatio].join(",");
   if (key === placedKey) return;
   placedKey = key;
-  api("/api/pane/place", Object.assign(r, { dpr: devicePixelRatio, show })).catch(() => { placedKey = ""; });
+  api("/api/pane/place", Object.assign(r, { dpr: devicePixelRatio, show, xy })).catch(() => { placedKey = ""; });
 }
 setInterval(placePane, 120);
 
@@ -1057,7 +1252,7 @@ function shareLink(u) {
 function panPathURL(p) { return "https://pan.baidu.com/disk/main#/index?category=all&path=" + encodeURIComponent(p.trim()); }
 async function openURL(u) { const r = await api("/api/openurl", { url: u }); if (!r.ok) toast(r.err || "无法打开链接"); }
 async function copyText(s, msg) {
-  try { await navigator.clipboard.writeText(s); toast(msg || "已复制"); }
+  try { await clipWrite(s); toast(msg || "已复制"); }
   catch (e) { const ta = document.createElement("textarea"); ta.value = s; document.body.append(ta); ta.select(); document.execCommand("copy"); ta.remove(); toast(msg || "已复制"); }
 }
 async function openPan(a) {
@@ -1431,7 +1626,8 @@ function purchaseSec(a) {
   </div>`;
 }
 // ---------- one-click import into a Unity project ----------
-function canImport(a) { return isLocal(a) && !a.psd && !!(a.packages || a.archives); }
+// (not a collection of products, 合集包: it is split into its products' cards first — bundle.js)
+function canImport(a) { return isLocal(a) && !a.psd && !!(a.packages || a.archives) && !(a.bundle >= 2); }
 function lastProject() {
   if (S.impProj !== undefined) return S.impProj;
   try { return localStorage.getItem("vrclib.project") || ""; } catch (e) { return ""; }
@@ -1492,17 +1688,17 @@ function impProgress(j) {
   }
   const pct = j.total ? Math.round(j.done / j.total * 100) : 0;
   return `<div class="impprog"><div class="t">${esc(j.msg || "正在准备…")}</div><div class="bar wide"><i style="width:${pct}%"></i></div>
-    <div class="small muted">目标工程：${esc(rootLabel(j.project))}</div></div>`;
+    ${j.project ? `<div class="small muted">目标工程：${esc(rootLabel(j.project))}</div>` : ""}</div>`;
 }
 function importSec(a) {
-  const j = impJobFor(a);
-  if (!canImport(a) && !j) return "";
+  const j = impJobFor(a), bundle = isLocal(a) && a.bundle >= 2 && window.bundleNote ? bundleNote(a) : "";
+  if (!canImport(a) && !j && !bundle) return "";
   let body;
   if (j && !["done", "failed"].includes(j.stage)) body = impProgress(j);
   else {
     const other = impBusy() && !j;
-    body = `${j ? impResult(j) : ""}
-      <div class="impform">${projSelect()}<button class="btn primary" data-d="import"${other ? " disabled title=\"另一个素材正在导入\"" : ""}>${ICON.cube}<span>一键导入</span></button></div>
+    body = `${j ? impResult(j) : ""}${bundle}
+      <div class="impform">${projSelect()}<button class="btn primary" data-d="import"${bundle ? " disabled title=\"合集包需先拆分，再分别导入\"" : other ? " disabled title=\"另一个素材正在导入\"" : ""}>${ICON.cube}<span>一键导入</span></button></div>
       <div class="impopts"><input id="imp_pwd" placeholder="解压密码（选填）" autocomplete="off"><label class="check"><input type="checkbox" id="imp_recycle"${S.impRecycle === false ? "" : " checked"}>解压后将压缩包移至回收站</label></div>
       <div class="hint2">自动解压素材中的压缩包（支持 PSD 包、分卷和加密压缩包），并将 unitypackage 导入工程的 Assets。${(S.data.arcTools || []).length ? `rar、7z 及分卷压缩包使用本机的 ${esc(S.data.arcTools[0])} 解压。` : "未检测到解压软件，无法解压 rar、7z 及分卷压缩包，请先安装 7-Zip、Bandizip 或 WinRAR。"}</div>`;
   }
@@ -2007,6 +2203,7 @@ function openSettings(focusId) {
       ${chk("s_auto", s.autoBooth, "自动获取 Booth 封面和商品名")}
       ${chk("s_match", !s.noAutoMatch, "无封面时按名称匹配 Booth 商品")}
       ${chk("s_sync", !s.noSync, "定期检查网盘分享和 Booth 商品页的更新")}
+      ${chk("s_clip", !s.noXyClip, "复制闲鱼、Booth、网盘链接后提示打开或收录")}
       ${chk("s_upd", !s.noUpdateCheck, "自动检查软件更新")}</div>
     <div class="row"><label>显示</label>
       ${chk("s_zh", !s.hideZh, "显示中文译名")}
@@ -2019,7 +2216,7 @@ function openSettings(focusId) {
       <div class="muted small" style="margin-top:6px">访问 Google Drive 可能需要代理</div></div>
     <div class="row"><label>素体识别规则（显示名=别名1|别名2）</label><textarea id="s_bases" style="min-height:120px">${esc((s.bases || []).join("\n"))}</textarea></div>
     <div class="row"><label>风格标签规则（标签名=关键词1|关键词2）</label><textarea id="s_styles" style="min-height:140px">${esc((s.styles || []).join("\n"))}</textarea></div>
-    ${Object.keys(ov).length ? `<div class="row"><label>手动调整</label>${Object.entries(ov).map(([p, v]) => `<div class="ov"><span>${esc(p)}</span><span class="muted" style="flex:none">${esc({ split: "已拆分", ignore: "已排除", asset: "已合并" }[v] || v)}</span><button class="btn" data-ov="${esc(p)}">恢复</button></div>`).join("")}</div>` : ""}
+    ${Object.keys(ov).length ? `<div class="row"><label>手动调整</label>${(window.bundleOverrides ? bundleOverrides(ov) : Object.entries(ov)).map(([p, v]) => `<div class="ov"><span>${esc(p)}</span><span class="muted" style="flex:none">${esc({ split: "已拆分", ignore: "已排除", asset: "已合并", bundle: "合集包（自动拆分）" }[v] || v)}</span><button class="btn" data-ov="${esc(p)}">恢复</button></div>`).join("")}</div>` : ""}
     <div class="row" id="s_baidu"><label>百度网盘${(S.data.baidu || {}).loggedIn ? `<span class="muted small">　已登录：${esc(S.data.baidu.name || "")}${VIP[S.data.baidu.vip] ? "（" + VIP[S.data.baidu.vip] + "）" : ""}</span>` : `<span class="muted small">　未登录</span>`}</label>
       <div class="btnrow" style="margin-top:0">${(S.data.baidu || {}).loggedIn ? `<button class="btn small" data-m="bdswitch">更换账号</button><button class="btn small" data-m="bdlogout">退出登录</button>` : `<button class="btn small" data-m="bdlogin">登录</button>`}</div>
       <div class="muted small" style="margin-top:6px">登录后可在软件中直接下载网盘分享。登录状态加密保存在本机。下载速度取决于账号会员等级，普通账号会被限速。</div></div>
@@ -2055,12 +2252,14 @@ function closeModal(force) {
   const m = $("#modal"), kind = m.dataset.kind, was = m.classList.contains("on");
   if (kind === "feedback") fbKeep();
   if (kind === "np") npKeep();
-  if (["update", "feedback", "whatsnew", "aicfg", "np"].includes(kind)) m.dataset.kind = "";
+  if (["update", "feedback", "whatsnew", "aicfg", "np", "xynotice"].includes(kind)) m.dataset.kind = "";
   m.classList.remove("on"); m.setAttribute("aria-hidden", "true"); scrimSync();
   const back = S.modalBack; S.modalBack = null;
   if (was && back && back.isConnected && back !== document.body) back.focus({ preventScroll: true }); // the focus goes back where it was
   // 「AI 服务」 stops the pipeline's status polling while it is open: whichever way it closes, the polling goes on
   if (was && kind === "aicfg" && pipeActive()) aiPoll();
+  if (kind === "xynotice") XY.pending = ""; // (dismissed: what was about to open is not opened later by something else)
+  if (was && !XY.told) setTimeout(xyNoticeAuto, 0); // (the note about 闲鱼 waited for this dialog)
 }
 
 // ---------- feedback ----------
@@ -2886,6 +3085,10 @@ document.addEventListener("click", async e => {
   if (wb) { webAction(wb.dataset.w); return; }
   const xl = t.closest("[data-xy]");
   if (xl) { openWeb(xl.dataset.xy === "home" ? XY_HOME : XY_BASE + "/" + xl.dataset.xy, "xianyu"); return; }
+  const xp = t.closest("[data-xyp]");
+  if (xp) return xyPref(xp.dataset.xyp, !!xp.closest("#modal"));
+  const cb = t.closest("[data-clip]");
+  if (cb) return clipAction(cb.dataset.clip);
   const bl = t.closest("[data-bl]");
   if (bl) { if (bl.dataset.bl === "sync") startSync(); else openWeb(bl.dataset.bl === "cart" ? S.data.boothWeb + "/carts" : bl.dataset.bl === "login" ? S.data.boothWeb + "/users/sign_in" : bl.dataset.bl === "library" ? S.data.boothAccounts + "/library" : boothHome(), "booth"); return; }
   const sc = t.closest(".side [data-sc], .side [data-sb], .side [data-ss]");
@@ -3158,10 +3361,13 @@ document.addEventListener("click", async e => {
     if (b.dataset.m === "checkupd") { closeModal(); return openUpdate(true); }
     if (b.dataset.m === "allnotes") { closeModal(); return openUpdate(false); }
     if (b.dataset.m === "panadd") {
-      const r0 = parseShareText($("#pa_text").value), cloud = cloudFirst($("#pa_text").value);
-      if (!r0.url && !cloud) { toast("未识别到分享链接（支持百度网盘、Google Drive、Dropbox）"); return; }
+      const text = $("#pa_text").value, r0 = parseShareText(text), cloud = cloudFirst(text);
+      // a Baidu share goes to the server as it was pasted: the server finds the link in the text, also one
+      // without "https://" before it (sellers send them like that) and one with words glued to its end
+      const bd = shareLinksAt(text).bd >= 0;
+      if (!r0.url && !cloud && !bd) { toast("未识别到分享链接（支持百度网盘、Google Drive、Dropbox）"); return; }
       b.disabled = true; let r; // Enter submits too: not twice
-      try { r = cloud ? await api("/api/cloud/add", { url: $("#pa_text").value, name: $("#pa_name").value.trim() }) : await api("/api/pan/add", { url: r0.url, pwd: $("#pa_pwd").value.trim() || r0.pwd || "", name: $("#pa_name").value.trim() }); }
+      try { r = cloud ? await api("/api/cloud/add", { url: text, name: $("#pa_name").value.trim() }) : await api("/api/pan/add", { url: bd ? text : r0.url, pwd: $("#pa_pwd").value.trim() || r0.pwd || "", name: $("#pa_name").value.trim() }); }
       finally { b.disabled = false; }
       if (!r.ok) { toast(r.err || "添加失败"); return; }
       const dl = $("#pa_dl") && $("#pa_dl").checked;
@@ -3199,7 +3405,10 @@ document.addEventListener("click", async e => {
         downloadDir: $("#s_dldir").value.trim(), noExtract: !$("#s_extract").checked, keepZip: $("#s_keepzip").checked });
       const o = S.data.settings, same = (x, y) => JSON.stringify(x || []) === JSON.stringify(y || []);
       const noRescan = same(s.roots, o.roots) && same(s.projectRoots, o.projectRoots) && same(s.bases, o.bases) && s.autoBooth === o.autoBooth;
-      await api("/api/settings", { settings: s, noRescan }); closeModal(); toast(noRescan ? "已保存" : "已保存，正在重新扫描"); noRescan ? load() : poll(true);
+      const clip = $("#s_clip").checked;
+      await api("/api/settings", { settings: s, noRescan });
+      if (clip !== !o.noXyClip) await api("/api/xy/prefs", { clip }); // (the offer of copied links has a route of its own: /api/settings leaves it as it is)
+      closeModal(); toast(noRescan ? "已保存" : "已保存，正在重新扫描"); noRescan ? load() : poll(true);
     }
     return;
   }
@@ -3213,6 +3422,11 @@ document.addEventListener("change", e => {
   }
   if (e.target.id === "imp_proj" || e.target.id === "pan_proj") { S.dirty.delete(e.target.id); if (e.target.value === "__pick") pickProject(e.target); else if (e.target.value) setProject(e.target.value); return; }
   if (e.target.id === "imp_recycle") { S.impRecycle = e.target.checked; return; }
+  if (e.target.id === "xy_clip") { xyPref(e.target.checked ? "clipon" : "clipoff"); return; }
+  if (e.target.id === "xy_ext") { // (inside the window only after the note about it has been read)
+    if (!e.target.checked && !S.data.settings.xyNoticed) { e.target.checked = true; xyNotice(); return; }
+    xyPref(e.target.checked ? "external" : "embed"); return;
+  }
   // (the table is changed in place and told what it reads now, so pipeAssetsDraw does not draw it again under the pointer)
   if (e.target.dataset && e.target.dataset.ppick !== undefined) { PIPE.pick[e.target.dataset.ppick] = e.target.checked; const tr = e.target.closest("tr"); if (tr) tr.classList.toggle("on", e.target.checked); $("#pipe_assets")._h = pipeAssetsHTML(); aiRenderLive(); return; }
   if (e.target.dataset && e.target.dataset.pkind !== undefined) { PIPE.kind[e.target.dataset.pkind] = e.target.value; const tr = e.target.closest("tr"); if (tr) tr.classList.toggle("dim", e.target.value === "其他"); $("#pipe_assets")._h = pipeAssetsHTML(); aiRenderLive(); return; }
@@ -3341,7 +3555,7 @@ setInterval(() => fetch("/api/ping").then(r => r.json()).then(p => { NET.quit = 
 load().then(() => {
   aiLoadCfg().catch(() => {});
   if (S.data.setupNeeded) openSetup();
-  else if (S.data.paneMode && webVisible()) ensurePaneFor(S.view);
+  else if (webVisible() && (S.data.paneMode || S.view === "xianyu")) ensurePaneFor(S.view, true);
   if (S.view === "shop" && !S.shop.started) shopSearch(true); // the app was closed on the Booth tab
   if (S.view === "pipe") pipeEnter();
   poll();
