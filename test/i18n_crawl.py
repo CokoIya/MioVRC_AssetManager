@@ -254,6 +254,25 @@ async def crawl(b, lang):
     first = await pg.evaluate(FAKE_JOBS)
     for i in range(4):
         await js(f"S.data.importJob = window.__jobs[{i}]; renderDrawer({json.dumps(first)})", f'import job {i}')
+    # ---- 合集包 (bundle.js): a card that holds a collection of products — its tag, the note in its details, a split
+    # under way and one that failed, what the status bar and a netdisk job say of it, its entry in the settings ----
+    K1 = json.dumps(first)
+    flag = f"Object.assign(findAsset({K1}), {{bundle: 12, bundlePacked: true, _card: null}}); "  # (again each time: a reload of the library takes it away)
+    await js(flag + f"S.data.importJob = null; GRID = null; renderGrid(); renderDrawer({K1})", 'bundle card')
+    await js(flag + f"S.data.importJob = {{id: 71, key: {K1}, project: '', split: true, stage: 'unpack', msg: '正在解压 2.zip', done: 1, total: 3}}; renderDrawer({K1})", 'bundle split running', shot=False)
+    await js(flag + f"S.data.importJob = {{id: 72, key: {K1}, project: '', split: true, stage: 'failed', err: '压缩包已加密，请在「解压密码」中填写密码后重新拆分', msg: 'x', failed: ['2.zip：压缩包有密码']}}; renderDrawer({K1})", 'bundle split failed')
+    await js("""S.data.importJob = null; const bt = (label, msg, running) => ({name: 'import', label, msg, running, done: 1, total: 3, ended: Date.now() / 1000});
+      S.data.tasks = [bt('拆分合集包', '正在解压 2.zip', true)]; renderStatus()""", 'bundle status running', shot=False)
+    for i, m in enumerate(['完成：已拆分为 12 个素材', '完成：已拆分为 12 个素材；部分压缩包解压失败', '未发现多个素材，未拆分', '未发现多个素材，未拆分（有压缩包解压失败：2.zip：压缩包有密码）',
+                           '该素材是合集包（包含 12 个素材），已拆分为独立的素材卡片，请分别导入', '解压密码错误，请更换密码后重试（密码通常位于商品说明、卖家消息或压缩包旁的文本文件中）']):
+        await js(f"S.data.tasks = [{{name: 'import', label: '拆分合集包', msg: {json.dumps(m)}, ended: Date.now() / 1000}}]; renderStatus()", f'bundle status {i}', shot=False, wait=150)
+    bpan = await pg.evaluate("(S.data.assets.find(a => a.panOnly && a.user.shareUrl) || {}).key || ''")
+    for i, m in enumerate(['已下载 3 个文件（1.2 GB）；合集包，已拆分为 12 个素材', '已下载 3 个文件（1.2 GB）；合集包，已拆分为 12 个素材；合集包不会整包导入，请在各素材卡片上分别导入', '已下载 1 个文件（712 B）；合集包，拆分后可分别导入'] if bpan else []):
+        await js(f"S.data.baidu = {{loggedIn: true, name: 'mio', vip: 1}}; S.data.panJobs = [{{key: {json.dumps(bpan)}, stage: 'done', msg: {json.dumps(m)}, dir: 'D:/x'}}]; renderDrawer({json.dumps(bpan)})", f'bundle pan note {i}', shot=(i == 1), wait=200)
+    await js("S.data.panJobs = []; S.data.tasks = []; closeDrawer(); S.data.overrides = {'d:/dl/2': 'bundle', 'd:/dl/2/衣服': 'bundle', 'd:/dl/2/衣服/上衣': 'bundle', 'D:/c': 'asset'}; openSettings(); document.querySelector('#modal .ov').scrollIntoView({block: 'center'})", 'bundle settings')
+    await js(f"closeModal(); Object.assign(findAsset({K1}), {{bundle: 0, bundlePacked: false, _card: null}}); GRID = null; renderGrid()", None)
+    await js("""(async () => { for (const m of ['已拆分为 12 个素材，正在重新扫描', '已设为单个素材，正在重新扫描', '无法拆分', '已拆分为 12 个素材', '已拆分为 12 个素材；部分压缩包解压失败', '未发现多个素材，未拆分', '该素材不是合集包，无需拆分',
+      '合集包包含 12 个素材，请先拆分，再分别导入', '该素材是合集包（包含 12 个素材），已拆分为独立的素材卡片，请分别导入', '压缩包已加密，请在「解压密码」中填写密码后重新拆分']) { toast(m); await new Promise(r => setTimeout(r, 30)); } })()""", 'bundle toasts', shot=False)
     await js(f"""S.data.importJob = null; const a = findAsset({json.dumps(first)});
       Object.assign(a, {{newerOnBooth: '2.0', localVer: '1.0', newerDl: '1', boothNews: '商品名称已更改，价格 ¥1,000 → ¥800，商品说明已更改，商品图片已更改', boothNewsAt: 1790000000, panNews: {{at: 1790000000, added: ['/a/b.zip'], removed: ['/a/c.zip']}}, shareErr: '分享已失效或被取消'}});
       a.booth = Object.assign({{}}, a.booth, {{err: '连接超时，可能需要代理'}}); a._card = null; GRID = null; renderGrid(); renderDrawer(a.key)""", 'asset news')
@@ -316,8 +335,22 @@ async def crawl(b, lang):
     await js("wishClose(); S.shop.items = []; S.shop.err = 'Booth 返回错误（HTTP 503）'; renderShopGrid()", 'shop error', shot=False)
     await js("S.shop.err = ''; S.shop.loading = true; renderShopGrid(); S.shop.loading = false; S.shop.q = 'x'; renderShopGrid()", 'shop empty', shot=False)
     await js("S.shop.q = ''; shopSearch(true); setView('xianyu'); if (window.jxGo) jxGo('xianyu')", 'xianyu', wait=900)
-    for mode, st in (('native', "{open: false}"), ('window', "{open: true, url: 'https://www.goofish.com/', title: '', loading: true}"), ('native', "{open: true, url: 'https://www.goofish.com/', title: 'x', back: true}")):
-        await js(f"S.data.paneMode = '{mode}'; S.web.st = {st}; document.querySelector('#webhost').dataset.k = ''; renderXySide(); renderWeb()", f'xianyu pane {mode} {st[:12]}', shot=False)
+    # 闲鱼 has a view of its own or the default browser: every state of the tab, the note; and the bar for a copied link
+    for name, mode, emb, noticed, st in (
+            ('default browser only', 'external', 'false', 'false', '{}'), ('default browser by choice', 'external', 'true', 'true', '{}'),
+            ('before the note', 'embed', 'true', 'false', '{}'),
+            ('opening', 'embed', 'true', 'true', "{open: true, url: 'https://www.goofish.com/', title: '', loading: true, kind: 'xianyu'}"),
+            ('page', 'embed', 'true', 'true', "{open: true, url: 'https://www.goofish.com/', title: 'x', back: true, kind: 'xianyu'}"),
+            ('failed', 'embed', 'true', 'true', '{open: false, failed: true}'), ('closed', 'embed', 'true', 'true', '{open: false}')):
+        await js(f"S.data.paneMode = 'native'; S.data.xyMode = '{mode}'; S.data.xyEmbed = {emb}; S.data.settings.xyNoticed = {noticed}; S.data.settings.xyExternal = {'true' if mode == 'external' and emb == 'true' else 'false'}; "
+                 f"S.web.st = {st}; document.querySelector('#webhost').dataset.k = ''; renderXySide(); renderWeb()", 'xianyu ' + name, shot=(name in ('default browser only', 'before the note')))
+    await js("S.data.settings.noXyClip = true; S.data.xyMode = 'external'; document.querySelector('#webhost').dataset.k = 'x'; renderXySide(); renderWeb()", 'xianyu default browser, no copy prompt', shot=False)
+    await js("S.data.xyMode = 'embed'; S.web.st = {open: true, url: 'https://www.goofish.com/', title: 'x', kind: 'xianyu'}; document.querySelector('#webhost').dataset.k = 'x'; renderXySide(); renderWeb(); S.data.settings.noXyClip = false", 'xianyu embedded, no copy prompt', shot=False)
+    await js("renderXySide(); CLIP.offer = {kind: 'share', text: '链接: https://pan.baidu.com/s/1AbCdEf 提取码: x7k2'}; clipDraw()", 'xianyu copied share')
+    await js("CLIP.offer = {kind: 'xianyu', url: 'https://www.goofish.com/item?id=1'}; clipDraw()", 'xianyu copied link', shot=False)
+    await js("CLIP.offer = {kind: 'booth', url: 'https://booth.pm/ja/items/1234567'}; clipDraw()", 'xianyu copied booth link', shot=False)
+    await js("CLIP.offer = null; clipDraw(); XY.told = true; xyNotice()", 'xianyu note')
+    await js("closeModal(); S.web.back = {view: 'lib', key: 'x'}; S.data.xyMode = 'external'; renderWebBar(); S.web.back = null", 'xianyu bar', shot=False)
     await js("S.data.paneMode = 'native'; if (window.jxGo) { JX.site = 'jinxxy'; JX.files = [{id: '1', name: 'a.zip', status: 'running', done: 1, total: 4}, {id: '2', name: 'b.zip', status: 'done', path: 'D:/x'}, {id: '3', name: 'c.zip', status: 'failed', err: '下载已中断'}, {id: '4', name: '', status: 'saving'}]; S.web.st = {open: true, url: JX.base, files: JX.files}; document.querySelector('#webhost').dataset.k = ''; renderAll(); }", 'jinxxy')
     await js("S.data.paneMode = ''; if (window.jxGo) { document.querySelector('#webhost').dataset.k = ''; renderAll(); }", 'jinxxy no browser', shot=False)
     await js("if (typeof JX !== 'undefined') JX.site = 'xianyu'; S.data.paneMode = 'native'; S.web.open.lib = true; S.web.loaded = 'pan'; S.web.st = {open: true, url: 'https://pan.baidu.com/'}; S.view = 'lib'; S.data.baidu = {waiting: true}; renderAll()", 'netdisk page', shot=False)
@@ -437,7 +470,9 @@ async def crawl(b, lang):
 
     # ---- notices and questions, as the page words them ----
     await js("""(async () => { for (const m of ['已保存，已同步到其余 2 个版本', '新增 3 个素材（衣服、头发），2 个有更新', '2 个素材有更新', '已复制提取码 x7k2', '已加入下载队列：a.zip、b.zip', '操作失败：程序返回错误 500（/api/x）', '已将 3 个移至「衣服」', '已添加「可爱」', '已隐藏 2 个，可在左侧勾选「显示已隐藏」查看',
-      '愿望单商品降价：Dress　¥1,000 → ¥800', '已导出：x.json（点击打开所在文件夹）', '体检完成：2 项需处理', 'Gumroad 已登录：mio，正在同步已购', '百度网盘已登录：mio', '已撤销：上一步', '创建失败：仅支持 Windows', '正在使用 Unity 2022.3.22f1 打开 Kaguya', '已更新到 9.9.9']) { toast(m); await new Promise(r => setTimeout(r, 30)); } })()""", 'toasts', shot=False)
+      '愿望单商品降价：Dress　¥1,000 → ¥800', '已导出：x.json（点击打开所在文件夹）', '体检完成：2 项需处理', 'Gumroad 已登录：mio，正在同步已购', '百度网盘已登录：mio', '已撤销：上一步', '创建失败：仅支持 Windows', '正在使用 Unity 2022.3.22f1 打开 Kaguya', '已更新到 9.9.9',
+      '已在默认浏览器中打开', '设置未能保存', '复制链接后将提示打开或收录', '已关闭复制提示', '请先复制卖家发来的网盘分享文本（含链接和提取码），再点击「收录网盘链接」', '暂不支持该网盘，可收录百度网盘、Google Drive、Dropbox 的分享', 'cashier.alipay.com 的页面不在内置浏览器中打开，已改用默认浏览器',
+      '页面无法打开：内嵌浏览器启动失败', '页面无法打开：以管理员身份运行时内置浏览器无法启动，请以普通方式启动本软件', '页面无法打开：闲鱼页面启动超时', '页面无法打开：闲鱼页面启动失败', '页面无法打开：闲鱼、淘宝和支付宝的页面不在此内置浏览器中打开']) { toast(m); await new Promise(r => setTimeout(r, 30)); } })()""", 'toasts', shot=False)
     for q in ["`为「K」开启封面？\\n\\n将在该工程的 Packages 中安装封面插件，在打开工程或保存场景时自动截取模型正面图作为封面。\\n插件仅在 Unity 编辑器中运行，不修改场景，也不会随模型上传。`", "'排除这 3 个素材所在的文件夹？后续扫描将跳过这些文件夹，文件不会被删除，可在设置的「手动调整」中恢复。'",
               "'将「D:/a」拆分为多个素材？' + '可在设置的「手动调整」中恢复。'", "'排除「D:/a」？后续扫描将跳过该文件夹，文件不会被删除。' + '可在设置的「手动调整」中恢复。'", "'下载这 3 件已购商品？文件将保存到 D:/dl。'", "'从愿望单移除该商品？其价格记录将一并删除。\\n\\nDress'",
               "`为「K」安装 Unity 插件？\\n\\n将在该工程的 Packages 中安装两个编辑器插件：\\n· MioVRCA 改模流水线：放置素体、装配素材、生成菜单和图标\\n· UnitySkills 2.8.4（开源，MIT）：为 AI 提供更多 Unity 操作能力\\n\\n插件仅在 Unity 编辑器中运行，不会随模型上传。安装后将打开 Unity，首次编译约需一至两分钟。\\n可随时在此处点击「移除」。`",

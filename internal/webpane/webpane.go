@@ -3,6 +3,7 @@ package webpane
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"os/exec"
@@ -58,10 +59,14 @@ type webPane struct {
 	Port     int
 	conn     *cdpConn
 	target   string
-	shown    bool   // on screen (native: placed and visible; window: a visible window)
-	headless bool   // window mode: started without a window for a quiet login check
-	kind     string // "booth" | "xianyu" | "jinxxy" …: whose page it is
-	restored int    // the browser (by its port) whose saved logins were put back
+	shown    bool        // on screen (native: placed and visible; window: a visible window)
+	headless bool        // window mode: started without a window for a quiet login check
+	kind     string      // "booth" | "pan" | "jinxxy" …: whose page it is
+	restored int         // the browser (by its port) whose saved logins were put back
+	moved    string      // the site of a page that was given to the default browser instead (handOver), for the UI to say
+	movedURL string      // … its address and when,
+	movedAt  time.Time   //
+	handed   []time.Time // and when the last few were given: a page that keeps sending the browser there is not followed
 	shownAt  time.Time
 	origins  map[int]string // the page's script contexts (the page itself and its frames) → whose page each is
 	frames   map[int]string // … and the frame each of them runs in (a download names the frame that began it)
@@ -254,6 +259,13 @@ func (p *webPane) page() (*cdpConn, error) {
 	c.onEvent = p.event
 	if p.restored != p.Port { // this browser was just started
 		p.restored = p.Port
+		if n := forgetXianyu(c); n > 0 {
+			core.Logf("内置浏览器：已清除 %d 个闲鱼 / 淘宝 / 支付宝的 Cookie（这些网站不再在此浏览器中打开）", n)
+		}
+		if XianyuURL(pick.URL) { // (a window an older version left open on one of their pages)
+			_, _ = c.call("Page.navigate", map[string]any{"url": "about:blank"}, 5*time.Second)
+		}
+		go p.watchWindows(p.Port)
 		if n := restoreLogins(c); n > 0 {
 			core.Logf("内置浏览器：放回了 %d 个保存的登录信息", n)
 			if !strings.HasPrefix(pick.URL, "about:") {
@@ -281,8 +293,23 @@ func (p *webPane) call(method string, params any, timeout time.Duration) (json.R
 	return c.call(method, params, timeout)
 }
 
+// errXyInPane: 闲鱼 and the sites its pages lead to are not for this browser (xyview.go).
+var errXyInPane = errors.New("闲鱼、淘宝和支付宝的页面不在此内置浏览器中打开")
+
 // Open shows u in the pane (show=false: load it without putting it on screen).
 func (p *webPane) Open(u, kind string, show bool) error {
+	if u != "about:blank" {
+		pu, err := PageURL(u)
+		if err != nil {
+			return err
+		}
+		if u = pu.String(); XianyuURL(u) {
+			return errXyInPane
+		}
+	}
+	if show {
+		PaneTakesOver() // the page area may have been 闲鱼's
+	}
 	p.Mu.Lock()
 	fresh, err := p.ensure(show, u)
 	if err != nil {
@@ -362,8 +389,10 @@ type PaneState struct {
 	Fwd     bool       `json:"fwd"`
 	Loading bool       `json:"loading"`
 	Kind    string     `json:"kind"`
-	DL      int        `json:"dl"`              // downloads waiting or running (a click on the page may have added one)
-	Files   []PaneFile `json:"files,omitempty"` // files the pane's browser downloaded for the library (storepane.go)
+	DL      int        `json:"dl"`                // downloads waiting or running (a click on the page may have added one)
+	Files   []PaneFile `json:"files,omitempty"`   // files the pane's browser downloaded for the library (storepane.go)
+	Moved   string     `json:"moved,omitempty"`   // the site of a page that was opened in the default browser instead, for a few seconds
+	MovedAt int64      `json:"movedAt,omitempty"` // … and when (the page says each one once)
 }
 
 type navHistory struct {
@@ -373,6 +402,17 @@ type navHistory struct {
 		URL   string `json:"url"`
 		Title string `json:"title"`
 	} `json:"entries"`
+}
+
+// step: the id of the page one step back (-1) or forward (+1) in the list — past the pages of 闲鱼 and the sites
+// its pages lead to, which the pane was taken out of (leaveXianyu) and does not go back to. -1: there is none.
+func (h *navHistory) step(dir int) int {
+	for i := h.CurrentIndex + dir; i >= 0 && i < len(h.Entries); i += dir {
+		if !XianyuURL(h.Entries[i].URL) {
+			return h.Entries[i].ID
+		}
+	}
+	return -1
 }
 
 func (p *webPane) history() (*navHistory, error) {
@@ -398,6 +438,9 @@ func (p *webPane) State() PaneState {
 	p.Mu.Lock()
 	running := p.Port > 0 && !p.headless
 	s.Kind = p.kind
+	if p.moved != "" && time.Since(p.movedAt) < 8*time.Second {
+		s.Moved, s.MovedAt = p.moved, p.movedAt.UnixMilli()
+	}
 	p.Mu.Unlock()
 	if !running {
 		return s
@@ -411,8 +454,7 @@ func (p *webPane) State() PaneState {
 	if h.CurrentIndex >= 0 && h.CurrentIndex < len(h.Entries) {
 		e := h.Entries[h.CurrentIndex]
 		s.URL, s.Title = e.URL, e.Title
-		s.Back = h.CurrentIndex > 0
-		s.Fwd = h.CurrentIndex < len(h.Entries)-1
+		s.Back, s.Fwd = h.step(-1) >= 0, h.step(1) >= 0
 	}
 	if raw, err := p.call("Runtime.evaluate", map[string]any{"expression": "document.readyState", "returnByValue": true}, 2*time.Second); err == nil {
 		s.Loading = !strings.Contains(string(raw), `"complete"`)
@@ -423,7 +465,7 @@ func (p *webPane) State() PaneState {
 	return s
 }
 
-// Act: the toolbar buttons. Returns text for "selection".
+// Act: the toolbar buttons. Returns text for "url".
 func (p *webPane) Act(act string) (string, error) {
 	switch act {
 	case "back", "forward":
@@ -431,14 +473,15 @@ func (p *webPane) Act(act string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		i := h.CurrentIndex - 1
+		dir := -1
 		if act == "forward" {
-			i = h.CurrentIndex + 1
+			dir = 1
 		}
-		if i < 0 || i >= len(h.Entries) {
+		id := h.step(dir)
+		if id < 0 {
 			return "", nil
 		}
-		_, err = p.call("Page.navigateToHistoryEntry", map[string]any{"entryId": h.Entries[i].ID}, 5*time.Second)
+		_, err = p.call("Page.navigateToHistoryEntry", map[string]any{"entryId": id}, 5*time.Second)
 		return "", err
 	case "reload":
 		_, err := p.call("Page.reload", nil, 5*time.Second)
@@ -455,14 +498,6 @@ func (p *webPane) Act(act string) (string, error) {
 			return "", err
 		}
 		return h.Entries[h.CurrentIndex].URL, nil
-	case "selection":
-		p.Mu.Lock()
-		c, err := p.page()
-		p.Mu.Unlock()
-		if err != nil {
-			return "", err
-		}
-		return c.evalString("String(window.getSelection ? getSelection() : '')", 3*time.Second)
 	case "close":
 		p.Mu.Lock()
 		defer p.Mu.Unlock()
@@ -558,6 +593,25 @@ func (p *webPane) event(method string, params json.RawMessage) {
 		p.downloadEvent(method, params)
 		return
 	}
+	if method == "Page.frameNavigated" {
+		var e struct {
+			Frame struct {
+				Parent      string `json:"parentId"`
+				URL         string `json:"url"`
+				Unreachable string `json:"unreachableUrl"` // the address of a page that could not be loaded (url is the error page's)
+			} `json:"frame"`
+		}
+		if json.Unmarshal(params, &e) != nil || e.Frame.Parent != "" {
+			return
+		}
+		for _, u := range []string{e.Frame.Unreachable, e.Frame.URL} {
+			if XianyuURL(u) {
+				p.leaveXianyu(u)
+				break
+			}
+		}
+		return
+	}
 	if method != "Runtime.bindingCalled" || p.St == nil {
 		return
 	}
@@ -620,42 +674,240 @@ func (p *webPane) Cookies(urls []string) ([]core.SavedCookie, error) {
 // ForgetSites removes the cookies of these sites (by domain suffix) from the pane's profile.
 func (p *webPane) ForgetSites(suffixes []string) error {
 	dropKeptLogins(suffixes)
-	raw, err := p.call("Network.getAllCookies", nil, 6*time.Second)
+	p.Mu.Lock()
+	c, err := p.page()
+	p.Mu.Unlock()
 	if err != nil {
 		return err
 	}
+	_, err = forgetCookies(c, suffixes)
+	return err
+}
+
+// forgetCookies removes the cookies of these sites (by domain suffix) from the browser behind c; how many went.
+func forgetCookies(c *cdpConn, suffixes []string) (int, error) {
+	raw, err := c.call("Network.getAllCookies", nil, 6*time.Second)
+	if err != nil {
+		return 0, err
+	}
 	var r struct {
 		Cookies []struct {
-			Name   string `json:"name"`
-			Domain string `json:"domain"`
-			Path   string `json:"path"`
+			Name      string          `json:"name"`
+			Domain    string          `json:"domain"`
+			Path      string          `json:"path"`
+			Partition json.RawMessage `json:"partitionKey"`
 		} `json:"cookies"`
 	}
 	_ = json.Unmarshal(raw, &r)
-	for _, c := range r.Cookies {
-		d := strings.TrimPrefix(c.Domain, ".")
+	n := 0
+	for _, k := range r.Cookies {
+		d := strings.ToLower(strings.TrimPrefix(k.Domain, "."))
 		for _, s := range suffixes {
 			if d == s || strings.HasSuffix(d, "."+s) {
-				_, _ = p.call("Network.deleteCookies", map[string]any{"name": c.Name, "domain": c.Domain, "path": c.Path}, 4*time.Second)
+				arg := map[string]any{"name": k.Name, "domain": k.Domain, "path": k.Path}
+				if len(k.Partition) > 0 && string(k.Partition) != "null" {
+					arg["partitionKey"] = k.Partition
+				}
+				if _, err := c.call("Network.deleteCookies", arg, 4*time.Second); err == nil {
+					n++
+				}
 				break
 			}
 		}
 	}
-	return nil
+	return n, nil
+}
+
+// ---------- 闲鱼 is not for this browser ----------
+//
+// Versions up to 1.7.6 opened 闲鱼 here, kept its login cookies in the profile and a copy of them in
+// web-session.dat. Both go: the cookies when the browser is first reached (forgetXianyu), the copy at the start
+// of the program (DropXianyuLogins). And a page of the pane that goes to one of those sites after all (a link,
+// a payment that leads to 支付宝) is taken out of it (leaveXianyu).
+
+// the pages 闲鱼 and 淘宝 keep what they know of a browser on, besides cookies
+var xyOrigins = []string{"https://www.goofish.com", "https://h5.m.goofish.com", "https://passport.goofish.com",
+	"https://www.taobao.com", "https://login.taobao.com", "https://main.m.taobao.com", "https://www.alipay.com"}
+
+// forgetXianyu: nothing of 闲鱼, 淘宝 or 支付宝 stays in the browser behind c. How many cookies went.
+func forgetXianyu(c *cdpConn) int {
+	n, _ := forgetCookies(c, xyHosts)
+	if n > 0 { // it was used for them: what their pages stored goes too
+		for _, o := range xyOrigins {
+			_, _ = c.call("Storage.clearDataForOrigin", map[string]any{"origin": o, "storageTypes": "local_storage,indexeddb,service_workers,cache_storage"}, 4*time.Second)
+		}
+	}
+	return n
+}
+
+// DropXianyuLogins takes 闲鱼's and 淘宝's login cookies out of web-session.dat. Called when the program starts.
+func DropXianyuLogins() {
+	keptMu.Lock()
+	defer keptMu.Unlock()
+	saved := loadKeptLogins()
+	var keep []keptCookie
+	for _, k := range saved {
+		if !xyHost(k.Domain) {
+			keep = append(keep, k)
+		}
+	}
+	if len(keep) == len(saved) {
+		return
+	}
+	keptLast = "?"
+	saveKeptLogins(keep)
+	if keptLast == "?" {
+		core.Logf("旧版本保存的闲鱼 / 淘宝登录 Cookie 未能清除（web-session.dat 无法写入）；它们不会再被放回浏览器")
+		return
+	}
+	core.Logf("已清除旧版本保存的 %d 个闲鱼 / 淘宝登录 Cookie", len(saved)-len(keep))
+}
+
+// handOver: an address of theirs that turned up in the pane's browser is given to the default browser, and the
+// UI is told. Not the same one again within a few seconds, and not more than three a minute: a page that keeps
+// sending the browser there is not followed (false).
+func (p *webPane) handOver(u string) bool {
+	pu, err := url.Parse(u)
+	if err != nil || (pu.Scheme != "https" && pu.Scheme != "http") || pu.Host == "" {
+		return false
+	}
+	now := time.Now()
+	p.Mu.Lock()
+	recent := p.handed[:0]
+	for _, t := range p.handed {
+		if now.Sub(t) < time.Minute {
+			recent = append(recent, t)
+		}
+	}
+	ok := !(u == p.movedURL && now.Sub(p.movedAt) < 4*time.Second) && len(recent) < 3
+	if ok {
+		recent = append(recent, now)
+	}
+	p.handed, p.movedURL, p.movedAt, p.moved = recent, u, now, pu.Hostname()
+	p.Mu.Unlock()
+	if ok {
+		core.Logf("内置页面：%s 的页面不在内置浏览器中打开，已改用默认浏览器", pu.Hostname()) // (the host only: an address can carry a token)
+		_ = PaneOpenExternal(u)
+	}
+	return ok
+}
+
+// leaveXianyu: the pane's page has gone to 闲鱼 or to one of the sites its pages lead to. It is not left there:
+// the address opens in the default browser, the pane goes back to the page it came from — to an empty one when
+// there is none, or when that page keeps sending it there — and what the site left in the pane's profile goes.
+func (p *webPane) leaveXianyu(u string) {
+	back := -1
+	if p.handOver(u) {
+		// the nearest page before this one that is not one of theirs. The list of pages lags a moment behind the
+		// event: it is asked for until it shows the page that was just gone to
+		var h *navHistory
+		for i := 0; i < 20; i++ {
+			if hh, err := p.history(); err == nil && hh.CurrentIndex >= 0 && hh.CurrentIndex < len(hh.Entries) {
+				if h = hh; XianyuURL(h.Entries[h.CurrentIndex].URL) {
+					break
+				}
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		if h != nil {
+			if !XianyuURL(h.Entries[h.CurrentIndex].URL) {
+				back = -2 // the pane is not on one of their pages (any more): it stays where it is
+			} else {
+				back = h.step(-1)
+			}
+		}
+	}
+	switch {
+	case back >= 0:
+		_, _ = p.call("Page.navigateToHistoryEntry", map[string]any{"entryId": back}, 5*time.Second)
+	case back == -1:
+		_, _ = p.call("Page.navigate", map[string]any{"url": "about:blank"}, 5*time.Second)
+	}
+	// wherever that led: the pane does not stay on one of their pages
+	for i := 0; i < 30; i++ {
+		time.Sleep(100 * time.Millisecond)
+		if cur := p.currentURL(); cur == "" || !XianyuURL(cur) {
+			if cur != "" || i >= 5 {
+				break
+			}
+		} else if i == 10 || i == 20 {
+			_, _ = p.call("Page.navigate", map[string]any{"url": "about:blank"}, 5*time.Second)
+		}
+	}
+	p.Mu.Lock()
+	c := p.conn
+	p.Mu.Unlock()
+	if c != nil && c.alive() {
+		_, _ = forgetCookies(c, xyHosts)
+	}
+}
+
+// watchWindows looks after the other pages of the pane's browser: a window a page of the pane opened (a pop-up
+// with a size, a link opened with Ctrl or the middle button). The pane's own page is seen to through its own
+// connection (event); those windows are not connected to at all, so they are watched from the browser's side,
+// for as long as it runs: one that goes to 闲鱼 or to one of the sites its pages lead to is closed, and the
+// address opens in the default browser.
+func (p *webPane) watchWindows(port int) {
+	resp, err := LocalHTTP.Get(fmt.Sprintf("http://127.0.0.1:%d/json/version", port))
+	if err != nil {
+		return
+	}
+	var v struct {
+		WS string `json:"webSocketDebuggerUrl"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&v)
+	resp.Body.Close()
+	if v.WS == "" {
+		return
+	}
+	c, err := cdpDial(v.WS, 4*time.Second)
+	if err != nil {
+		return
+	}
+	c.onEvent = func(method string, params json.RawMessage) {
+		if method != "Target.targetCreated" && method != "Target.targetInfoChanged" {
+			return
+		}
+		var e struct {
+			Info struct {
+				ID   string `json:"targetId"`
+				Type string `json:"type"`
+				URL  string `json:"url"`
+			} `json:"targetInfo"`
+		}
+		if json.Unmarshal(params, &e) != nil || (e.Info.Type != "page" && e.Info.Type != "webview") || !XianyuURL(e.Info.URL) {
+			return
+		}
+		p.Mu.Lock()
+		own := e.Info.ID == p.target
+		p.Mu.Unlock()
+		if own {
+			return
+		}
+		_, _ = c.call("Target.closeTarget", map[string]any{"targetId": e.Info.ID}, 4*time.Second)
+		p.handOver(e.Info.URL)
+	}
+	if _, err := c.call("Target.setDiscoverTargets", map[string]any{"discover": true}, 5*time.Second); err != nil {
+		core.Logf("内置浏览器：无法监视它打开的其他窗口: %v", err)
+		c.Close()
+	}
 }
 
 // ---------- keeping logins across restarts ----------
 //
-// Some sites give their login cookies no expiry date ("until the browser closes"). 闲鱼 / 淘宝 do, so that login
-// was gone every time the program was started again (an update restarts it). While the pane runs, such cookies of
-// the sites the program is for are
+// Some sites give their login cookies no expiry date ("until the browser closes"), so that login was gone every
+// time the program was started again (an update restarts it). While the pane runs, such cookies of the sites the
+// program is for are
 //   - written back with an expiry date, so the browser keeps them in its profile like any other cookie, and
 //   - saved (encrypted, like the download logins) in web-session.dat, from where the missing ones are put back
 //     when the pane starts: the browser writes its cookies to disk only every half minute, and not at all when
 //     it is ended abruptly.
 // How long a login is good for is still up to the site.
+//
+// 闲鱼 and 淘宝 were among them up to 1.7.6. They are not: their pages do not open in the pane any more, and a
+// login that is written back and put back is one of the things their risk control takes for a tool's (xyview.go).
 
-var keepLoginSites = []string{"goofish.com", "taobao.com", "booth.pm", "pixiv.net", "baidu.com", "gumroad.com", "jinxxy.com"}
+var keepLoginSites = []string{"booth.pm", "pixiv.net", "baidu.com", "gumroad.com", "jinxxy.com"}
 
 const keepLoginFor = 180 * 24 * time.Hour
 
@@ -666,7 +918,7 @@ func keepLoginSite(domain string) bool {
 			return true
 		}
 	}
-	for _, base := range []string{XianyuBase(), core.BoothWebBase(), core.PanBase(), core.GumroadBase(), core.JinxxyBase()} { // other hosts only in tests
+	for _, base := range []string{core.BoothWebBase(), core.PanBase(), core.GumroadBase(), core.JinxxyBase()} { // other hosts only in tests
 		if u, err := url.Parse(base); err == nil && u.Hostname() == d {
 			return true
 		}
@@ -954,7 +1206,7 @@ var paneAway = 8 * time.Second
 
 func paneLeft(kind string, start time.Time, seen *bool, hidden *time.Time) bool {
 	Pane.Mu.Lock()
-	other := Pane.kind != "" && Pane.kind != kind // the page area went over to 闲鱼, the netdisk …
+	other := Pane.kind != "" && Pane.kind != kind // the page area went over to Jinxxy, the netdisk …
 	Pane.Mu.Unlock()
 	if other {
 		return true

@@ -362,6 +362,8 @@ type ImportJob struct {
 	Tops     []string    `json:"tops,omitempty"`
 	Kept     int         `json:"kept,omitempty"`     // files of installed packages that were not written over
 	KeptPkgs []string    `json:"keptPkgs,omitempty"` // the packages they belong to
+	Bundle   int         `json:"bundle,omitempty"`   // a collection of products (合集包): split into this many cards, not imported
+	Split    bool        `json:"split,omitempty"`    // splitting was all that was asked for: there is no project
 	Err      string      `json:"err,omitempty"`
 	At       int64       `json:"at"`
 
@@ -374,7 +376,13 @@ type ImportJob struct {
 var (
 	impMu      sync.Mutex
 	impJob     *ImportJob
-	TaskImport = &core.Task{Name: "import", Label: "导入到 Unity 工程"}
+	TaskImport = &core.Task{Name: "import", Label: labelImport}
+)
+
+// what the task is called while it runs: it imports, or it only splits a collection
+const (
+	labelImport = "导入到 Unity 工程"
+	labelSplit  = "拆分合集包"
 )
 
 func ImportSnapshot() *ImportJob {
@@ -411,11 +419,16 @@ type ImportReq struct {
 	Project string   `json:"project"`
 	Pwd     string   `json:"pwd"`
 	Recycle bool     `json:"recycle"`
+	// no import: the asset is a collection of products (合集包) — it is unpacked as for an import and split
+	// into a card for each product. No project is needed.
+	Split bool `json:"split"`
 }
 
 // importPlaces: what an asset brings along — its own files, and the downloads of the same product
-// that are not for another base body (PSD and texture packs, common parts).
-func importPlaces(st *core.Store, key string) (places []string, bases []string, err error) {
+// that are not for another base body (PSD and texture packs, common parts). A collection of products
+// (合集包) is not imported: it brings nothing along, and is refused until it has been split — split: that is
+// what it is asked for, and only its own files are wanted.
+func importPlaces(st *core.Store, key string, split bool) (places []string, bases []string, err error) {
 	st.Mu.RLock()
 	views := library.AllViews(st)
 	st.Mu.RUnlock()
@@ -431,6 +444,9 @@ func importPlaces(st *core.Store, key string) (places []string, bases []string, 
 	if a.Virtual || (a.PanOnly && len(a.Locations) == 0) {
 		return nil, nil, errors.New("该素材尚未下载到本地")
 	}
+	if a.Bundle >= 2 && !split {
+		return nil, nil, fmt.Errorf("合集包包含 %d 个素材，请先拆分，再分别导入", a.Bundle)
+	}
 	add := func(v *library.AssetView) {
 		for _, l := range v.Locations {
 			if !core.ContainsStr(places, l.Path) {
@@ -439,10 +455,10 @@ func importPlaces(st *core.Store, key string) (places []string, bases []string, 
 		}
 	}
 	add(a)
-	if a.Group != "" {
+	if a.Group != "" && !split {
 		for i := range views {
 			v := &views[i]
-			if v.Key == a.Key || v.Group != a.Group || v.Virtual || v.PanOnly {
+			if v.Key == a.Key || v.Group != a.Group || v.Virtual || v.PanOnly || v.Bundle >= 2 {
 				continue
 			}
 			if v.PSD || len(v.Bases) == 0 || len(a.Bases) == 0 || overlap(v.Bases, a.Bases) {
@@ -544,16 +560,19 @@ func choosePackages(st *core.Store, pkgs []string, projBases, assetBases []strin
 	return choices, false
 }
 
-// StartImport begins the import in the background.
+// StartImport begins the import in the background — or, for req.Split, the split of a collection.
 func StartImport(st *core.Store, req ImportReq) error {
-	if !core.IsUnityProject(req.Project) {
+	label := labelImport
+	if req.Split {
+		req.Project, label = "", labelSplit // nothing is imported
+	} else if !core.IsUnityProject(req.Project) {
 		return errors.New("该文件夹不是 Unity 工程（未找到 Assets 和 ProjectSettings 文件夹）")
 	}
 	places, bases := req.Paths, []string(nil)
 	switch {
 	case req.Key != "" && len(req.Paths) == 0:
 		var err error
-		if places, bases, err = importPlaces(st, req.Key); err != nil {
+		if places, bases, err = importPlaces(st, req.Key, req.Split); err != nil {
 			return err
 		}
 	case req.Key != "": // just downloaded: the card it came from says which base bodies it is for
@@ -573,11 +592,12 @@ func StartImport(st *core.Store, req ImportReq) error {
 		impMu.Unlock()
 		return errImportBusy
 	}
-	impJob = &ImportJob{ID: time.Now().UnixNano(), Key: req.Key, Project: req.Project, Stage: "unpack", At: time.Now().Unix(),
+	impJob = &ImportJob{ID: time.Now().UnixNano(), Key: req.Key, Project: req.Project, Split: req.Split, Stage: "unpack", At: time.Now().Unix(),
 		places: places, pwd: req.Pwd, recycle: req.Recycle, chosen: make(chan []string, 1)}
 	impMu.Unlock()
 	core.BumpRev()
 	go func() {
+		TaskImport.Relabel(label)
 		core.RunTask(TaskImport, func() { runImport(st, bases) })
 	}()
 	return nil
@@ -641,12 +661,40 @@ func DismissImport() {
 	core.BumpRev()
 }
 
+// bundleTops: the folders that are asked whether they hold a collection once everything is unpacked — the
+// places that are folders, and the folders made out of places that were archives (the outermost of them:
+// what was unpacked inside a folder is looked at with it).
+func bundleTops(places, made []string) []string {
+	var tops []string
+	for _, p := range places {
+		if core.IsDir(p) {
+			tops = append(tops, p)
+		}
+	}
+	made = append([]string(nil), made...)
+	sort.Slice(made, func(i, k int) bool { return len(made[i]) < len(made[k]) }) // a folder before what is in it
+	for _, d := range made {
+		inside := false
+		for _, t := range tops {
+			inside = inside || core.UnderDir(d, t)
+		}
+		if !inside && core.IsDir(d) {
+			tops = append(tops, d)
+		}
+	}
+	return tops
+}
+
 func runImport(st *core.Store, assetBases []string) {
 	j := ImportSnapshot()
 	fail := func(msg string) {
 		setImp(func(j *ImportJob) { j.Stage, j.Err, j.Msg = "failed", msg, msg })
 		TaskImport.Set(0, 0, msg)
-		core.Logf("导入失败：%s", msg)
+		if j.Split {
+			core.Logf("拆分失败：%s", msg)
+		} else {
+			core.Logf("导入失败：%s", msg)
+		}
 	}
 	// 1. unpack everything, archives inside archives too
 	TaskImport.Set(0, 0, "正在解压")
@@ -676,13 +724,57 @@ func runImport(st *core.Store, assetBases []string) {
 			look = append(look, p)
 		}
 	}
+	pwdNeeded := false
+	for _, e := range res.Failed {
+		pwdNeeded = pwdNeeded || e == archive.ErrArcPwd.Error()
+	}
+	// A collection of products (合集包) is never imported whole, and what has been unpacked shows one for
+	// certain — a rar cannot be looked into before. Its folder levels are marked, the scan makes a card for
+	// each product, and those are imported one by one.
+	library.KeepUnpacked(st, res.Done, res.From) // (not what the player said is one asset)
+	unpacked := library.Unpacked(res.Done, res.From)
+	products := 0
+	for _, top := range bundleTops(places, res.Done) {
+		if b := library.MarkBundles(st, top, unpacked); len(b.Containers) > 0 {
+			products += b.Products
+		}
+	}
+	// (the scan is begun before the end is told: the window waits for it before it looks for the new cards)
+	if j.Split {
+		library.StartPipeline(st, true, true, false, false, nil)
+		switch {
+		case products >= 2:
+			msg := fmt.Sprintf("已拆分为 %d 个素材", products)
+			if len(failed) > 0 {
+				msg += "；部分压缩包解压失败"
+			}
+			setImp(func(j *ImportJob) { j.Stage, j.Msg, j.Bundle = "done", msg, products })
+			TaskImport.Set(1, 1, "完成："+msg)
+		case pwdNeeded && pwd == "":
+			fail("压缩包已加密，请在「解压密码」中填写密码后重新拆分")
+		case pwdNeeded:
+			fail("解压密码错误，请更换密码后重试（密码通常位于商品说明、卖家消息或压缩包旁的文本文件中）")
+		default: // it looked like a collection while it was packed, and is none
+			msg := "未发现多个素材，未拆分"
+			if len(failed) > 0 {
+				msg += "（有压缩包解压失败：" + failed[0] + "）"
+			}
+			setImp(func(j *ImportJob) { j.Stage, j.Msg = "done", msg })
+			TaskImport.Set(0, 0, msg)
+		}
+		return
+	}
+	if products >= 2 {
+		msg := fmt.Sprintf("该素材是合集包（包含 %d 个素材），已拆分为独立的素材卡片，请分别导入", products)
+		library.StartPipeline(st, true, true, false, false, nil)
+		setImp(func(j *ImportJob) { j.Stage, j.Err, j.Msg, j.Bundle = "failed", msg, msg, products })
+		TaskImport.Set(0, 0, msg)
+		core.Logf("未导入 %s：%s", j.Key, msg)
+		return
+	}
 	pkgs := findPackages(look)
 	if len(pkgs) == 0 {
 		msg := "未找到 unitypackage"
-		pwdNeeded := false
-		for _, e := range res.Failed {
-			pwdNeeded = pwdNeeded || e == archive.ErrArcPwd.Error()
-		}
 		switch {
 		case pwdNeeded && pwd == "":
 			msg = "压缩包已加密，请在「解压密码」中填写密码后点击「一键导入」"

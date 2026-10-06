@@ -1,8 +1,10 @@
 package library
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -378,5 +380,99 @@ func TestManagerHomeKeepsOtherAssets(t *testing.T) {
 		if got := append(AEFolders(), KAFolders()...); len(got) != 1 {
 			t.Errorf("an empty %s: found %v", db, got)
 		}
+	}
+}
+
+// A download that holds a collection of products: without marks the scan makes of it what it always made, one
+// card; with the marks MarkBundles sets, a card for each product, under the category folders it lay in.
+func TestBundleMarksInScan(t *testing.T) {
+	root := t.TempDir()
+	local := filepath.Join(root, "2")
+	for _, n := range []string{"衣服/Sailor Dress", "衣服/Maid Outfit", "衣服/Night Gown", "衣服/Summer Bikini", "头发/Twintail_hair", "头发/Bob_hair_v2", "Gothic Coat"} {
+		testkit.WriteFile(t, filepath.Join(local, "2", filepath.FromSlash(n), filepath.Base(n)+".unitypackage"), 100)
+	}
+	testkit.WriteFile(t, filepath.Join(local, "2", "说明.txt"), 100)
+	testkit.WriteFile(t, filepath.Join(local, "2", "衣服", "店铺.png"), 20*1024)
+	testkit.WriteFile(t, filepath.Join(root, "Wolf Tail", "Wolf Tail.unitypackage"), 100)
+	st, as := scanFor(t, root)
+	whole := as["2"]
+	if len(as) != 2 || whole == nil || as["Wolf Tail"] == nil {
+		t.Fatalf("without marks: %v", keysOf(as))
+	}
+	if len(whole.Locations) != 1 || whole.Locations[0].Path != local || whole.Locations[0].Kind != "dir" || len(whole.Packages) != 7 || len(whole.Hints) != 0 || !whole.HasDir {
+		t.Errorf("the download as one card: %+v", whole)
+	}
+	if whole.Bundle != 7 || whole.BundlePacked || as["Wolf Tail"].Bundle != 0 {
+		t.Errorf("flagged as a collection of %d (packed %v); the product beside it of %d", whole.Bundle, whole.BundlePacked, as["Wolf Tail"].Bundle)
+	}
+	cards := func() string {
+		RunFolderScan(st, &core.Task{})
+		var out []string
+		for _, a := range st.Assets {
+			out = append(out, a.Name+" ["+strings.Join(a.Hints, "/")+"] "+a.Category+" "+a.Key)
+		}
+		sort.Strings(out)
+		return strings.Join(out, "\n")
+	}
+	// (the folder of the two hair products is no level by the rules — the scan takes it for a category itself)
+	if b := MarkBundles(st, local, nil); b.Products != 7 || len(b.Containers) != 3 {
+		t.Fatalf("marked: %+v", b)
+	}
+	got := cards()
+	byName := map[string]*core.Asset{}
+	for _, a := range st.Assets {
+		byName[a.Name] = a
+	}
+	if len(byName) != 8 || byName["2"] != nil {
+		t.Fatalf("with marks:\n%s", got)
+	}
+	for name, hints := range map[string]string{"Sailor Dress": "2/衣服", "Night Gown": "2/衣服", "Twintail_hair": "2/头发", "Gothic Coat": "2", "Wolf Tail": ""} {
+		a := byName[name]
+		if a == nil || strings.Join(a.Hints, "/") != hints || len(a.Packages) != 1 || a.Bundle != 0 {
+			t.Errorf("%s: %+v, want it under %q", name, a, hints)
+		}
+	}
+	if c := byName["Night Gown"].Category; c != "衣服" { // (its own name says none: the folder it lay in does)
+		t.Errorf("category of Night Gown: %s", c)
+	}
+	// a mark of the program is scanned as a split of the player is
+	remark := func(from, to string) {
+		st.Mu.Lock()
+		for k, mode := range st.Overrides {
+			if mode != from {
+				t.Errorf("mark %s = %s", k, mode)
+			}
+			st.Overrides[k] = to
+		}
+		st.Mu.Unlock()
+	}
+	remark("bundle", "split")
+	if again := cards(); again != got {
+		t.Errorf("as splits:\n%s\nas marks:\n%s", again, got)
+	}
+	// … but for the archive the collection was unpacked from, where it was kept (保留压缩包). Beside a folder
+	// the player split it is a card of its own, as beside any container — and no collection that would
+	// still have to be split, as the same archive is anywhere else. Beside a level the program marked it
+	// is no card: it would be the whole collection in one card again.
+	inside := map[string]string{"Sailor Dress.zip": "x", "Twintail_hair.zip": "x", "Gothic Coat.zip": "x"}
+	testkit.MakeZip(t, filepath.Join(local, "2.zip"), inside)
+	testkit.MakeZip(t, filepath.Join(root, "Other Pack.zip"), inside)
+	zips := func() string {
+		RunFolderScan(st, &core.Task{})
+		var out []string
+		for _, a := range st.Assets {
+			if a.Locations[0].Kind == "zip" {
+				out = append(out, fmt.Sprintf("%s=%d", filepath.Base(a.Locations[0].Path), a.Bundle))
+			}
+		}
+		sort.Strings(out)
+		return fmt.Sprintf("%d cards, %s", len(st.Assets), strings.Join(out, " "))
+	}
+	if got := zips(); got != "10 cards, 2.zip=0 Other Pack.zip=3" {
+		t.Errorf("kept beside a split folder: %s", got)
+	}
+	remark("split", "bundle")
+	if got := zips(); got != "9 cards, Other Pack.zip=3" {
+		t.Errorf("kept beside a level of a collection: %s", got)
 	}
 }

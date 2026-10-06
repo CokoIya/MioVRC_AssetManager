@@ -75,6 +75,8 @@ type AssetView struct {
 	FromPan      string            `json:"fromPan,omitempty"`   // downloaded by the program from this netdisk card
 	PanGot       []string          `json:"panGot,omitempty"`    // which parts of that card's file list ("/" = all)
 	CoverPkg     bool              `json:"coverPkg,omitempty"`  // the cover is a preview from its unitypackage (pkgcover.go)
+	Bundle       int               `json:"bundle,omitempty"`    // a collection of this many products in one card (bundle.go): split, not imported whole
+	BundlePacked bool              `json:"bundlePacked,omitempty"`
 
 	coverGen bool // the cover is one made from a prefab in Unity (gencover.go)
 }
@@ -168,7 +170,12 @@ func BuildView(st *core.Store, a *core.Asset) AssetView {
 	v := AssetView{Key: a.Key, AutoName: a.Name, RawName: a.RawName, AutoCategory: a.Category, AutoBases: a.Bases,
 		Locations: a.Locations, Size: a.Size, Files: a.Files, MTime: a.MTime, FirstSeen: a.FirstSeen, Usage: a.Usage,
 		GuidCount: a.GuidCount, Packages: len(a.Packages), Archives: len(a.Archives) + a.ZipPackages + a.OtherArchives, LocalCovers: a.Covers, Hints: a.Hints, HasDir: a.HasDir,
-		PSD: isPSDOnly(a), PSDs: a.PSDs, PSDCount: a.PSDCount, PSDInZip: a.PSDInZip}
+		PSD: isPSDOnly(a), PSDs: a.PSDs, PSDCount: a.PSDCount, PSDInZip: a.PSDInZip, Bundle: a.Bundle, BundlePacked: a.BundlePacked}
+	for _, l := range a.Locations { // (the player said it is one asset: at once, not only after the rescan that follows)
+		if v.Bundle > 0 && st.Overrides[core.PathKey(l.Path)] == "asset" {
+			v.Bundle, v.BundlePacked = 0, false
+		}
+	}
 	id, src := booth.AssetBooth(st, a.Key, a)
 	if u == nil && id != "" {
 		u = st.User["purchase:"+id] // notes typed while it was only a purchase follow it onto disk

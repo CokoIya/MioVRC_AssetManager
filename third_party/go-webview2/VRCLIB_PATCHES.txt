@@ -4,4 +4,9 @@ Local changes for vrclib (marked "vrclib patch"):
 - no log.Fatal when WebView2 cannot start: the window is destroyed and New returns nil
 - MoveHook: called when the window moves, for a second web view inside it
 - CloseHook: asked on WM_CLOSE, false keeps the window open (downloads under way)
+- edge.Chromium.Plain and pkg/edge/vrclib_plain.go: a web view that only shows a site (nothing put into its
+  pages, no script run in them, no handler of the host's on it), with its address, title and history asked for
+  from the host side
+- failures while a view is created are seen as failures (an HRESULT was compared as a 64-bit number), and the
+  message that ends the program is not swallowed when the window is closed while a view is being created
 Upstream: https://github.com/jchv/go-webview2 @ 56598839c808a2340edee99204db479f410e9bf4

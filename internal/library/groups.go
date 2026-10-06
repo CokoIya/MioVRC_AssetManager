@@ -27,19 +27,7 @@ var (
 // stemOf is a product name with base bodies, "for X", versions and "PSD"/"Texture" words removed:
 // the downloads of one product share it. "" when too little is left to be meaningful.
 func stemOf(name string, defs []naming.BaseDef, extra []string) string {
-	s := strings.ToLower(naming.CleanName(name))
-	s = reForStrip.ReplaceAllString(s, "$1 ")
-	s = reJaForStrip.ReplaceAllString(s, " ")
-	for _, d := range defs {
-		for i, re := range d.ASCII {
-			if strings.Contains(s, d.Words[i]) {
-				s = re.ReplaceAllString(s, "$1 $2")
-			}
-		}
-		for _, o := range d.Others {
-			s = strings.ReplaceAll(s, o, " ")
-		}
-	}
+	s := withoutBases(strings.ToLower(naming.CleanName(name)), defs)
 	for _, b := range extra {
 		s = wordRe(b).ReplaceAllString(s, "$1 $2")
 	}
@@ -52,6 +40,24 @@ func stemOf(name string, defs []naming.BaseDef, extra []string) string {
 		return ""
 	}
 	return k
+}
+
+// withoutBases: s (in lower case) with the base bodies it names taken out: "for X", "X対応", and the names
+// of the table.
+func withoutBases(s string, defs []naming.BaseDef) string {
+	s = reForStrip.ReplaceAllString(s, "$1 ")
+	s = reJaForStrip.ReplaceAllString(s, " ")
+	for _, d := range defs {
+		for i, re := range d.ASCII {
+			if strings.Contains(s, d.Words[i]) {
+				s = re.ReplaceAllString(s, "$1 $2")
+			}
+		}
+		for _, o := range d.Others {
+			s = strings.ReplaceAll(s, o, " ")
+		}
+	}
+	return s
 }
 
 func wordRe(w string) *regexp.Regexp {

@@ -499,7 +499,7 @@ func downloadPurchaseThumbs(st *core.Store, prog *core.Task) {
 // (or the whole old browser profile when there is no pane running).
 func ForgetBoothLogin() error {
 	if webpane.PaneMode() != "" {
-		// the pane also holds the 闲鱼 login: only Booth's (and pixiv's, which logs Booth back in) go
+		// the pane also holds other logins (the netdisk, Gumroad, Jinxxy): only Booth's (and pixiv's, which logs Booth back in) go
 		forgetBoothSession()
 		webpane.Pane.Mu.Lock()
 		running := webpane.Pane.Port > 0

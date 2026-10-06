@@ -43,7 +43,7 @@ var ErrNoListing = errors.New("无法读取压缩包内的文件列表")
 // else through 7-Zip when the computer has it.
 func ListEntries(s Set) ([]Entry, error) {
 	if len(s.Parts) == 1 && strings.EqualFold(core.LowerExt(s.Main), ".zip") {
-		if out, err := zipEntries(s.Main); err == nil {
+		if out, err := ZipEntries(s.Main); err == nil {
 			return out, nil
 		}
 	}
@@ -62,7 +62,9 @@ func ListEntries(s Set) ([]Entry, error) {
 	return nil, ErrNoListing
 }
 
-func zipEntries(p string) ([]Entry, error) {
+// ZipEntries: the files inside a plain zip, from its central directory alone — no other program is asked, so
+// it is cheap enough for a scan. An error when it is no zip that can be read, or its names cannot be.
+func ZipEntries(p string) ([]Entry, error) {
 	zr, err := zip.OpenReader(p)
 	if err != nil {
 		return nil, err

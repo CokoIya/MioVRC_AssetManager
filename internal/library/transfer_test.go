@@ -121,7 +121,7 @@ func winLibrary() *core.Store {
 		"pan:1Share":              {ShareURL: "https://pan.baidu.com/s/1Share", Downloaded: `D:\VRC\Assets\dl\Share`, DownloadDir: `C:\tmp\half`},
 	}
 	st.FirstSeen = map[string]int64{"booth:111": 100, "path:Assets/衣服/材质/x.zip": 200, "path:Other/道具/a": 300}
-	st.Overrides = map[string]string{`d:\vrc\assets\衣服`: "split", `e:\other\junk`: "ignore", `c:\elsewhere`: "ignore"}
+	st.Overrides = map[string]string{`d:\vrc\assets\衣服`: "split", `d:\vrc\assets\dl\share`: "bundle", `e:\other\junk`: "ignore", `c:\elsewhere`: "ignore"}
 	st.Booth["111"] = &core.BoothInfo{ID: "111", Name: "Moon Dress", Cover: `C:\Users\me\AppData\Local\MioVRC_AssetManager\covers\booth_111.jpg`}
 	st.Purchases["111"] = &core.Purchase{ID: "111", Cover: `libdata\covers\purchase_111.jpg`}
 	st.Downloaded = map[string]*core.DLRecord{"1": {Item: "111", Path: `D:\VRC\Assets\dl\111 Moon Dress`}, "2": {Item: "x", Path: `C:\nowhere\x`}}
@@ -185,7 +185,7 @@ func TestRemapStore(t *testing.T) {
 	if out.FirstSeen["path:Stuff/衣服/材质/x.zip"] != 200 || out.FirstSeen["booth:111"] != 100 || len(out.FirstSeen) != 2 {
 		t.Errorf("first seen: %v", out.FirstSeen)
 	}
-	if len(out.Overrides) != 1 || out.Overrides[core.PathKey(`F:\Lib\Stuff\衣服`)] != "split" {
+	if len(out.Overrides) != 2 || out.Overrides[core.PathKey(`F:\Lib\Stuff\衣服`)] != "split" || out.Overrides[core.PathKey(`F:\Lib\Stuff\dl\Share`)] != "bundle" {
 		t.Errorf("overrides: %v", out.Overrides)
 	}
 	if out.Booth["111"].Cover != "/data/covers/booth_111.jpg" || out.Purchases["111"].Cover != "" {
@@ -732,7 +732,7 @@ func TestExportLeavesOutMachineData(t *testing.T) {
 	st.Settings.Roots, st.Settings.HideZh = []string{t.TempDir()}, true
 	for _, f := range []string{"ai.json", "ai-key.dat", "booth-session.dat", "gumroad-session.dat", "baidu-session.dat", "web-session.dat", "library.log",
 		"booth-debug.html", "pan-debug.txt", "cloud-debug.txt", "wishlist.json", "follows.json", "updates.json", "gencovers.json", "checkups.json", "pkgcovers.json",
-		"transfer.json", "tidy-cache.json", "guidcache.json", "web-login/Default/Preferences.json", "webview/EBWebView/Local State.json", "booth-profile/x.json",
+		"transfer.json", "tidy-cache.json", "guidcache.json", "web-login/Default/Preferences.json", "web-xianyu/EBWebView/Local State.json", "webview/EBWebView/Local State.json", "booth-profile/x.json",
 		"booth-profile-firefox/cookies.json", "covers/a.jpg", "covers/generated/g.png", "covers/thumbs/a.jpg", "covers/unitypackage/p.png", "recipes/r.json",
 		"reports/x.png", "vpm/vrc-official.json", "update/x.json", "shots/s.png", "import-backup-1.zip", "library.json.broken-20260101-000000", "follows.json.broken",
 		"exe.stamp", "notes.txt", "covers/SHORT~1.jpg"} {
@@ -761,7 +761,7 @@ func TestExportLeavesOutMachineData(t *testing.T) {
 		t.Error("the export changed the running library")
 	}
 	// a short name Windows keeps for a long one never passes for a data file
-	for rel, want := range map[string]bool{"WEB-LO~1/Cookies.json": false, "BOOTH-~1/x.json": false, "covers/UNITYP~1/p.png": false, "AI~1.json": false,
+	for rel, want := range map[string]bool{"WEB-LO~1/Cookies.json": false, "WEB-XI~1/x.json": false, "web-xianyu/EBWebView/Preferences.json": false, "BOOTH-~1/x.json": false, "covers/UNITYP~1/p.png": false, "AI~1.json": false,
 		"covers/a~b.jpg": true, "covers/a.jpg": true, "wishlist.json": true, "ai.json": false, "checkups.json": false, "pkgcovers.json": false, "covers/unitypackage/p.png": false} {
 		if dataFileOK(rel) != want {
 			t.Errorf("dataFileOK(%q) = %v", rel, !want)
@@ -778,11 +778,11 @@ func TestImportKeepsMachineSettings(t *testing.T) {
 	pic := filepath.Join(here, "private.png")
 	writeBytes(t, pic, []byte("png"))
 	writeBytes(t, filepath.Join(core.CoversDir(), "user_1.jpg"), []byte("jpg"))
-	mine := core.Settings{Proxy: "", DownloadDir: "", NoUpdateCheck: false, WindowMode: "tab", Lang: "ja", SkipVersion: "1.7.5", NoWatch: true}
+	mine := core.Settings{Proxy: "", DownloadDir: "", NoUpdateCheck: false, WindowMode: "tab", Lang: "ja", SkipVersion: "1.7.5", NoWatch: true, XyNoticed: true, NoXyClip: true}
 	st.Settings, st.AutoDLDir = mine, filepath.Join(here, "MioVRCdownload")
 	lib, _ := json.Marshal(map[string]any{"version": 1, "autoDlDir": here,
 		"settings": map[string]any{"roots": []string{`\\evil.example\share`, "//evil.example/share2", here}, "proxy": "http://203.0.113.9:8080", "downloadDir": here, "noUpdateCheck": true,
-			"windowMode": "", "lang": "en", "skipVersion": "9.9.9", "hideZh": true, "styles": []string{"甜美=sweet"}, "noWatch": true},
+			"windowMode": "", "lang": "en", "skipVersion": "9.9.9", "hideZh": true, "styles": []string{"甜美=sweet"}, "noWatch": true, "xyExternal": true, "xyNoticed": false, "noXyClip": false},
 		"user": map[string]any{
 			"booth:1":  map[string]any{"notes": "n1", "cover": pic},                                    // a picture of this computer the zip names
 			"booth:2":  map[string]any{"notes": "n2", "cover": `\\evil.example\share\c.png`},           // … of another computer
@@ -814,7 +814,8 @@ func TestImportKeepsMachineSettings(t *testing.T) {
 		defer st.Mu.RUnlock()
 		s := st.Settings
 		if s.Proxy != mine.Proxy || s.DownloadDir != mine.DownloadDir || s.NoUpdateCheck != mine.NoUpdateCheck || s.WindowMode != mine.WindowMode || s.Lang != mine.Lang ||
-			s.SkipVersion != mine.SkipVersion || st.AutoDLDir != filepath.Join(here, "MioVRCdownload") {
+			s.SkipVersion != mine.SkipVersion || st.AutoDLDir != filepath.Join(here, "MioVRCdownload") ||
+			s.XyExternal != mine.XyExternal || s.XyNoticed != mine.XyNoticed || s.NoXyClip != mine.NoXyClip { // (how 闲鱼 opens is this computer's choice too)
 			t.Errorf("%s: this computer's settings changed: %+v, autoDlDir %q", when, s, st.AutoDLDir)
 		}
 	}

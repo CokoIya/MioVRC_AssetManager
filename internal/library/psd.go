@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"vrclib/internal/archive"
 	"vrclib/internal/core"
 	"vrclib/internal/naming"
 )
@@ -26,7 +27,7 @@ func psdDims(p string) (int, int) {
 	return int(binary.BigEndian.Uint32(h[18:22])), int(binary.BigEndian.Uint32(h[14:18]))
 }
 
-type zipInfo struct{ psds, models, packages int }
+type zipInfo struct{ psds, models, packages, archives int }
 
 // zipListing counts what a zip holds without unpacking it (only the central directory is read).
 func zipListing(p string) zipInfo {
@@ -45,6 +46,8 @@ func zipListing(p string) zipInfo {
 			zi.models++
 		case ext == ".unitypackage":
 			zi.packages++
+		case archive.IsArchiveFile(f.Name):
+			zi.archives++
 		}
 	}
 	return zi

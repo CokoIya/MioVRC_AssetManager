@@ -91,10 +91,12 @@ type stateResp struct {
 	DLDir       string                   `json:"dlDir"`
 	BoothLogin  bool                     `json:"boothLogin"`         // a saved Booth login exists
 	WhatsNew    []update.ChangeEntry     `json:"whatsNew,omitempty"` // shown once after an update
-	PaneMode    string                   `json:"paneMode"`           // how Booth / 闲鱼 pages open: "native", "window" or "" (system browser)
+	PaneMode    string                   `json:"paneMode"`           // how Booth, netdisk … pages open: "native", "window" or "" (system browser)
 	BoothWeb    string                   `json:"boothWeb"`           // https://booth.pm (tests: a local server)
 	BoothAcc    string                   `json:"boothAccounts"`
-	XYBase      string                   `json:"xyBase"` // https://www.goofish.com
+	XYBase      string                   `json:"xyBase"`  // https://www.goofish.com
+	XyMode      string                   `json:"xyMode"`  // where 闲鱼's pages open: "embed" (a view of their own in the window) or "external" (the default browser)
+	XyEmbed     bool                     `json:"xyEmbed"` // this computer can show them in the window (the player may still prefer the browser)
 	Import      *unity.ImportJob         `json:"importJob,omitempty"`
 	NewProject  *unity.NewProjectJob     `json:"newProject,omitempty"`
 	ArcTools    []string                 `json:"arcTools"` // archive programs found (the player's default first)
@@ -194,6 +196,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 		resp.DefaultBrowser = webpane.BrowserLabel(core.DefaultBrowserExe())
 		resp.Downloads, resp.DLNeedLogin, resp.BoothLogin = purchases.DLSnapshot(), purchases.DLNeedLogin(), len(purchases.LoadBoothSession()) > 0
 		resp.PaneMode, resp.BoothWeb, resp.BoothAcc, resp.XYBase = webpane.PaneMode(), core.BoothWebBase(), core.BoothAccountsBase(), webpane.XianyuBase()
+		resp.XyMode, resp.XyEmbed = webpane.XyMode(st), webpane.XyCanEmbed()
 		resp.Import = unity.ImportSnapshot()
 		resp.NewProject = unity.NewProjectSnapshot()
 		resp.PanJobs, resp.Baidu, resp.BaiduLogin, resp.PanWeb = pandl.PanJobsSnapshot(), pandl.CurrentBaiduAccount(), pandl.BaiduLoginURL(), core.PanBase()
@@ -468,6 +471,8 @@ func NewMux(st *core.Store) *http.ServeMux {
 			s.Lang = ""
 		}
 		st.Mu.Lock()
+		// (how 闲鱼's pages open is set through /api/xy/prefs only: the page's copy of the settings may be an older one)
+		s.XyExternal, s.XyNoticed, s.NoXyClip = st.Settings.XyExternal, st.Settings.XyNoticed, st.Settings.NoXyClip
 		st.Settings = s
 		st.Mu.Unlock()
 		core.ProxyChanged()
@@ -572,11 +577,22 @@ func NewMux(st *core.Store) *http.ServeMux {
 		p, mode := str(b, "path"), str(b, "mode")
 		st.Mu.Lock()
 		if mode == "" {
+			// a folder that was split — a collection by the program, or by the player with the levels the
+			// program marked below it: one 恢复 makes it one card again, and leaves no marks behind
+			if old := st.Overrides[core.PathKey(p)]; old == "bundle" || old == "split" {
+				library.ForgetBundles(st, p)
+			}
 			delete(st.Overrides, core.PathKey(p))
 		} else {
 			st.Overrides[core.PathKey(p)] = mode
 		}
 		st.Mu.Unlock()
+		if mode == "split" {
+			// a collection in it (合集包): its levels are marked too, so that one split reaches the products; and
+			// a folder that only wraps another is opened down to the first one that holds more
+			library.MarkBundles(st, p, nil)
+			library.OpenWrappers(st, p)
+		}
 		_ = st.Save()
 		ok := library.StartPipeline(st, true, true, false, false, nil)
 		core.WriteJSON(w, map[string]any{"ok": true, "started": ok})
@@ -780,62 +796,8 @@ func NewMux(st *core.Store) *http.ServeMux {
 		}
 		core.WriteJSON(w, map[string]any{"ok": true, "item": d})
 	})
-	// ---------- Booth / 闲鱼 pages inside the program ----------
-	webpane.Pane.St = st
-	post("/api/pane/open", func(w http.ResponseWriter, b map[string]json.RawMessage) {
-		u := str(b, "url")
-		if !(strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://")) {
-			core.WriteJSON(w, map[string]any{"ok": false, "err": "网址无效"})
-			return
-		}
-		if webpane.PaneMode() == "" {
-			core.WriteJSON(w, map[string]any{"ok": core.OpenURL(u) == nil, "external": true})
-			return
-		}
-		if err := webpane.Pane.Open(u, str(b, "kind"), true); err != nil {
-			core.Logf("页面打不开 %s: %v", u, err)
-			core.WriteJSON(w, map[string]any{"ok": false, "err": "页面无法打开：" + err.Error()})
-			return
-		}
-		if str(b, "kind") == "pan" && !pandl.CurrentBaiduAccount().LoggedIn {
-			pandl.WatchBaiduLogin(st) // a netdisk page: once the player logs in there, downloads can use it
-		}
-		if str(b, "kind") == "gumroad" && purchases.LoadGumSession() == nil {
-			purchases.WatchGumroadLogin(st) // the Gumroad login page: once the player is in, the purchases are read
-		}
-		core.WriteJSON(w, map[string]any{"ok": true, "mode": webpane.PaneMode()})
-	})
-	post("/api/pane/place", func(w http.ResponseWriter, b map[string]json.RawMessage) {
-		var r struct {
-			X, Y, W, H, DPR float64
-			Show            bool
-		}
-		raw, _ := json.Marshal(b)
-		_ = json.Unmarshal(raw, &r)
-		webpane.Pane.Place(r.X, r.Y, r.W, r.H, r.DPR, r.Show)
-		core.WriteJSON(w, map[string]any{"ok": true})
-	})
-	post("/api/pane/state", func(w http.ResponseWriter, b map[string]json.RawMessage) {
-		core.WriteJSON(w, webpane.Pane.State())
-	})
-	post("/api/pane/act", func(w http.ResponseWriter, b map[string]json.RawMessage) {
-		act := str(b, "act")
-		if act == "external" {
-			u, err := webpane.Pane.Act("url")
-			if err != nil || u == "" {
-				core.WriteJSON(w, map[string]any{"ok": false, "err": "当前未打开任何页面"})
-				return
-			}
-			core.WriteJSON(w, map[string]any{"ok": core.OpenURL(u) == nil})
-			return
-		}
-		text, err := webpane.Pane.Act(act)
-		if err != nil {
-			core.WriteJSON(w, map[string]any{"ok": false, "err": err.Error()})
-			return
-		}
-		core.WriteJSON(w, map[string]any{"ok": true, "text": text})
-	})
+	// ---------- Booth, netdisk … and 闲鱼 pages inside the program (paneapi.go) ----------
+	registerPane(st, post)
 	// ---------- Baidu Netdisk: the account and downloads ----------
 	post("/api/baidu/check", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		s := pandl.LoadBaiduSession()
@@ -922,6 +884,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 	registerRecipes(st, post)
 	registerLibTools(st, post)
 	registerCloudAPI(st, post)
+	registerBundle(st, post)
 	registerStores(st, post)
 	post("/api/projects", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		core.WriteJSON(w, map[string]any{"ok": true, "projects": unity.ProjectCards(st)})

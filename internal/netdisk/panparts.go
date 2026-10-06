@@ -34,7 +34,9 @@ var (
 	reAlphaTok = regexp.MustCompile(`^[A-Za-z]{3,15}$`)
 )
 
-func panPartKind(name string) string {
+// PanPartKind: what an entry of a product is for, by its name — "psd", "material", "doc" or "bonus" for what
+// comes with a product, "variant" for the product itself. (Asked of folders on disk too: library/bundle.go.)
+func PanPartKind(name string) string {
 	l := strings.ToLower(name)
 	switch {
 	case naming.PSDExt[core.LowerExt(name)] || naming.RePSDName.MatchString(l):
@@ -73,7 +75,7 @@ func AnalyzePan(l *core.PanListing, defs []naming.BaseDef) PanInfo {
 	info.AllPSD = len(files) > 0
 	for _, f := range files {
 		n := core.StripArchiveExt(f.Name)
-		p := PanPart{Path: prefix + "/" + f.Name, Name: f.Name, Size: f.Size, Dir: f.Dir, Kind: panPartKind(f.Name)}
+		p := PanPart{Path: prefix + "/" + f.Name, Name: f.Name, Size: f.Size, Dir: f.Dir, Kind: PanPartKind(f.Name)}
 		if f.Dir {
 			p.Size = panTreeSize(f)
 		}
@@ -101,7 +103,7 @@ func AnalyzePan(l *core.PanListing, defs []naming.BaseDef) PanInfo {
 				for _, tok := range reTokSplit.Split(strings.TrimSpace(restAfter(core.StripArchiveExt(p.Name), info.Name)), -1) {
 					lt := strings.ToLower(tok)
 					if !reAlphaTok.MatchString(tok) || naming.ForStop[lt] || naming.ReGenericKey.MatchString(lt) || naming.ReStructural.MatchString(lt) ||
-						panPartKind(tok) != "variant" || len(naming.DetectBases(tok, defs)) > 0 {
+						PanPartKind(tok) != "variant" || len(naming.DetectBases(tok, defs)) > 0 {
 						continue
 					}
 					p.Bases = core.UniqStrings(append(p.Bases, naming.CanonBase(tok, defs)))

@@ -270,10 +270,13 @@ func (c *scanCtx) scanContainer(dir, root string, depth int, hints []string) {
 				}
 				continue
 			}
-			if mode == "split" || (mode == "" && c.isContainer(d, depth)) {
+			// "bundle": a level of a collection, marked by the program itself (bundle.go); "split": by the player
+			if mode == "split" || mode == "bundle" || (mode == "" && c.isContainer(d, depth)) {
 				c.scanContainer(d, root, depth+1, append(append([]string{}, hints...), filepath.Base(d)))
-				// archives grouped with a container folder still become their own asset
-				if len(g.files) > 0 {
+				// archives grouped with a container folder still become their own asset — but not the archive
+				// a level of a collection was unpacked from, where it was kept: that would be the collection
+				// in one card again, beside the cards of its products
+				if len(g.files) > 0 && mode != "bundle" {
 					c.addAsset(&group{key: g.key, files: g.files}, root, hints)
 				}
 				continue
@@ -430,9 +433,13 @@ func (c *scanCtx) addAsset(g *group, root string, hints []string) {
 	ids := map[string]int{}
 	var names, topNames []string
 	names = append(names, rawName)
-	for _, d := range g.dirs {
+	bundle := false // it may be a collection of products: looked at below
+	for i, d := range g.dirs {
 		a.HasDir = true
 		info := walkAsset(d)
+		if i == 0 { // two packages or archives may be two products, and so may one zip, of zips
+			bundle = len(info.packages)+len(info.archives)+info.otherArc >= 2 || len(info.archives) == 1
+		}
 		a.Size += info.size
 		a.Files += info.files
 		a.Packages = append(a.Packages, info.packages...)
@@ -483,8 +490,14 @@ func (c *scanCtx) addAsset(g *group, root string, hints []string) {
 				a.PSDInZip += zl.psds
 				a.ModelFiles += zl.models
 				a.ZipPackages += zl.packages
+				bundle = len(g.files) == 1 && zl.archives >= 2
 			}
 		}
+	}
+	// a card that holds a collection of products (合集包) says so: it is split before anything of it is imported
+	if bundle {
+		b := ScanBundle(primary, nil, naming.ParseBases(c.settings.Bases), c.overrides)
+		a.Bundle, a.BundlePacked = b.Products, b.Packed
 	}
 	// booth id: folder/file names first (outer → inner), then .url shortcuts (display/fetch only, never identity)
 	nameID := ""
@@ -599,6 +612,7 @@ func mergeAsset(dst, src *core.Asset) {
 	dst.PSDInZip = max(dst.PSDInZip, src.PSDInZip)
 	dst.ModelFiles = max(dst.ModelFiles, src.ModelFiles)
 	dst.ZipPackages = max(dst.ZipPackages, src.ZipPackages)
+	dst.Bundle, dst.BundlePacked = max(dst.Bundle, src.Bundle), dst.BundlePacked || src.BundlePacked
 	if dst.Files < src.Files {
 		dst.Files = src.Files
 	}

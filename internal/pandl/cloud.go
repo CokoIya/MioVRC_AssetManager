@@ -333,7 +333,7 @@ func runCloudJob(ctx context.Context, st *core.Store, j *PanJob) error {
 	setPan(j, func(j *PanJob) { j.Done, j.Total, j.Files, j.Speed = total, total, len(files), 0 })
 	// unpack (archives inside archives too), then into the library: the folder replaces the card — as a Baidu
 	// share's download ends (runPanJob)
-	var failed, unpacked []string
+	var failed, unpacked, from []string
 	if extract {
 		setPan(j, func(j *PanJob) { j.Stage, j.Msg = "unpack", "正在解压" })
 		var remove func([]string) error
@@ -353,8 +353,9 @@ func runCloudJob(ctx context.Context, st *core.Store, j *PanJob) error {
 		for a, e := range res.Failed {
 			failed = append(failed, filepath.Base(a)+"："+e)
 		}
-		unpacked = res.Done
+		unpacked, from = res.Done, res.From
 	}
+	bundle := library.MarkBundles(st, local, library.Unpacked(unpacked, from)) // a collection of products: a card for each
 	st.Mu.Lock()
 	if u := st.User[j.Key]; u != nil {
 		u.Downloaded, u.DownloadDir = local, ""
@@ -388,10 +389,12 @@ func runCloudJob(ctx context.Context, st *core.Store, j *PanJob) error {
 	if len(failed) > 0 {
 		note += "；部分压缩包解压失败"
 	}
+	said, noImport := bundleEnd(bundle, j.imp != nil)
+	note += said
 	setPan(j, func(j *PanJob) { j.Stage, j.Msg, j.Failed, j.File = "done", note, failed, "" })
 	core.Logf("%s 下载完成 %s → %s", service, j.Key, local)
 	library.StartPipeline(st, true, true, auto, false, nil)
-	if j.imp != nil {
+	if j.imp != nil && !noImport {
 		req := *j.imp
 		req.Key, req.Paths = j.Key, []string{local}
 		if !whole { // only what was picked (an archive in it is a folder now)

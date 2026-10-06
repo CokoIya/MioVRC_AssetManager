@@ -37,6 +37,12 @@ type Chromium struct {
 
 	failed uintptr // vrclib patch: environment or controller could not be created
 
+	// Plain: a view that only shows a web site. vrclib patch. Set before Embed: nothing of the host's is put
+	// into its pages (no window.external bridge, no script at document creation), messages from its pages are
+	// not listened to, and its permissions, requests, keys and new windows are the browser's own business. What
+	// the host needs of it goes through the calls in vrclib_plain.go.
+	Plain bool
+
 	// permissions
 	permissions      map[CoreWebView2PermissionKind]CoreWebView2PermissionState
 	globalPermission *CoreWebView2PermissionState
@@ -108,6 +114,12 @@ func (e *Chromium) Embed(hwnd uintptr) bool {
 			0,
 		)
 		if r == 0 {
+			// vrclib patch: the window was closed while the view was being created. The message that ends the
+			// program is for the loop of Run(), which would wait for ever without it: it is posted again
+			_, _, _ = w32.User32PostQuitMessage.Call(msg.WParam)
+			break
+		}
+		if int32(r) == -1 { // vrclib patch: an error, not a message
 			break
 		}
 		_, _, _ = w32.User32TranslateMessage.Call(uintptr(unsafe.Pointer(&msg)))
@@ -116,7 +128,9 @@ func (e *Chromium) Embed(hwnd uintptr) bool {
 	if atomic.LoadUintptr(&e.failed) != 0 || e.webview == nil {
 		return false
 	}
-	e.Init("window.external={invoke:s=>window.chrome.webview.postMessage(s)}")
+	if !e.Plain { // vrclib patch
+		e.Init("window.external={invoke:s=>window.chrome.webview.postMessage(s)}")
+	}
 	return true
 }
 
@@ -176,8 +190,10 @@ func (e *Chromium) Release() uintptr {
 }
 
 func (e *Chromium) EnvironmentCompleted(res uintptr, env *ICoreWebView2Environment) uintptr {
-	if int64(res) < 0 {
-		log.Printf("Creating environment failed with %08x", res)
+	// vrclib patch: an HRESULT is 32 bits wide and arrives in a 64-bit register without its sign, so a failure
+	// was never seen as one here (and the nil that comes with it was used)
+	if failedHR(res) || env == nil {
+		log.Printf("Creating environment failed with %08x", uint32(res))
 		atomic.StoreUintptr(&e.failed, 1)
 		atomic.StoreUintptr(&e.inited, 1)
 		return 0
@@ -185,17 +201,22 @@ func (e *Chromium) EnvironmentCompleted(res uintptr, env *ICoreWebView2Environme
 	_, _, _ = env.vtbl.AddRef.Call(uintptr(unsafe.Pointer(env)))
 	e.environment = env
 
-	_, _, _ = env.vtbl.CreateCoreWebView2Controller.Call(
+	hr, _, _ := env.vtbl.CreateCoreWebView2Controller.Call(
 		uintptr(unsafe.Pointer(env)),
 		e.hwnd,
 		uintptr(unsafe.Pointer(e.controllerCompleted)),
 	)
+	if failedHR(hr) { // vrclib patch: no answer will come for a call that was refused
+		log.Printf("Creating controller failed with %08x", uint32(hr))
+		atomic.StoreUintptr(&e.failed, 1)
+		atomic.StoreUintptr(&e.inited, 1)
+	}
 	return 0
 }
 
 func (e *Chromium) CreateCoreWebView2ControllerCompleted(res uintptr, controller *ICoreWebView2Controller) uintptr {
-	if int64(res) < 0 {
-		log.Printf("Creating controller failed with %08x", res)
+	if failedHR(res) || controller == nil { // vrclib patch (see EnvironmentCompleted): E_ABORT when the window is closed meanwhile
+		log.Printf("Creating controller failed with %08x", uint32(res))
 		atomic.StoreUintptr(&e.failed, 1)
 		atomic.StoreUintptr(&e.inited, 1)
 		return 0
@@ -209,35 +230,46 @@ func (e *Chromium) CreateCoreWebView2ControllerCompleted(res uintptr, controller
 	}
 
 	var token _EventRegistrationToken
-	_, _, _ = controller.vtbl.GetCoreWebView2.Call(
+	hr, _, _ := controller.vtbl.GetCoreWebView2.Call(
 		uintptr(unsafe.Pointer(controller)),
 		uintptr(unsafe.Pointer(&e.webview)),
 	)
+	if failedHR(hr) || e.webview == nil { // vrclib patch
+		e.webview = nil
+		log.Printf("Getting the web view failed with %08x", uint32(hr))
+		atomic.StoreUintptr(&e.failed, 1)
+		atomic.StoreUintptr(&e.inited, 1)
+		return 0
+	}
 	_, _, _ = e.webview.vtbl.AddRef.Call(
 		uintptr(unsafe.Pointer(e.webview)),
 	)
-	_, _, _ = e.webview.vtbl.AddWebMessageReceived.Call(
-		uintptr(unsafe.Pointer(e.webview)),
-		uintptr(unsafe.Pointer(e.webMessageReceived)),
-		uintptr(unsafe.Pointer(&token)),
-	)
-	_, _, _ = e.webview.vtbl.AddPermissionRequested.Call(
-		uintptr(unsafe.Pointer(e.webview)),
-		uintptr(unsafe.Pointer(e.permissionRequested)),
-		uintptr(unsafe.Pointer(&token)),
-	)
-	_, _, _ = e.webview.vtbl.AddWebResourceRequested.Call(
-		uintptr(unsafe.Pointer(e.webview)),
-		uintptr(unsafe.Pointer(e.webResourceRequested)),
-		uintptr(unsafe.Pointer(&token)),
-	)
+	if !e.Plain { // vrclib patch: a plain view has no bridge to listen on and leaves permissions and requests to the browser
+		_, _, _ = e.webview.vtbl.AddWebMessageReceived.Call(
+			uintptr(unsafe.Pointer(e.webview)),
+			uintptr(unsafe.Pointer(e.webMessageReceived)),
+			uintptr(unsafe.Pointer(&token)),
+		)
+		_, _, _ = e.webview.vtbl.AddPermissionRequested.Call(
+			uintptr(unsafe.Pointer(e.webview)),
+			uintptr(unsafe.Pointer(e.permissionRequested)),
+			uintptr(unsafe.Pointer(&token)),
+		)
+		_, _, _ = e.webview.vtbl.AddWebResourceRequested.Call(
+			uintptr(unsafe.Pointer(e.webview)),
+			uintptr(unsafe.Pointer(e.webResourceRequested)),
+			uintptr(unsafe.Pointer(&token)),
+		)
+	}
 	_, _, _ = e.webview.vtbl.AddNavigationCompleted.Call(
 		uintptr(unsafe.Pointer(e.webview)),
 		uintptr(unsafe.Pointer(e.navigationCompleted)),
 		uintptr(unsafe.Pointer(&token)),
 	)
 
-	_ = e.controller.AddAcceleratorKeyPressed(e.acceleratorKeyPressed, &token)
+	if !e.Plain { // vrclib patch: the browser of a plain view does not wait for the host at every key
+		_ = e.controller.AddAcceleratorKeyPressed(e.acceleratorKeyPressed, &token)
+	}
 
 	atomic.StoreUintptr(&e.inited, 1)
 

@@ -1542,7 +1542,7 @@ func runPanJob(ctx context.Context, st *core.Store, j *PanJob) error {
 	}
 	setPan(j, func(j *PanJob) { j.Done, j.Files, j.Speed = total, len(files), 0 })
 	// 3. unpack (archives inside archives too); the downloaded archives can go, they are in the netdisk
-	var failed, unpacked []string
+	var failed, unpacked, from []string
 	if extract {
 		setPan(j, func(j *PanJob) { j.Stage, j.Msg = "unpack", "正在解压" })
 		var remove func([]string) error
@@ -1562,8 +1562,11 @@ func runPanJob(ctx context.Context, st *core.Store, j *PanJob) error {
 		for a, e := range res.Failed {
 			failed = append(failed, filepath.Base(a)+"："+e)
 		}
-		unpacked = res.Done
+		unpacked, from = res.Done, res.From
 	}
+	// a share that is one archive of many products (合集包): the levels of its folder are marked, so that the
+	// scan below makes a card for each product instead of one for the lot
+	bundle := library.MarkBundles(st, local, library.Unpacked(unpacked, from))
 	// 4. into the library: the folder replaces the netdisk card
 	st.Mu.Lock()
 	if u := st.User[j.Key]; u != nil {
@@ -1595,10 +1598,12 @@ func runPanJob(ctx context.Context, st *core.Store, j *PanJob) error {
 	if len(failed) > 0 {
 		note += "；部分压缩包解压失败"
 	}
+	said, noImport := bundleEnd(bundle, j.imp != nil)
+	note += said
 	setPan(j, func(j *PanJob) { j.Stage, j.Msg, j.Failed, j.File = "done", note, failed, "" })
 	core.Logf("网盘下载完成 %s → %s", j.Key, local)
 	library.StartPipeline(st, true, true, auto, false, nil)
-	if j.imp != nil {
+	if j.imp != nil && !noImport {
 		req := *j.imp
 		req.Key, req.Paths = j.Key, []string{local}
 		if !whole { // only what was picked (an archive in it is a folder now)
@@ -1613,6 +1618,22 @@ func runPanJob(ctx context.Context, st *core.Store, j *PanJob) error {
 		unity.StartImportWhenFree(st, req)
 	}
 	return nil
+}
+
+// bundleEnd: what a job says at its end when what it downloaded is a collection of products (合集包), and
+// whether the import that was to follow is off — a collection is split into cards, never imported whole.
+func bundleEnd(b library.BundleInfo, importing bool) (note string, noImport bool) {
+	switch {
+	case b.Products < 2:
+		return "", false
+	case len(b.Containers) == 0: // all of it is still packed (automatic unpacking is off, or did not work)
+		return "；合集包，拆分后可分别导入", true
+	}
+	note = fmt.Sprintf("；合集包，已拆分为 %d 个素材", b.Products)
+	if importing {
+		note += "；合集包不会整包导入，请在各素材卡片上分别导入"
+	}
+	return note, true
 }
 
 // panPick: one part of a netdisk card to save and download.

@@ -33,6 +33,10 @@ type Settings struct {
 	NoExtract     bool     `json:"noExtract"`     // keep downloaded zips packed
 	KeepZip       bool     `json:"keepZip"`       // keep the zip after unpacking it
 	Lang          string   `json:"lang"`          // the interface's language: "" = Chinese, "en", "ja" (web/i18n.js)
+	// 闲鱼's pages (webpane/xyview.go), and the links the player copies. Changed through /api/xy/prefs only.
+	XyExternal bool `json:"xyExternal"` // open them in the default browser, not in the window
+	XyNoticed  bool `json:"xyNoticed"`  // the note about how they open now has been read
+	NoXyClip   bool `json:"noXyClip"`   // do not offer the 闲鱼, Booth and netdisk links the player copies (named when it was the 闲鱼 tab's alone)
 }
 
 type Location struct {
@@ -82,6 +86,10 @@ type Asset struct {
 	ZipPackages int       `json:"zipPackages,omitempty"`
 	// rar / 7z / split volumes (unpacked only for an import)
 	OtherArchives int `json:"otherArchives,omitempty"`
+	// a collection of products in one card (合集包): how many products, and whether some of them are still
+	// inside archives. It is split into a card for each before anything is imported (library/bundle.go).
+	Bundle       int  `json:"bundle,omitempty"`
+	BundlePacked bool `json:"bundlePacked,omitempty"`
 }
 
 // PSDFile is one texture source file (PSD, PSB, CLIP, SAI …) found in an asset folder.

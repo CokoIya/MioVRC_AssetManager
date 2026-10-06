@@ -50,7 +50,7 @@ func panIsContainer(f *core.PanFile) bool {
 			continue // pictures, readmes, links
 		}
 		cn := naming.CleanName(core.StripArchiveExt(c.Name))
-		if naming.IsGenericName(cn) || naming.IsStructuralName(cn, "") || panPartKind(c.Name) != "variant" {
+		if naming.IsGenericName(cn) || naming.IsStructuralName(cn, "") || PanPartKind(c.Name) != "variant" {
 			continue // Texture / PSD / 说明 belong to a product
 		}
 		entries = append(entries, c.Name)
@@ -88,7 +88,7 @@ func SplitPan(l *core.PanListing) []panItem {
 				}
 				continue
 			}
-			if naming.LooseAssetExt[core.LowerExt(f.Name)] && panPartKind(f.Name) != "doc" {
+			if naming.LooseAssetExt[core.LowerExt(f.Name)] && PanPartKind(f.Name) != "doc" {
 				items = append(items, panItem{Path: p, Node: f, Hints: hints})
 			}
 		}

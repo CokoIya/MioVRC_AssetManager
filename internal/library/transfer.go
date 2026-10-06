@@ -185,7 +185,7 @@ var (
 	//                  the previews (covers/unitypackage) are read from the packages anew
 	dataSkipFile = map[string]bool{"library.json": true, "library.json.bak": true, "guidcache.json": true, "tidy-cache.json": true,
 		"transfer.json": true, "manifest.json": true, "ai.json": true, "checkups.json": true, "pkgcovers.json": true}
-	dataSkipDir = map[string]bool{"booth-profile": true, "booth-profile-firefox": true, "web-login": true, "webview": true, "webview2": true,
+	dataSkipDir = map[string]bool{"booth-profile": true, "booth-profile-firefox": true, "web-login": true, "web-xianyu": true, "webview": true, "webview2": true,
 		"ebwebview": true, "update": true, "vpm": true, "shots": true, "downloads": true, "covers/thumbs": true, "covers/remote": true,
 		"covers/unitypackage": true}
 	dataExt = map[string]bool{".json": true, ".jpg": true, ".jpeg": true, ".png": true, ".webp": true, ".gif": true, ".txt": true, ".md": true, ".csv": true}
@@ -1275,13 +1275,14 @@ func copyStore(dst, src *core.Store) {
 // adoptStore puts the content of src into the running library. What is this computer's own stays as it is
 // here, whatever the zip says: the proxy all requests go through, where downloads go (the folder becomes an
 // asset folder), whether updates are looked for and which one was skipped, how the window opens, the
-// language. Caller holds st.Mu.
+// language, how 闲鱼's pages open. Caller holds st.Mu.
 func adoptStore(st, src *core.Store) {
 	mine, auto := st.Settings, st.AutoDLDir
 	copyStore(st, src)
 	st.Settings.Proxy, st.Settings.DownloadDir, st.AutoDLDir = mine.Proxy, mine.DownloadDir, auto
 	st.Settings.NoUpdateCheck, st.Settings.SkipVersion = mine.NoUpdateCheck, mine.SkipVersion
 	st.Settings.WindowMode, st.Settings.Lang = mine.WindowMode, mine.Lang
+	st.Settings.XyExternal, st.Settings.XyNoticed, st.Settings.NoXyClip = mine.XyExternal, mine.XyNoticed, mine.NoXyClip
 }
 
 func mergeUser(cur, in *core.UserData) {
