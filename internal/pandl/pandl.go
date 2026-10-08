@@ -2,6 +2,7 @@ package pandl
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -262,6 +263,7 @@ type bdClient struct {
 	bdstoken string
 	dlUA     int
 	ref      string // Referer: the share page while working on a share
+	last     []byte // Baidu's last answer (the start of it), for pan-debug.txt
 }
 
 // the download answers to the netdisk client; the second one when Baidu turns the first away
@@ -362,6 +364,7 @@ func (b *bdClient) call(method, p string, q, form url.Values, out any) (int, err
 	if err != nil {
 		return 0, err
 	}
+	b.last = body[:min(len(body), 8<<10)]
 	var e struct {
 		Errno json.Number `json:"errno"`
 	}
@@ -421,32 +424,65 @@ func (b *bdClient) Whoami() (name string, vip int, err error) {
 
 // ---------- the share ----------
 
-func (b *bdClient) openShare(surl, pwd string) (*netdisk.BDShare, error) {
-	short := strings.TrimPrefix(surl, "1")
+// panSekeys: the access Baidu gave to a share once its code was taken (randsk, which goes into the BDCLND
+// cookie), for this run of the program. A download that is tried again opens the share with it and does not
+// have the code checked again: every check makes Baidu more likely to ask for a captcha.
+var (
+	panSekeyMu sync.Mutex
+	panSekeys  = map[string]string{}
+)
+
+func shareSekey(surl string) string {
+	panSekeyMu.Lock()
+	defer panSekeyMu.Unlock()
+	return panSekeys[surl]
+}
+
+func keepSekey(surl, rs string) {
+	panSekeyMu.Lock()
+	defer panSekeyMu.Unlock()
+	if rs == "" {
+		delete(panSekeys, surl)
+	} else {
+		panSekeys[surl] = rs
+	}
+}
+
+// panAnswer: what the player read in the captcha shown — or a new picture was asked for instead.
+type panAnswer struct {
+	code    string
+	refresh bool
+}
+
+// askCaptcha shows the player Baidu's captcha picture and waits for what they read in it. bad: the answer
+// before was not taken.
+type askCaptcha func(img []byte, bad bool) (panAnswer, error)
+
+// panCaptchaRounds: the captchas a share's code is tried with before the job gives up (a code that is
+// wrong comes back like a captcha that was misread).
+const panCaptchaRounds = 6
+
+// openShare opens the share's page, after its code where it has one. ask: Baidu wants a captcha read before
+// it checks the code — the player is shown it (nil: nobody to ask, and the job fails with that).
+func (b *bdClient) openShare(surl, pwd string, ask askCaptcha) (*netdisk.BDShare, error) {
 	defer func() { b.ref = core.PanBase() + "/s/" + surl }() // what follows is done "from" the share page
 	if pwd != "" {
-		b.ref = core.PanBase() + "/share/init?surl=" + short
-		var v struct {
-			Randsk string `json:"randsk"`
+		if rs := shareSekey(surl); rs != "" { // the code was taken a while ago: the page may open with that
+			b.setCookie("BDCLND", rs)
+			if s, _, _, err := b.sharePage(surl); err == nil && s != nil {
+				return s, nil
+			}
+			keepSekey(surl, "")
 		}
-		errno, err := b.call("POST", "/share/verify", url.Values{"surl": {short}, "t": {strconv.FormatInt(time.Now().UnixMilli(), 10)}},
-			url.Values{"pwd": {pwd}, "vcode": {""}, "vcode_str": {""}}, &v)
-		if err != nil {
+		if err := b.verify(surl, pwd, ask); err != nil {
 			return nil, err
 		}
-		if errno != 0 {
-			return nil, errors.New(netdisk.PanErrno(errno))
-		}
-		if v.Randsk != "" {
-			b.setCookie("BDCLND", v.Randsk)
-		}
 	}
-	b.ref = core.PanBase() + "/disk/home"
-	page, resp, err := b.do("GET", core.PanBase()+"/s/"+surl, nil)
+	s, page, resp, err := b.sharePage(surl)
 	if err != nil {
 		return nil, err
 	}
-	if s := netdisk.ParseSharePage(page); s != nil {
+	if s != nil {
 		return s, nil
 	}
 	text := string(page)
@@ -464,6 +500,112 @@ func (b *bdClient) openShare(surl, pwd string) (*netdisk.BDShare, error) {
 	}
 	netdisk.WriteDebug(core.Truncate(text, 200000))
 	return nil, errors.New("无法读取分享内容（百度网盘页面可能已改版）")
+}
+
+// sharePage: the share's web page, and the share read from it (nil when the page is not the share's).
+func (b *bdClient) sharePage(surl string) (*netdisk.BDShare, []byte, *http.Response, error) {
+	b.ref = core.PanBase() + "/disk/home"
+	page, resp, err := b.do("GET", core.PanBase()+"/s/"+surl, nil)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return netdisk.ParseSharePage(page), page, resp, nil
+}
+
+// verify has Baidu check the share's code. When Baidu wants a captcha read first (-62), the player is shown
+// one; a captcha that was misread comes back as -63, or as -9 like a wrong code: a new picture is shown, and
+// after a few the code itself is taken to be wrong.
+func (b *bdClient) verify(surl, pwd string, ask askCaptcha) error {
+	short := strings.TrimPrefix(surl, "1")
+	init := core.PanBase() + "/share/init?surl=" + short
+	vcode, vstr := "", ""
+	for round := 0; ; round++ {
+		b.ref = init
+		var v struct {
+			Randsk string `json:"randsk"`
+		}
+		errno, err := b.call("POST", "/share/verify", url.Values{"surl": {short}, "t": {strconv.FormatInt(time.Now().UnixMilli(), 10)}},
+			url.Values{"pwd": {pwd}, "vcode": {vcode}, "vcode_str": {vstr}}, &v)
+		if err != nil {
+			return err
+		}
+		captcha := errno == -62 || errno == -63 || (vstr != "" && (errno == -9 || errno == -12))
+		switch {
+		case errno == 0:
+			if v.Randsk != "" {
+				b.setCookie("BDCLND", v.Randsk)
+				keepSekey(surl, v.Randsk)
+			}
+			return nil
+		case !captcha:
+			return errors.New(netdisk.PanErrno(errno))
+		case ask == nil:
+			return errors.New(netdisk.PanErrno(-62))
+		case round >= panCaptchaRounds:
+			return errors.New("验证码多次未通过，请确认提取码正确，或稍后再试")
+		}
+		bad := vstr != "" // a captcha was read, and not taken
+		for {
+			img, s, err := b.captcha(init)
+			if err != nil {
+				return err
+			}
+			a, err := ask(img, bad)
+			if err != nil {
+				return err
+			}
+			if !a.refresh {
+				vcode, vstr = a.code, s
+				break
+			}
+			bad = false
+		}
+	}
+}
+
+// captcha: a new captcha picture for the share's code check, and the string Baidu knows it by. Only a
+// picture at Baidu's own address is fetched.
+func (b *bdClient) captcha(init string) ([]byte, string, error) {
+	b.ref = init
+	var r struct {
+		VcodeStr string `json:"vcode_str"`
+		VcodeImg string `json:"vcode_img"`
+	}
+	errno, err := b.call("GET", "/api/getcaptcha", url.Values{"prod": {"shareverify"}}, nil, &r)
+	if err != nil {
+		return nil, "", err
+	}
+	if errno != 0 || r.VcodeStr == "" {
+		return nil, "", fmt.Errorf("无法获取百度网盘验证码（错误 %d），请稍后重试", errno)
+	}
+	img := r.VcodeImg
+	if img == "" {
+		img = core.PanBase() + "/genimage?" + url.QueryEscape(r.VcodeStr)
+	}
+	if !baiduAddr(img) {
+		return nil, "", errors.New("无法获取百度网盘验证码图片，请稍后重试")
+	}
+	body, resp, err := b.do("GET", img, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	if resp.StatusCode != http.StatusOK || len(body) == 0 || len(body) > 256<<10 || !strings.HasPrefix(http.DetectContentType(body), "image/") {
+		return nil, "", errors.New("无法获取百度网盘验证码图片，请稍后重试")
+	}
+	return body, r.VcodeStr, nil
+}
+
+// baiduAddr: an https address of Baidu's — or of the stand-in the tests put in the netdisk's place.
+func baiduAddr(u string) bool {
+	p, err := url.Parse(u)
+	if err != nil || p.Host == "" || p.User != nil {
+		return false
+	}
+	if base, err := url.Parse(core.PanBase()); err == nil && p.Scheme == base.Scheme && p.Host == base.Host {
+		return true
+	}
+	h := strings.ToLower(p.Hostname())
+	return p.Scheme == "https" && (h == "baidu.com" || strings.HasSuffix(h, ".baidu.com"))
 }
 
 func (b *bdClient) shareList(s *netdisk.BDShare, dir string) ([]netdisk.PanRaw, error) {
@@ -552,6 +694,12 @@ type bdEntry struct {
 }
 
 func (b *bdClient) list(dir string) ([]bdEntry, error) {
+	all, _, err := b.listDir(dir)
+	return all, err
+}
+
+// listDir: what is in a folder of the player's netdisk, and whether the folder is there at all.
+func (b *bdClient) listDir(dir string) ([]bdEntry, bool, error) {
 	var all []bdEntry
 	for start := 0; start < 20000; start += 100 {
 		var r struct {
@@ -562,35 +710,43 @@ func (b *bdClient) list(dir string) ([]bdEntry, error) {
 		errno, err := b.call("GET", "/api/list", url.Values{"dir": {dir}, "order": {"name"}, "start": {strconv.Itoa(start)}, "num": {"100"}}, nil, &r)
 		b.ref = ref
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		if errno == -9 {
-			return nil, nil // not there
+			return nil, false, nil // not there
 		}
 		if errno != 0 {
-			return nil, bdWriteErr("读取网盘文件夹", errno)
+			return nil, false, bdWriteErr("读取网盘文件夹", errno)
 		}
 		all = append(all, r.List...)
 		if len(r.List) < 100 {
 			break
 		}
 	}
-	return all, nil
+	return all, true, nil
 }
 
-func (b *bdClient) mkdir(p string) error {
+// mkdir makes a folder in the player's netdisk and answers where it is: a name Baidu does not take as it is
+// comes back changed, and the path Baidu reports is the one the files are saved into.
+func (b *bdClient) mkdir(p string) (string, error) {
 	var r struct {
 		Path string `json:"path"`
 	}
 	errno, err := b.call("POST", "/api/create", url.Values{"a": {"commit"}},
 		url.Values{"path": {p}, "isdir": {"1"}, "size": {"0"}, "block_list": {"[]"}, "rtype": {"0"}}, &r)
 	if err != nil {
-		return err
+		return "", err
 	}
-	if errno != 0 && errno != -8 { // -8: it is there already
-		return bdWriteErr("在网盘中创建文件夹", errno)
+	switch {
+	case errno == -8: // it is there already
+		return p, nil
+	case errno != 0:
+		return "", bdWriteErr("在网盘中创建文件夹", errno)
+	case r.Path != "" && r.Path != p && path.Dir(r.Path) == path.Dir(p):
+		core.Logf("网盘文件夹「%s」由百度改名为「%s」", path.Base(p), path.Base(r.Path))
+		return r.Path, nil
 	}
-	return nil
+	return p, nil
 }
 
 // remove puts things of the player's netdisk into its recycle bin (Baidu keeps them there for ten days or
@@ -666,6 +822,10 @@ func (b *bdClient) transfer(s *netdisk.BDShare, items []netdisk.PanRaw, dest str
 		case errno == 0 || dup:
 			if id := r.TaskID.String(); id != "" && id != "0" {
 				if err := b.waitTask(id, "转存到网盘"); err != nil {
+					var te *bdTaskErr
+					if errors.As(err, &te) && te.errno == 2 {
+						return b.transferErr2(s, dest)
+					}
 					return err
 				}
 			}
@@ -678,8 +838,8 @@ func (b *bdClient) transfer(s *netdisk.BDShare, items []netdisk.PanRaw, dest str
 					}
 					continue
 				}
-				sub := path.Join(dest, rawName(it))
-				if err := b.mkdir(sub); err != nil {
+				sub, err := b.mkdir(path.Join(dest, rawName(it)))
+				if err != nil {
 					return err
 				}
 				kids, err := b.shareList(s, it.Path)
@@ -692,12 +852,41 @@ func (b *bdClient) transfer(s *netdisk.BDShare, items []netdisk.PanRaw, dest str
 			}
 		case tooMany:
 			return fmt.Errorf("文件数量过多，百度网盘单次最多转存 %d 个，可在网盘中手动分批保存", r.TargetLimit)
+		case errno == 2:
+			return b.transferErr2(s, dest)
 		default:
 			return bdWriteErr("转存到网盘", errno)
 		}
 	}
 	return nil
 }
+
+// transferErr2: Baidu answered a save with 2 — the folder it was to go into is not there, or (Baidu says
+// that with 2 too) something in the request was not taken. Which one it was, and Baidu's answer, go to the
+// log and to pan-debug.txt (without the share's access key and the account's tokens).
+func (b *bdClient) transferErr2(s *netdisk.BDShare, dest string) error {
+	answer := string(b.last)
+	_, there, err := b.listDir(dest)
+	if err != nil {
+		return err
+	}
+	core.Logf("网盘转存：百度网盘错误 2，目标文件夹「%s」%s", dest, map[bool]string{true: "存在", false: "不存在"}[there])
+	netdisk.WriteDebug(fmt.Sprintf("share/transfer errno 2\ndest: %s\ndest there: %v\nshareid given: %v, share_uk given: %v\nanswer: %s\n",
+		dest, there, s.ShareID.String() != "", s.ShareUK.String() != "", answer))
+	if !there {
+		return fmt.Errorf("转存失败：网盘中没有目标文件夹「%s」（百度网盘错误 2），请重试", path.Base(dest))
+	}
+	return errors.New("转存失败（百度网盘错误 2），详细信息已记录在数据文件夹的 pan-debug.txt 中")
+}
+
+// bdTaskErr: a background task of Baidu's that failed, with Baidu's number for why.
+type bdTaskErr struct {
+	errno int
+	err   error
+}
+
+func (e *bdTaskErr) Error() string { return e.err.Error() }
+func (e *bdTaskErr) Unwrap() error { return e.err }
 
 // panPoll: between two looks at something Baidu does in the background (tests shorten it).
 var panPoll = 2 * time.Second
@@ -719,7 +908,7 @@ func (b *bdClient) waitTask(id, what string) error {
 		case r.Status == "success":
 			return nil
 		case r.Status == "failed":
-			return bdWriteErr(what, r.TaskErrno)
+			return &bdTaskErr{errno: r.TaskErrno, err: bdWriteErr(what, r.TaskErrno)}
 		}
 		if err := b.sleep(panPoll); err != nil {
 			return err
@@ -949,7 +1138,7 @@ type PanJob struct {
 	ID      int64    `json:"id"`
 	Key     string   `json:"key"`
 	Title   string   `json:"title"`
-	Stage   string   `json:"stage"` // queued, login, save, download, unpack, done, failed
+	Stage   string   `json:"stage"` // queued, login, save, captcha, download, unpack, done, failed
 	Msg     string   `json:"msg"`
 	Done    int64    `json:"done"`
 	Total   int64    `json:"total"`
@@ -966,9 +1155,15 @@ type PanJob struct {
 	Failed  []string `json:"failed,omitempty"` // archives that did not unpack
 	Project string   `json:"project,omitempty"`
 	Paths   []string `json:"paths,omitempty"` // only these parts of the card's file list
+	// stage captcha: Baidu wants a captcha read before it checks the share's code — the picture (a data:
+	// address), which picture it is (a new one has a new number), and whether the answer before was not taken
+	Captcha    string `json:"captcha,omitempty"`
+	CaptchaN   int    `json:"captchaN,omitempty"`
+	CaptchaBad bool   `json:"captchaBad,omitempty"`
 
 	imp     *unity.ImportReq
-	counted bool // in core.Downloading
+	counted bool           // in core.Downloading
+	ask     chan panAnswer // stage captcha: where the player's answer goes
 }
 
 var (
@@ -1067,18 +1262,24 @@ func QueuePanDownload(st *core.Store, key string, paths []string, imp *unity.Imp
 	if title == "" {
 		title = netdisk.SharePlaceholder(surl)
 	}
-	panDLMu.Lock()
-	for _, o := range panJobs {
-		if o.Key == key && !panOver(o.Stage) {
-			panDLMu.Unlock()
-			return errors.New("已在下载队列中")
-		}
-	}
-	keepPanLocked(func(o *PanJob) bool { return o.Key == key })
 	j := &PanJob{ID: time.Now().UnixNano(), Key: key, Title: title, Stage: "queued", Msg: "排队中", Paths: normPanPaths(paths), imp: imp}
 	if imp != nil {
 		j.Project = imp.Project
 	}
+	return enqueuePan(st, j)
+}
+
+// enqueuePan puts a job in the queue (one that waits or runs for the same thing already: refused), and starts
+// the worker if it is not running.
+func enqueuePan(st *core.Store, j *PanJob) error {
+	panDLMu.Lock()
+	for _, o := range panJobs {
+		if o.Key == j.Key && !panOver(o.Stage) {
+			panDLMu.Unlock()
+			return errors.New("已在下载队列中")
+		}
+	}
+	keepPanLocked(func(o *PanJob) bool { return o.Key == j.Key })
 	panJobs = append(panJobs, j)
 	// over the limit the oldest finished ones go; a job that waits or runs is never dropped
 	over := len(panJobs) - panKeep
@@ -1146,6 +1347,60 @@ func CancelAll() {
 	purchases.CancelAllDownloads()
 }
 
+// panCaptchaWait: how long a download waits for the player to read a captcha (tests shorten it).
+var panCaptchaWait = 15 * time.Minute
+
+// askPanCaptcha shows Baidu's captcha in the window (the job's stage is captcha meanwhile) and waits for the
+// player's answer. The queue waits with it: the next share would be asked for one too.
+func askPanCaptcha(ctx context.Context, j *PanJob, img []byte, bad bool) (panAnswer, error) {
+	ch := make(chan panAnswer, 1)
+	setPan(j, func(j *PanJob) {
+		j.Stage, j.Msg, j.Captcha, j.CaptchaBad, j.ask = "captcha", "请输入百度网盘验证码", captchaDataURL(img), bad, ch
+		j.CaptchaN++
+	})
+	TaskPanDL.Set(0, 0, j.Title+"："+j.Msg)
+	defer setPan(j, func(j *PanJob) {
+		j.Stage, j.Msg, j.Captcha, j.CaptchaBad, j.ask = "save", "正在验证提取码", "", false, nil
+	})
+	t := time.NewTimer(panCaptchaWait)
+	defer t.Stop()
+	select {
+	case a := <-ch:
+		return a, nil
+	case <-ctx.Done():
+		return panAnswer{}, errPanCancelled
+	case <-t.C:
+		return panAnswer{}, errors.New("等待输入验证码超时，请点击「重试」")
+	}
+}
+
+func captchaDataURL(img []byte) string {
+	return "data:" + http.DetectContentType(img) + ";base64," + base64.StdEncoding.EncodeToString(img)
+}
+
+// AnswerCaptcha passes what the player read in the captcha — or a request for a new picture — to the
+// download of key that waits for it.
+func AnswerCaptcha(key, code string, refresh bool) error {
+	code = strings.TrimSpace(code)
+	if !refresh && code == "" {
+		return errors.New("请输入验证码")
+	}
+	panDLMu.Lock()
+	defer panDLMu.Unlock()
+	for _, j := range panJobs {
+		if j.Key != key || j.Stage != "captcha" {
+			continue
+		}
+		if j.ask == nil {
+			return errors.New("正在验证，请稍候")
+		}
+		j.ask <- panAnswer{code: code, refresh: refresh} // (room for one: the channel is the job's own)
+		j.ask = nil                                      // one answer for a picture
+		return nil
+	}
+	return errors.New("该下载已不在等待验证码")
+}
+
 // DismissPanJob: the player closed a finished job's note.
 func DismissPanJob(key string) {
 	panDLMu.Lock()
@@ -1177,6 +1432,7 @@ var runPan = runPanJob
 func panDLWorker(st *core.Store) {
 	got := 0
 	again, login := false, false
+	diskErr := ""
 	core.RunTask(TaskPanDL, func() {
 		var cur *PanJob
 		clean := false
@@ -1226,6 +1482,9 @@ func panDLWorker(st *core.Store) {
 			default:
 				core.Logf("网盘下载失败 %s: %v", j.Key, err)
 				setPan(j, func(j *PanJob) { j.Stage, j.Err, j.Msg = "failed", err.Error(), err.Error() })
+				if IsDiskKey(j.Key) { // (no card to say it on: the status bar does)
+					diskErr = j.Title + "：" + err.Error()
+				}
 			}
 		}
 		clean = true
@@ -1234,6 +1493,8 @@ func panDLWorker(st *core.Store) {
 			TaskPanDL.Set(1, 1, fmt.Sprintf("完成：已下载 %d 个网盘分享", got))
 		case login:
 			TaskPanDL.Set(0, 0, "需要登录百度网盘")
+		case diskErr != "":
+			TaskPanDL.Set(0, 0, diskErr)
 		default:
 			TaskPanDL.Set(0, 0, "")
 		}
@@ -1246,6 +1507,9 @@ func panDLWorker(st *core.Store) {
 func runPanJob(ctx context.Context, st *core.Store, j *PanJob) error {
 	if cloudshare.IsCloudKey(j.Key) {
 		return runCloudJob(ctx, st, j)
+	}
+	if IsDiskKey(j.Key) {
+		return runDiskJob(ctx, st, j)
 	}
 	s := LoadBaiduSession()
 	if webpane.PaneMode() != "" {
@@ -1293,7 +1557,9 @@ func runPanJob(ctx context.Context, st *core.Store, j *PanJob) error {
 		pwd = netdisk.SharePwdFromURL(link)
 	}
 	msg("正在打开分享")
-	share, err := b.openShare(surl, strings.TrimSpace(pwd))
+	share, err := b.openShare(surl, strings.TrimSpace(pwd), func(img []byte, bad bool) (panAnswer, error) {
+		return askPanCaptcha(ctx, j, img, bad)
+	})
 	if err != nil {
 		return err
 	}
@@ -1380,12 +1646,13 @@ func runPanJob(ctx context.Context, st *core.Store, j *PanJob) error {
 	}
 	setPan(j, func(j *PanJob) { j.Stage, j.Saved = "save", dest })
 	msg("正在转存到网盘")
-	if err := b.mkdir(panSaveRoot); err != nil {
+	if _, err := b.mkdir(panSaveRoot); err != nil {
 		return err
 	}
-	if err := b.mkdir(dest); err != nil {
+	if dest, err = b.mkdir(dest); err != nil {
 		return err
 	}
+	setPan(j, func(j *PanJob) { j.Saved = dest })
 	byDir := map[string][]panPick{}
 	var dirs []string
 	for _, pk := range picks {
@@ -1398,8 +1665,7 @@ func runPanJob(ctx context.Context, st *core.Store, j *PanJob) error {
 		at := dest
 		for _, seg := range strings.Split(strings.Trim(d, "/"), "/") {
 			if seg != "" { // the folders above a picked file, one level at a time
-				at += "/" + seg
-				if err := b.mkdir(at); err != nil {
+				if at, err = b.mkdir(at + "/" + seg); err != nil {
 					return err
 				}
 			}
@@ -1510,59 +1776,13 @@ func runPanJob(ctx context.Context, st *core.Store, j *PanJob) error {
 		return err
 	}
 	purchases.PinDownloadDir(st, dlRoot)
-	var done int64
-	winStart, winBytes := time.Now(), int64(0)
-	started := time.Now()
-	lastShow := time.Time{}
-	slowHint := s.VIP != 2
-	for i, f := range files {
-		dst := localOf(f.Rel)
-		setPan(j, func(j *PanJob) { j.File, j.Files = path.Base(f.Rel), i })
-		err := b.download(f, dst, func(n int64) {
-			done += n
-			winBytes += n
-			now := time.Now()
-			if now.Sub(winStart) >= 2*time.Second {
-				speed := int64(float64(winBytes) / now.Sub(winStart).Seconds())
-				winStart, winBytes = now, 0
-				slow := slowHint && now.Sub(started) > 15*time.Second && speed < 300<<10
-				setPan(j, func(j *PanJob) { j.Speed, j.Slow = speed, slow })
-			}
-			if now.Sub(lastShow) > 500*time.Millisecond {
-				lastShow = now
-				setPan(j, func(j *PanJob) { j.Done = done })
-				if total > 0 {
-					TaskPanDL.Set(int(done>>10), int(total>>10), fmt.Sprintf("%s  %s / %s", j.Title, fmtBytes(done), fmtBytes(total)))
-				}
-			}
-		})
-		if err != nil {
-			return err
-		}
+	if err := b.fetchFiles(j, files, localOf, total, s.VIP != 2); err != nil {
+		return err
 	}
-	setPan(j, func(j *PanJob) { j.Done, j.Files, j.Speed = total, len(files), 0 })
 	// 3. unpack (archives inside archives too); the downloaded archives can go, they are in the netdisk
 	var failed, unpacked, from []string
 	if extract {
-		setPan(j, func(j *PanJob) { j.Stage, j.Msg = "unpack", "正在解压" })
-		var remove func([]string) error
-		if !keep {
-			remove = archive.RemoveFiles
-		}
-		// only the files this job downloaded (those of an earlier try that stopped are among them): the folder
-		// may be the asset's own, with archives the player keeps packed
-		var mine []string
-		for _, f := range files {
-			mine = append(mine, localOf(f.Rel))
-		}
-		res := archive.UnpackFiles(mine, "", remove, func(n string, i, k int) {
-			setPan(j, func(j *PanJob) { j.Msg = "正在解压 " + n })
-			TaskPanDL.Set(i, k, j.Title+"：正在解压 "+n)
-		})
-		for a, e := range res.Failed {
-			failed = append(failed, filepath.Base(a)+"："+e)
-		}
-		unpacked, from = res.Done, res.From
+		failed, unpacked, from = unpackDownloaded(j, files, localOf, keep)
 	}
 	// a share that is one archive of many products (合集包): the levels of its folder are marked, so that the
 	// scan below makes a card for each product instead of one for the lot
@@ -1573,15 +1793,7 @@ func runPanJob(ctx context.Context, st *core.Store, j *PanJob) error {
 		u.Downloaded, u.DownloadDir = local, ""
 		u.PanGot = mergePanParts(u.PanGot, pickTrees(picks, whole))
 	}
-	inRoots := false
-	for _, r := range st.Settings.Roots {
-		if core.UnderDir(local, r) {
-			inRoots = true
-		}
-	}
-	if !inRoots {
-		st.Settings.Roots = append(st.Settings.Roots, filepath.Dir(local))
-	}
+	keepInRootsLocked(st, local)
 	auto := st.Settings.AutoBooth
 	st.Mu.Unlock()
 	_ = st.Save()
@@ -1618,6 +1830,77 @@ func runPanJob(ctx context.Context, st *core.Store, j *PanJob) error {
 		unity.StartImportWhenFree(st, req)
 	}
 	return nil
+}
+
+// fetchFiles downloads files of the player's netdisk to where localOf puts them, with the progress on the job
+// (and in the status bar). slowHint: the account has no 超级会员 — a slow line is said to be Baidu's limit.
+func (b *bdClient) fetchFiles(j *PanJob, files []bdFile, localOf func(string) string, total int64, slowHint bool) error {
+	var done int64
+	winStart, winBytes := time.Now(), int64(0)
+	started := time.Now()
+	lastShow := time.Time{}
+	for i, f := range files {
+		dst := localOf(f.Rel)
+		setPan(j, func(j *PanJob) { j.File, j.Files = path.Base(f.Rel), i })
+		err := b.download(f, dst, func(n int64) {
+			done += n
+			winBytes += n
+			now := time.Now()
+			if now.Sub(winStart) >= 2*time.Second {
+				speed := int64(float64(winBytes) / now.Sub(winStart).Seconds())
+				winStart, winBytes = now, 0
+				slow := slowHint && now.Sub(started) > 15*time.Second && speed < 300<<10
+				setPan(j, func(j *PanJob) { j.Speed, j.Slow = speed, slow })
+			}
+			if now.Sub(lastShow) > 500*time.Millisecond {
+				lastShow = now
+				setPan(j, func(j *PanJob) { j.Done = done })
+				if total > 0 {
+					TaskPanDL.Set(int(done>>10), int(total>>10), fmt.Sprintf("%s  %s / %s", j.Title, fmtBytes(done), fmtBytes(total)))
+				}
+			}
+		})
+		if err != nil {
+			return err
+		}
+	}
+	setPan(j, func(j *PanJob) { j.Done, j.Files, j.Speed = total, len(files), 0 })
+	return nil
+}
+
+// unpackDownloaded unpacks the archives a job downloaded (archives inside archives too); keep: the archives
+// stay next to what they were unpacked to (else they go: they are in the netdisk).
+func unpackDownloaded(j *PanJob, files []bdFile, localOf func(string) string, keep bool) (failed, unpacked, from []string) {
+	setPan(j, func(j *PanJob) { j.Stage, j.Msg = "unpack", "正在解压" })
+	var remove func([]string) error
+	if !keep {
+		remove = archive.RemoveFiles
+	}
+	// only the files this job downloaded (those of an earlier try that stopped are among them): the folder
+	// may be the asset's own, with archives the player keeps packed
+	var mine []string
+	for _, f := range files {
+		mine = append(mine, localOf(f.Rel))
+	}
+	res := archive.UnpackFiles(mine, "", remove, func(n string, i, k int) {
+		setPan(j, func(j *PanJob) { j.Msg = "正在解压 " + n })
+		TaskPanDL.Set(i, k, j.Title+"：正在解压 "+n)
+	})
+	for a, e := range res.Failed {
+		failed = append(failed, filepath.Base(a)+"："+e)
+	}
+	return failed, res.Done, res.From
+}
+
+// keepInRootsLocked: a folder the program downloaded into is in the library — its folder becomes a library
+// folder when no library folder holds it. Caller holds st.Mu.
+func keepInRootsLocked(st *core.Store, local string) {
+	for _, r := range st.Settings.Roots {
+		if core.UnderDir(local, r) {
+			return
+		}
+	}
+	st.Settings.Roots = append(st.Settings.Roots, filepath.Dir(local))
 }
 
 // bundleEnd: what a job says at its end when what it downloaded is a collection of products (合集包), and

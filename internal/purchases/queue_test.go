@@ -111,6 +111,7 @@ func TestQueueKeepsWaitingJobs(t *testing.T) {
 func TestDownloadingReturnsToZero(t *testing.T) {
 	base := emptyQueue(t)
 	st := testkit.NewStore(t)
+	st.Settings.HideZh = true // (no translation of names behind the test: it would go out to the net)
 	started := make(chan string, 8)
 	gate := make(chan struct{}) // (the worker does not begin before the count of what was queued has been read)
 	runDownload = func(ctx context.Context, st *core.Store, j *DLJob) error {
@@ -177,7 +178,13 @@ func TestDownloadingReturnsToZero(t *testing.T) {
 	if status["7"] != "done" || status["6"] != "failed" || status["8"] != "done" || core.Downloading.Load() != base {
 		t.Errorf("after the cancel: %v, %d counted", status, core.Downloading.Load()-base)
 	}
-	for i := 0; i < 400 && library.PipelineBusy(); i++ { // the scan that follows a download
+	// the scan that follows a download, and what follows the scan: over before the data folder goes
+	for i, idle := 0, 0; i < 400 && idle < 3; i++ {
+		if library.BackgroundBusy() {
+			idle = 0
+		} else {
+			idle++
+		}
 		time.Sleep(25 * time.Millisecond)
 	}
 }

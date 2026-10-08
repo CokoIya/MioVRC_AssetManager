@@ -110,6 +110,7 @@ func newFakeCloud(t *testing.T) (*fakeCloud, *core.Store) {
 	st.Settings.DownloadDir = t.TempDir()
 	st.Settings.Roots = []string{st.Settings.DownloadDir}
 	st.Settings.AutoBooth = false
+	st.Settings.HideZh = true // (no translation of names behind the tests: it would go out to the net)
 	st.User["gd:1Folder000000000000000000000"] = &core.UserData{ShareURL: "https://drive.google.com/drive/folders/1Folder000000000000000000000"}
 	st.User["db:dbox12345678901"] = &core.UserData{ShareURL: "https://www.dropbox.com/s/dbox12345678901/Dress.zip"}
 	pause, stall := cloudPause, purchases.StallAfter
@@ -124,7 +125,14 @@ func newFakeCloud(t *testing.T) (*fakeCloud, *core.Store) {
 // settleLibrary waits for what follows a download to end: the scan, and the look into unitypackages after it
 // (both read the data folder, which the next test replaces).
 func settleLibrary() {
-	for i := 0; i < 400 && (library.PipelineBusy() || library.PkgBatchSnapshot().Running); i++ {
+	// (the translation of new names follows the scan, and reads the data folder too: until all of it is
+	// over, three looks in a row)
+	for i, idle := 0, 0; i < 400 && idle < 3; i++ {
+		if library.BackgroundBusy() {
+			idle = 0
+		} else {
+			idle++
+		}
 		time.Sleep(25 * time.Millisecond)
 	}
 }
@@ -456,6 +464,7 @@ func newPageDrive(t *testing.T, entries ...driveEntry) (*pageDrive, *core.Store)
 	st.Settings.DownloadDir = t.TempDir()
 	st.Settings.Roots = []string{st.Settings.DownloadDir}
 	st.Settings.AutoBooth = false
+	st.Settings.HideZh = true // (no translation of names behind the tests: it would go out to the net)
 	st.Settings.NoExtract = true
 	st.User[driveFolder] = &core.UserData{ShareURL: "https://drive.google.com/drive/folders/1PageFolder000000000000000000"}
 	pause, stall := cloudPause, purchases.StallAfter

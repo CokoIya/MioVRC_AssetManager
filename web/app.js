@@ -41,6 +41,7 @@ const S = {
   q: "", cat: "全部", style: "", recent: "", bases: new Set(), usage: "all", share: "all", root: "all", purchase: "all", showHidden: false, sort: "recent",
   openKey: null, setup: null, bs: null, desc: {}, dirty: new Set(), coverPick: null, stylePick: null, groups: new Map(), panOpen: new Set(), panClosed: new Set(), panSel: new Set(),
   view: "lib", shopOpen: null, projs: null, pq: "",
+  scrollAt: {}, // where each list was scrolled to (listKey)
   fold: { cat: false, cloth: false, bases: false }, // side bar parts folded away
   // Booth / 百度网盘 … pages inside the program, and 闲鱼's: open.shop = a page covers the Booth list, open.lib =
   // a netdisk page covers the library; loaded = whose page the page area holds; back = where 「返回」 goes
@@ -167,6 +168,8 @@ async function load() {
   if (window.storesLoaded) await storesLoaded(); // the wish list and Jinxxy (stores.js)
   if (S.view === "proj") loadProjects();
   if (prev && !(window.bundleQuiet && bundleQuiet())) announceChanges(prev, d.assets || []);
+  panCaptchaCheck();
+  if (window.diskDraw && diskOpen()) diskJobsDraw();
 }
 // "新增 3 个素材": things the folder watcher or a share re-read brought in while the window was open
 function announceChanges(prev, list) {
@@ -581,6 +584,7 @@ function renderStatus() {
   if (d.dlNeedLogin) h += `<span class="err">下载前需登录 Booth <button class="verbtn linkish" id="btnDLLogin">登录</button></span>`;
   if (running.some(t => t.name === "download")) h += `<button class="verbtn linkish" id="btnDLCancel">取消下载</button>`;
   if ((d.panJobs || []).some(j => j.stage === "login")) h += `<span class="err">下载网盘分享前需登录百度网盘 <button class="verbtn linkish" id="btnBdLogin">登录</button></span>`;
+  if (capJob()) h += `<span class="err">网盘下载需要输入验证码 <button class="verbtn linkish" data-cap="open">输入</button></span>`;
   if (running.some(t => t.name === "pandl")) h += `<button class="verbtn linkish" id="btnPanCancel">取消网盘下载</button>`;
   if (!running.length) {
     const pt = (d.tasks || []).find(t => t.name === "pandl"), it = (d.tasks || []).find(t => t.name === "import");
@@ -618,13 +622,27 @@ function applyView() {
   $("#webview").hidden = !web; $("#resultbar").hidden = web; $("#grid").hidden = web;
   $(".main").classList.toggle("webon", web);
 }
+// Where a list was scrolled to is kept while a page covers it or another tab is in view, and it comes back there
+// (the library, the Booth results, the wish list, the followed shops: one place each). A new search or filter
+// starts a list at the top; the project tabs load their content anew and start at the top too.
+function listKey() {
+  const v = S.view;
+  if (v === "lib") return "lib";
+  if (v !== "shop") return "";
+  if (typeof W !== "undefined" && W.on) return "shop:wish";
+  if (typeof F !== "undefined" && F.on) return "shop:follow:" + (F.open || "");
+  return "shop";
+}
+function keepScroll() { const k = listKey(); if (k && !webVisible()) S.scrollAt[k] = $(".main").scrollTop; }
+function backToScroll() { const k = listKey(); $(".main").scrollTop = k && !webVisible() ? S.scrollAt[k] || 0 : 0; }
 function setView(v) {
   if (S.view === v) return;
   if (S.view === "pipe") pipeKeep();
+  keepScroll();
   S.view = v; saveUI(); closeDrawer(); sideOpen(false);
   $("#q").value = v === "shop" ? S.shop.q : v === "xianyu" ? S.web.xq : v === "proj" || v === "pipe" ? S.pq : S.q;
-  $(".main").scrollTop = 0;
   renderAll();
+  backToScroll();
   if (v === "proj") loadProjects();
   if (v === "pipe") pipeEnter();
   if (v === "shop" && !S.shop.started) shopSearch(true);
@@ -715,7 +733,10 @@ async function shopSearch(reset) {
   if (reset && window.wishLeave) wishLeave();
   if (reset && window.followLeave) followLeave();
   const seq = ++sh.seq;
-  if (reset) { sh.page = 1; sh.items = []; sh.more = false; }
+  if (reset) {
+    sh.page = 1; sh.items = []; sh.more = false; S.scrollAt.shop = 0;
+    if (S.view === "shop" && listKey() === "shop" && !webVisible()) $(".main").scrollTop = 0;
+  }
   sh.loading = true; sh.err = "";
   if (S.view === "shop") renderShopGrid();
   let r;
@@ -837,6 +858,7 @@ async function openWeb(u, kind) {
   if (kind === "xianyu" || webKind(u) === "xianyu") return openXy(u);
   if (window.storeOpening) storeOpening(kind);
   if (!S.data.paneMode) return openURL(u);
+  keepScroll(); // (the list in view, before the page covers it or another tab comes)
   const v = webView(kind), covers = v !== "xianyu"; // a page over the Booth list or over the library
   const prevBack = S.web.back;
   S.web.back = S.openKey ? { view: S.view, key: S.openKey }
@@ -881,6 +903,7 @@ function closeWeb() {
   if (S.view === "shop" || S.view === "lib") { S.web.open[S.view] = false; S.web.loaded = S.data.paneMode === "window" ? "" : S.web.loaded; }
   if (back && back.view !== S.view) { setView(back.view); if (back.key && findAsset(back.key)) renderDrawer(back.key); return; }
   renderAll();
+  backToScroll();
   if (back && back.key && findAsset(back.key)) renderDrawer(back.key);
 }
 // 闲鱼's pages: in their own view inside the window, or in the default browser (the server decides, and says).
@@ -1212,7 +1235,7 @@ async function webPoll(now) {
       if (st.dl !== S.web.dl) { if (st.dl > (S.web.dl || 0)) poll(true); S.web.dl = st.dl; }
       if (!st.open && was.open && !was.loading && S.data.paneMode === "window") { // the window was closed
         S.web.st = { open: false };
-        if (S.view !== "xianyu") { S.web.open[S.view] = false; S.web.loaded = ""; renderAll(); return; }
+        if (S.view !== "xianyu") { S.web.open[S.view] = false; S.web.loaded = ""; renderAll(); backToScroll(); return; }
         renderWeb();
       } else if (st.open || !was.loading) {
         if (!was.open && st.open) placedKey = "";
@@ -1730,7 +1753,7 @@ function panBar(key) {
   const j = (S.data.panJobs || []).find(x => x.key === key);
   if (!j || ["done", "failed", "login"].includes(j.stage)) return "";
   const pct = panPct(j);
-  return `<div class="cdl" data-panitem="${esc(key)}"><i style="width:${pct}%"></i><span>${j.stage === "download" ? pct + "%" : j.stage === "unpack" ? "解压中" : j.stage === "save" ? "转存中" : j.stage === "fetch" ? "读取中" : "排队中"}</span></div>`;
+  return `<div class="cdl" data-panitem="${esc(key)}"><i style="width:${pct}%"></i><span>${j.stage === "download" ? pct + "%" : j.stage === "unpack" ? "解压中" : j.stage === "save" ? "转存中" : j.stage === "captcha" ? "需验证码" : j.stage === "fetch" ? "读取中" : "排队中"}</span></div>`;
 }
 const VIP = { 0: "普通账号", 1: "会员", 2: "超级会员" };
 function bdLine() {
@@ -1748,10 +1771,15 @@ function panJobHTML(j) {
       ${j.saved ? `<div class="small muted">网盘中的转存副本位于「${esc(j.saved)}」，如不需要可自行删除。</div>` : ""}
       <div class="btnrow">${j.dir ? `<button class="btn small" data-gopen="${esc(j.dir)}">打开文件夹</button>` : ""}<button class="btn small ghost" data-d="pandismiss">关闭</button></div></div>`;
   }
+  if (j.stage === "captcha") {
+    return `<div class="impprog"><div class="t">百度网盘要求输入验证码后才能打开此分享</div>
+      <div class="btnrow"><button class="btn small primary" data-cap="open" data-capkey="${esc(j.key)}">输入验证码</button><button class="btn small ghost" data-d="pancancel">取消下载</button></div></div>`;
+  }
   if (j.stage === "failed") {
-    const captcha = /验证码/.test(j.err || "");
+    const captcha = /验证码/.test(j.err || "") && !/超时/.test(j.err || "");
     return `<div class="impres err"><div>${esc(j.err || "下载失败")}</div>
-      <div class="btnrow"><button class="btn small" data-d="panretry">重试</button>${captcha ? `<button class="btn small" data-d="pan">在软件中打开分享</button>` : ""}<button class="btn small ghost" data-d="pandismiss">关闭</button></div></div>`;
+      ${captcha ? `<div class="small muted">也可以在百度网盘客户端中打开分享并「保存到网盘」，再用「从我的网盘下载」下载保存的文件夹。</div>` : ""}
+      <div class="btnrow"><button class="btn small" data-d="panretry">重试</button>${captcha ? `<button class="btn small" data-d="pan">在软件中打开分享</button><button class="btn small" data-dk="open">从我的网盘下载</button>` : ""}<button class="btn small ghost" data-d="pandismiss">关闭</button></div></div>`;
   }
   const pct = panPct(j);
   const line = j.stage === "download" ? `${stageText} ${j.files + 1 > j.fileN ? j.fileN : j.files + 1}/${j.fileN}　${fmtSize(j.done)} / ${fmtSize(j.total)}　${fmtSpeed(j.speed)}` : (j.msg || stageText);
@@ -1799,6 +1827,7 @@ function refreshJobs(imp, pans) {
   const d = S.data, oldImp = d.importJob || null, oldPans = d.panJobs || [];
   d.importJob = imp || null; d.panJobs = pans || [];
   renderNPLive();
+  if (window.diskJobsDraw) diskJobsDraw();
   const stages = (i, ps) => JSON.stringify([i && [i.key, i.stage], ps.map(j => [j.key, j.stage])]);
   if (stages(oldImp, oldPans) !== stages(d.importJob, d.panJobs)) return load();
   document.querySelectorAll("[data-panitem]").forEach(el => { const h = panBar(el.dataset.panitem); GRID = null; if (h) el.outerHTML = h; else el.remove(); });
@@ -1815,6 +1844,54 @@ async function startPanDL(a, importTo, paths) {
   if (paths && paths.length) S.panSel = new Set();
   if (r.login) { toast("请先登录百度网盘，登录后自动开始下载", 4000); baiduLogin(false); return; }
   toast(paths && paths.length ? `开始下载所选的 ${paths.length} 项` : "开始下载"); await load(); poll(true);
+}
+// ---------- the captcha Baidu asks for before it checks a share's code ----------
+// The download waits with the picture; the dialog comes by itself for each new picture while no other dialog is
+// open (「稍后输入」 leaves it to the status bar and the card), and goes once the job no longer waits.
+const CAP = { seen: {}, busy: false };
+function capJob(key) { return ((S.data && S.data.panJobs) || []).find(j => j.stage === "captcha" && j.captcha && (!key || j.key === key)); }
+function panCaptchaModal(j) {
+  if (!j) return;
+  const m = $("#modal");
+  m.dataset.kind = "pancaptcha"; m.dataset.capkey = j.key;
+  CAP.seen[j.key] = j.captchaN; CAP.busy = false;
+  m.innerHTML = `<div class="mhead">输入百度网盘验证码</div><div class="mbody pancap">
+    <p>百度网盘要求输入验证码后才能打开分享「${esc(j.title || "")}」，输入后自动继续下载。</p>
+    ${j.captchaBad ? `<p class="err">验证码不正确，请重新输入。如多次不通过，请检查提取码是否正确。</p>` : ""}
+    <div class="caprow"><img src="${esc(j.captcha)}" alt="验证码图片" title="看不清？点击换一张" data-cap="refresh"><button class="linkbtn" data-cap="refresh">看不清，换一张</button></div>
+    <input id="cap_code" maxlength="8" autocomplete="off" spellcheck="false" placeholder="输入图中的字符" aria-label="验证码">
+  </div><div class="mfoot"><button class="btn ghost" data-cap="cancel">取消下载</button><button class="btn ghost" data-m="close">稍后输入</button><button class="btn primary" data-cap="send">确定</button></div>`;
+  showModal();
+  const inp = $("#cap_code");
+  inp.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); panCaptchaAct("send"); } };
+  inp.focus();
+}
+function panCaptchaCheck() {
+  const j = capJob(), m = $("#modal"), open = m.classList.contains("on");
+  if (open && m.dataset.kind === "pancaptcha") {
+    const mine = capJob(m.dataset.capkey);
+    if (!mine) { if (!CAP.busy) closeModal(); return; } // answered, cancelled or over
+    if (CAP.seen[mine.key] !== mine.captchaN) panCaptchaModal(mine); // a new picture
+    return;
+  }
+  if (!j || CAP.seen[j.key] === j.captchaN || open || S.setup) return;
+  panCaptchaModal(j);
+}
+async function panCaptchaAct(what, key) {
+  const m = $("#modal");
+  if (what === "open") return panCaptchaModal(capJob(key));
+  key = m.dataset.capkey;
+  if (what === "cancel") { await api("/api/pan/download/cancel", {}); closeModal(); toast("已取消网盘下载"); poll(true); return; }
+  if (CAP.busy || !capJob(key)) return;
+  const inp = $("#cap_code"), code = what === "send" && inp ? inp.value.trim() : "";
+  if (what === "send" && !code) { toast("请输入验证码"); if (inp) inp.focus(); return; }
+  CAP.busy = true;
+  let r;
+  try { r = await api("/api/pan/captcha", { key, code, refresh: what === "refresh" }); } catch (e) { r = { ok: false, err: "程序内部错误" }; }
+  if (!r.ok) { CAP.busy = false; toast(r.err || "提交失败", 3500); poll(true); return; }
+  if (what === "send") { CAP.busy = false; closeModal(); toast("正在验证…"); } // a new picture, if it was not taken, opens the dialog again
+  else { const img = $("#modal .caprow img"); if (img) img.style.opacity = ".35"; } // the new picture follows
+  poll(true);
 }
 async function baiduLogin(switching) {
   if (switching) { await api("/api/baidu/logout", {}); await load(); }
@@ -2252,7 +2329,7 @@ function closeModal(force) {
   const m = $("#modal"), kind = m.dataset.kind, was = m.classList.contains("on");
   if (kind === "feedback") fbKeep();
   if (kind === "np") npKeep();
-  if (["update", "feedback", "whatsnew", "aicfg", "np", "xynotice"].includes(kind)) m.dataset.kind = "";
+  if (["update", "feedback", "whatsnew", "aicfg", "np", "xynotice", "pancaptcha", "pandisk"].includes(kind)) m.dataset.kind = "";
   m.classList.remove("on"); m.setAttribute("aria-hidden", "true"); scrimSync();
   const back = S.modalBack; S.modalBack = null;
   if (was && back && back.isConnected && back !== document.body) back.focus({ preventScroll: true }); // the focus goes back where it was
@@ -2327,6 +2404,7 @@ function openPanAdd(prefill) {
     <div class="row"><label>提取码</label><input id="pa_pwd" placeholder="选填"></div>
     <div class="row"><label>名称</label><input id="pa_name" placeholder="选填"></div>
     <div class="row"><label class="check"><input type="checkbox" id="pa_dl"${S.data.paneMode ? " checked" : " disabled"}> 添加后立即下载到素材库<span id="pa_bdnote">${(S.data.baidu || {}).loggedIn ? "" : "（首次需登录百度网盘）"}</span></label></div>
+    <div class="row muted small pafromdisk">已在百度网盘中保存了分享？<button class="linkbtn" data-dk="open">从我的百度网盘下载</button></div>
   </div><div class="mfoot"><button class="btn ghost" data-m="close">取消</button><button class="btn primary" data-m="panadd">添加</button></div>`;
   showModal();
   $("#pa_text").focus();
@@ -3048,6 +3126,10 @@ document.addEventListener("click", async e => {
   if (t.closest("#btnDLCancel")) { await api("/api/booth/download/cancel", {}); toast("已取消下载"); poll(true); return; }
   if (t.closest("#btnPanCancel")) { await api("/api/pan/download/cancel", {}); toast("已取消网盘下载"); poll(true); return; }
   if (t.closest("#btnBdLogin")) { baiduLogin(false); return; }
+  const cap = t.closest("[data-cap]");
+  if (cap) { panCaptchaAct(cap.dataset.cap, cap.dataset.capkey); return; }
+  const dk = t.closest("[data-dk]");
+  if (dk && window.diskAct) { diskAct(dk); return; }
   if (t.closest("#btnDLMissing")) {
     const list = (S.data.assets || []).filter(a => a.virtual && matches(a));
     if (!confirm(`下载这 ${list.length} 件已购商品？文件将保存到 ${S.data.dlDir}。`)) return;

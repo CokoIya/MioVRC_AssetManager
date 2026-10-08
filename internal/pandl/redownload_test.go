@@ -38,6 +38,16 @@ type fakeBaidu struct {
 	transfers []string
 	removed   []string
 	lists     int
+	// the share's code ("": none, the page opens without one), and the captcha Baidu asks for before it
+	// checks it: whether one has to be read, what the picture handed out last shows, how many pictures and
+	// how many checks of the code there were
+	pwd      string
+	captcha  bool
+	answer   string
+	pictures int
+	verifies int
+	renamed  map[string]string // a folder made under this path comes out under that one
+	lost     map[string]bool   // a folder made under this path is not there afterwards
 }
 
 func (f *fakeBaidu) kids(m map[string]*bdNode, dir string) []map[string]any {
@@ -69,8 +79,36 @@ func (f *fakeBaidu) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/api/gettemplatevariable":
 		reply(map[string]any{"errno": 0, "result": map[string]any{"bdstoken": "tok", "username": "mio", "loginstate": 1, "is_vip": 0, "is_svip": 1}})
 	case "/s/1Share":
+		if c, _ := r.Cookie("BDCLND"); f.pwd != "" && (c == nil || c.Value != "RSK1") {
+			http.Redirect(w, r, "/share/init?surl=Share", http.StatusFound)
+			return
+		}
 		list, _ := json.Marshal(f.kids(f.share, "/sh"))
 		fmt.Fprintf(w, `<script id="locals-data" type="application/json">{"share_uk":"3","shareid":4,"title":"","file_list":%s}</script>`, list)
+	case "/share/init":
+		fmt.Fprint(w, "<html>请输入提取码</html>")
+	case "/share/verify":
+		f.verifies++
+		switch {
+		case f.captcha && r.Form.Get("vcode_str") == "":
+			reply(map[string]any{"errno": -62})
+		case f.captcha && (r.Form.Get("vcode_str") != fmt.Sprintf("vs%d", f.pictures) || r.Form.Get("vcode") != f.answer):
+			reply(map[string]any{"errno": -63})
+		case r.Form.Get("pwd") != f.pwd:
+			reply(map[string]any{"errno": -9})
+		default:
+			f.captcha = false
+			http.SetCookie(w, &http.Cookie{Name: "BDCLND", Value: "RSK1", Path: "/"})
+			reply(map[string]any{"errno": 0, "randsk": "RSK1"})
+		}
+	case "/api/getcaptcha":
+		f.pictures++
+		f.answer = fmt.Sprintf("c%03d", f.pictures)
+		vs := fmt.Sprintf("vs%d", f.pictures)
+		reply(map[string]any{"errno": 0, "vcode_str": vs, "vcode_img": "http://" + r.Host + "/genimage?" + vs})
+	case "/genimage":
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(tinyPNG())
 	case "/share/list":
 		f.lists++
 		reply(map[string]any{"errno": 0, "list": f.kids(f.share, r.Form.Get("dir"))})
@@ -82,11 +120,23 @@ func (f *fakeBaidu) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		reply(map[string]any{"errno": 0, "list": f.kids(f.disk, dir)})
 	case "/api/create":
-		if f.disk[r.Form.Get("path")] == nil {
-			f.disk[r.Form.Get("path")] = &bdNode{dir: true}
+		p := r.Form.Get("path")
+		if f.lost[p] {
+			reply(map[string]any{"errno": 0})
+			return
 		}
-		reply(map[string]any{"errno": 0})
+		if to, ok := f.renamed[p]; ok {
+			p = to
+		}
+		if f.disk[p] == nil {
+			f.disk[p] = &bdNode{dir: true}
+		}
+		reply(map[string]any{"errno": 0, "path": p})
 	case "/share/transfer":
+		if n := f.disk[r.Form.Get("path")]; n == nil || !n.dir {
+			reply(map[string]any{"errno": 2, "show_msg": "", "newno": ""}) // the folder it was to go into is not there
+			return
+		}
 		var ids []int
 		_ = json.Unmarshal([]byte(r.Form.Get("fsidlist")), &ids)
 		f.transfers = append(f.transfers, r.Form.Get("fsidlist")+" -> "+r.Form.Get("path"))
@@ -151,8 +201,12 @@ func newFakeBaidu(t *testing.T) (*fakeBaidu, *core.Store) {
 	st.Settings.DownloadDir = t.TempDir()
 	st.Settings.Roots = []string{st.Settings.DownloadDir}
 	st.Settings.NoExtract, st.Settings.AutoBooth = true, false
+	st.Settings.HideZh = true // (no translation of names behind the tests: it would go out to the net)
 	st.User["pan:1Share"] = &core.UserData{ShareURL: "https://pan.baidu.com/s/1Share"}
 	bdLoaded, bdCache = false, nil
+	panSekeyMu.Lock()
+	panSekeys = map[string]string{}
+	panSekeyMu.Unlock()
 	if err := SaveBaiduSession(&baiduSession{Cookies: []core.SavedCookie{{Name: "BDUSS", Value: "ok"}, {Name: "STOKEN", Value: "ok"}}}); err != nil {
 		t.Fatal(err)
 	}

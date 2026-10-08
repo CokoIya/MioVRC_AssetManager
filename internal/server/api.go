@@ -856,6 +856,36 @@ func NewMux(st *core.Store) *http.ServeMux {
 		pandl.DismissPanJob(str(b, "key"))
 		core.WriteJSON(w, map[string]any{"ok": true})
 	})
+	// the player's own netdisk: what is in one of its folders, to pick a folder or a file to download into the
+	// library (login: the netdisk is not logged in, or Baidu turned the saved login away)
+	post("/api/pan/disk/list", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		ents, dir, err := pandl.ListDisk(st, str(b, "dir"))
+		switch {
+		case errors.Is(err, pandl.ErrBaiduLogin):
+			core.BumpRev()
+			core.WriteJSON(w, map[string]any{"ok": false, "login": true, "dir": dir, "err": "需要先登录百度网盘"})
+		case err != nil:
+			core.WriteJSON(w, map[string]any{"ok": false, "dir": dir, "err": err.Error()})
+		default:
+			core.WriteJSON(w, map[string]any{"ok": true, "dir": dir, "entries": ents})
+		}
+	})
+	post("/api/pan/disk/download", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		if err := pandl.QueueDiskDownload(st, str(b, "path")); err != nil {
+			core.WriteJSON(w, map[string]any{"ok": false, "err": err.Error()})
+			return
+		}
+		core.WriteJSON(w, map[string]any{"ok": true, "login": !pandl.CurrentBaiduAccount().LoggedIn})
+	})
+	// what the player read in the captcha Baidu asks for before it checks a share's code (refresh: a new
+	// picture instead)
+	post("/api/pan/captcha", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		if err := pandl.AnswerCaptcha(str(b, "key"), str(b, "code"), boolean(b, "refresh")); err != nil {
+			core.WriteJSON(w, map[string]any{"ok": false, "err": err.Error()})
+			return
+		}
+		core.WriteJSON(w, map[string]any{"ok": true})
+	})
 	// ---------- one-click import into a Unity project ----------
 	post("/api/import/start", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		var req unity.ImportReq

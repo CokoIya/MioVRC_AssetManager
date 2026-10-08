@@ -16,6 +16,46 @@
 //   Sentence case; no full stop on labels, buttons and one-line notices.
 I18N.add("en", {
   "exact": {
+    // --- the player's own netdisk: a folder of it downloaded into the library (1.7.10) ---
+    "从百度网盘下载": "Download from Baidu Netdisk",
+    "从我的百度网盘下载": "Download from my Baidu Netdisk",
+    "从我的网盘下载": "Download from my netdisk",
+    "已在百度网盘中保存了分享？": "Already saved the share in Baidu Netdisk?",
+    "也可以在百度网盘客户端中打开分享并「保存到网盘」，再用「从我的网盘下载」下载保存的文件夹": "You can also open the share in the Baidu Netdisk app, save it to your netdisk, then download the saved folder with “Download from my netdisk”",
+    "在百度网盘客户端或网页中把分享「保存到网盘」后，可以在这里选择保存的文件夹，下载到素材库并自动解压，合集包同样会拆分。不会改动网盘中的文件": "After saving a share to your netdisk in the Baidu Netdisk app or website, pick the saved folder here: it is downloaded into the library and unpacked, and bundles are split as well. Nothing in your netdisk is changed",
+    "我的网盘": "My netdisk",
+    "读取失败": "Couldn't read it",
+    "需要先登录百度网盘": "Sign in to Baidu Netdisk first",
+    "此文件夹为空": "This folder is empty",
+    "下载此文件夹": "Download this folder",
+    "下载任务": "Downloads",
+    "网盘中没有这个文件夹（可能已被移动或删除）": "This folder is not in your netdisk (it may have been moved or deleted)",
+    "请选择要下载的文件夹或文件": "Choose the folder or file to download",
+    // --- the captcha Baidu asks for before it checks a share's code; the save's folder (1.7.9) ---
+    "网盘下载需要输入验证码": "A netdisk download needs a captcha",
+    "输入": "Enter",
+    "需验证码": "Captcha",
+    "百度网盘要求输入验证码后才能打开此分享": "Baidu Netdisk asks for a captcha before it opens this share",
+    "输入验证码": "Enter the captcha",
+    "输入百度网盘验证码": "Enter the Baidu Netdisk captcha",
+    "验证码不正确，请重新输入。如多次不通过，请检查提取码是否正确": "The captcha was not right. Please enter it again. If it keeps failing, check the access code",
+    "验证码图片": "Captcha picture",
+    "验证码": "Captcha",
+    "看不清？点击换一张": "Can't read it? Click for another one",
+    "看不清，换一张": "Can't read it? Another one",
+    "输入图中的字符": "Type the characters in the picture",
+    "稍后输入": "Later",
+    "请输入验证码": "Enter the captcha",
+    "提交失败": "Couldn't send it",
+    "正在验证…": "Checking…",
+    "请输入百度网盘验证码": "Enter the Baidu Netdisk captcha",
+    "正在验证提取码": "Checking the access code",
+    "等待输入验证码超时，请点击「重试」": "No captcha was entered in time. Click “Retry”",
+    "正在验证，请稍候": "Checking. One moment",
+    "该下载已不在等待验证码": "This download is no longer waiting for a captcha",
+    "验证码多次未通过，请确认提取码正确，或稍后再试": "The captcha was not accepted several times. Check the access code, or try again later",
+    "无法获取百度网盘验证码图片，请稍后重试": "Couldn't get the Baidu Netdisk captcha picture. Please try again later",
+    "转存失败（百度网盘错误 2），详细信息已记录在数据文件夹的 pan-debug.txt 中": "Saving failed (Baidu Netdisk error 2). The details were written to pan-debug.txt in the data folder",
     // --- 合集包: a download that holds many products (1.7.8) ---
     "合集": "Bundle",
     "一键导入会把其中的全部素材导入工程，因此已停用": "“Import” would put every asset in it into the project, so it is turned off",
@@ -2262,6 +2302,13 @@ I18N.add("en", {
     "成人向": "Adult"
   },
   "patterns": [
+    // the player's own netdisk (1.7.10)
+    ["{x}：需要登录百度网盘，登录后自动开始", "{x}: sign in to Baidu Netdisk, and it starts by itself"],
+    ["网盘中未找到「{x}」（可能已被移动或删除）", "“{x|raw}” is not in your netdisk (it may have been moved or deleted)"],
+    // the captcha Baidu asks for before it checks a share's code; the save's folder (1.7.9)
+    ["百度网盘要求输入验证码后才能打开分享「{x}」，输入后自动继续下载", "Baidu Netdisk asks for a captcha before it opens the share “{x}”. The download goes on once it is entered"],
+    ["无法获取百度网盘验证码（错误 {x}），请稍后重试", "Couldn't get the Baidu Netdisk captcha (error {x}). Please try again later"],
+    ["转存失败：网盘中没有目标文件夹「{x}」（百度网盘错误 2），请重试", "Saving failed: the folder “{x}” is not in your netdisk (Baidu Netdisk error 2). Please try again"],
     // 合集包: a download that holds many products (1.7.8)
     ["合集包：包含 {#n} 个素材", "Bundle: {n} assets inside"],
     ["拆分为 {#n} 个素材", "Split into {n} assets"],

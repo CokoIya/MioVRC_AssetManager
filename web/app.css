@@ -1284,3 +1284,24 @@ body.paneon .offline:not([hidden]) ~ .toast { top: 104px; }
 .bundletag { font-size: 10.5px; font-weight: 700; letter-spacing: .5px; color: var(--warn); border: 1px solid rgba(255, 181, 71, .5); border-radius: 4px; padding: 0 5px; line-height: 16px; }
 .bundlenote .t { font-weight: 600; }
 .bundlenote .d { line-height: 1.6; }
+
+/* the captcha Baidu asks for before it checks a share's code: the picture (light, as Baidu draws it) and the field */
+.pancap .caprow { display: flex; align-items: center; gap: 12px; margin: 12px 0 10px; }
+.pancap .caprow img { height: 52px; min-width: 120px; background: #fff; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; transition: opacity .15s; }
+.pancap #cap_code { font-size: 18px; letter-spacing: 3px; }
+.pancap #cap_code::placeholder { font-size: 14px; letter-spacing: normal; }
+
+/* the player's own netdisk: the path, its folders and files, the downloads */
+.pandisk .dkcrumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 10px 0 8px; font-size: 13px; }
+.pandisk .dklist { max-height: 46vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 12px; }
+.pandisk .dknote { padding: 14px 12px; }
+.pandisk .dkrow { display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--line); }
+.pandisk .dkrow:last-child { border-bottom: 0; }
+.pandisk .dkname { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; text-align: left; background: none; border: 0; color: inherit; padding: 0; }
+.pandisk .dkname span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pandisk button.dkname { cursor: pointer; }
+.pandisk button.dkname:hover { color: var(--accent); }
+.pandisk .dkname svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.pandisk .dksize { flex: none; }
+.pandisk #dkjobs h4 { margin: 4px 0 8px; }
+.pafromdisk { margin-top: 2px; }
