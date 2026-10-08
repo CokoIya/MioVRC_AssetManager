@@ -70,12 +70,13 @@ function wishSeen() {
 }
 function wishOpen() {
   if (S.view !== "shop") setView("shop"); // (starts the first Booth search, which leaves the list: so before W.on)
+  if (S.web.open.shop) { S.web.back = null; closeWeb(); } // (the wish list was asked for: not back to where the page came from)
+  keepScroll(); // (the list that was in view keeps its place)
   W.on = true; W.fresh = new Set(); F.on = false;
-  if (S.web.open.shop) closeWeb();
   closeDrawer(); sideOpen(false);
-  renderShopSide(); renderShopGrid(); $(".main").scrollTop = 0;
+  renderShopSide(); renderShopGrid(); backToScroll();
 }
-function wishClose() { W.on = false; renderShopSide(); renderShopGrid(); $(".main").scrollTop = 0; }
+function wishClose() { keepScroll(); W.on = false; renderShopSide(); renderShopGrid(); backToScroll(); }
 
 // the entry at the top of the Booth tab's side bar
 function wishSideHTML() {
@@ -304,12 +305,13 @@ function followSeen() {
 // the list of shops, or one shop's new arrivals
 function followOpen(sub) {
   if (S.view !== "shop") setView("shop");
+  if (S.web.open.shop) { S.web.back = null; closeWeb(); }
+  keepScroll();
   F.on = true; F.open = sub && F.bySub.has(sub) ? sub : ""; W.on = false;
-  if (S.web.open.shop) closeWeb();
   closeDrawer(); sideOpen(false);
-  renderShopSide(); renderShopGrid(); $(".main").scrollTop = 0;
+  renderShopSide(); renderShopGrid(); backToScroll();
 }
-function followClose() { F.on = false; F.open = ""; renderShopSide(); renderShopGrid(); $(".main").scrollTop = 0; }
+function followClose() { keepScroll(); F.on = false; F.open = ""; renderShopSide(); renderShopGrid(); backToScroll(); }
 
 // the entry in the Booth tab's side bar, under the wish list's
 function followSideHTML() {
@@ -444,7 +446,7 @@ async function followAction(b) {
   switch (b.dataset.fl) {
     case "nav": return F.on && S.view === "shop" && !S.web.open.shop ? followClose() : followOpen("");
     case "open": return followOpen(sub);
-    case "list": F.open = ""; renderShopGrid(); $(".main").scrollTop = 0; return;
+    case "list": keepScroll(); F.open = ""; renderShopGrid(); backToScroll(); return;
     case "toggle": {
       if (followHas(sub)) await followRemove(sub); else await followAdd({ sub, name: b.dataset.name || "" });
       // the panel was drawn again with the button in its new state: the focus goes back onto it
