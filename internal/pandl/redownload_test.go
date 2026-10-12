@@ -46,8 +46,9 @@ type fakeBaidu struct {
 	answer   string
 	pictures int
 	verifies int
-	renamed  map[string]string // a folder made under this path comes out under that one
-	lost     map[string]bool   // a folder made under this path is not there afterwards
+	renamed  map[string]string      // a folder made under this path comes out under that one
+	lost     map[string]bool        // a folder made under this path is not there afterwards
+	refuse   func(name string) bool // a folder name refused (errno -7) besides those with characters outside the basic plane
 }
 
 func (f *fakeBaidu) kids(m map[string]*bdNode, dir string) []map[string]any {
@@ -121,6 +122,10 @@ func (f *fakeBaidu) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		reply(map[string]any{"errno": 0, "list": f.kids(f.disk, dir)})
 	case "/api/create":
 		p := r.Form.Get("path")
+		if strings.IndexFunc(p, func(r rune) bool { return r > 0xFFFF }) >= 0 || (f.refuse != nil && f.refuse(path.Base(p))) {
+			reply(map[string]any{"errno": -7}) // a name Baidu does not take (emoji, say)
+			return
+		}
 		if f.lost[p] {
 			reply(map[string]any{"errno": 0})
 			return

@@ -111,7 +111,8 @@ func runDiskJob(ctx context.Context, st *core.Store, j *PanJob) error {
 		TaskPanDL.Set(0, 0, j.Title+"："+m)
 	}
 	msg("正在检查百度网盘登录状态")
-	if _, _, err := b.Whoami(); err != nil {
+	vip, err := b.membership(s)
+	if err != nil {
 		return err
 	}
 	remote := diskPath(strings.TrimPrefix(j.Key, diskPrefix))
@@ -194,7 +195,7 @@ func runDiskJob(ctx context.Context, st *core.Store, j *PanJob) error {
 	purchases.PinDownloadDir(st, dlRoot)
 
 	// 2. download, 3. unpack
-	if err := b.fetchFiles(j, files, localOf, total, s.VIP != 2); err != nil {
+	if err := b.fetchFiles(j, files, localOf, total, vip); err != nil {
 		return err
 	}
 	var failed, unpacked, from []string

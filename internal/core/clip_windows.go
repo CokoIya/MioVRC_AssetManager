@@ -47,6 +47,20 @@ func AppInFront() bool {
 // Elevated: the program runs as administrator.
 func Elevated() bool { return windows.GetCurrentProcessToken().IsElevated() }
 
+// ElevatedAccount: the program runs as administrator because every program of this Windows account does (the
+// built-in Administrator account, or UAC turned off): there is no other way to start it.
+func ElevatedAccount() bool {
+	t := windows.GetCurrentProcessToken()
+	if !t.IsElevated() {
+		return false
+	}
+	var typ, n uint32
+	if err := windows.GetTokenInformation(t, windows.TokenElevationType, (*byte)(unsafe.Pointer(&typ)), 4, &n); err != nil {
+		return false
+	}
+	return typ == 1 // TokenElevationTypeDefault: no limited token of the account to start a program with
+}
+
 // clipPrivate: what is on the clipboard was marked by the program that put it there as not for programs that
 // watch the clipboard (password managers do that).
 func clipPrivate() bool {

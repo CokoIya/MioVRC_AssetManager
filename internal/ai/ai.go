@@ -820,6 +820,7 @@ func (c *aiClient) chatOpenAI(ctx context.Context, system string, turns []aiTurn
 	if err := json.Unmarshal(b, &r); err != nil || len(r.Choices) == 0 {
 		return aiTurn{}, errors.New(c.info.Label + "：无法解析响应内容，该地址可能不是 OpenAI 兼容接口")
 	}
+	c.noteUsage(ctx, openAIUsage(b))
 	m := r.Choices[0].Message
 	out := aiTurn{Role: "assistant", think: m.Reasoning}
 	switch v := m.Content.(type) {
@@ -956,6 +957,7 @@ func (c *aiClient) chatClaude(ctx context.Context, system string, turns []aiTurn
 	if err := json.Unmarshal(b, &r); err != nil || json.Unmarshal(r.Content, &blocks) != nil {
 		return aiTurn{}, errors.New(c.info.Label + "：无法解析响应内容，该地址可能不是 Anthropic 兼容接口")
 	}
+	c.noteUsage(ctx, claudeUsage(b))
 	out := aiTurn{Role: "assistant", blocks: r.Content}
 	for _, bl := range blocks {
 		switch bl.Type {

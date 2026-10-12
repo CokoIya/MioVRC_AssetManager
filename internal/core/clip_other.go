@@ -34,6 +34,8 @@ func AppInFront() bool { return !clipFlag(".back") }
 
 func Elevated() bool { return false }
 
+func ElevatedAccount() bool { return false }
+
 func ClipboardSeq() uint32 {
 	b, ok := clipFile()
 	if !ok {

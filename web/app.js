@@ -875,7 +875,8 @@ async function openWeb(u, kind) {
   let r;
   try { r = await api("/api/pane/open", { url: u, kind }); } catch (e) { r = { ok: false, err: "程序内部错误" }; }
   if (!r.ok) {
-    toast(r.err || "页面无法打开", 4000);
+    const e = r.err || "页面无法打开";
+    toast(e, e.length > 40 ? 9000 : 4000); // (what to do about it, when the browser inside cannot start: time to read it)
     if (covers) { S.web.open[v] = false; renderAll(); }
     else { S.web.st = { open: false }; renderWeb(); } // (Jinxxy has no list to go back to: 「页面已关闭」 with 「重新打开」)
     return;
@@ -1785,10 +1786,16 @@ function panJobHTML(j) {
   const line = j.stage === "download" ? `${stageText} ${j.files + 1 > j.fileN ? j.fileN : j.files + 1}/${j.fileN}　${fmtSize(j.done)} / ${fmtSize(j.total)}　${fmtSpeed(j.speed)}` : (j.msg || stageText);
   return `<div class="impprog"><div class="t">${esc(line)}</div><div class="bar wide"><i style="width:${pct}%"></i></div>
     ${j.file && j.stage === "download" ? `<div class="small muted fn">${esc(j.file)}</div>` : ""}
-    ${j.slow ? `<div class="small warnline">百度网盘对非超级会员账号限速，大文件下载较慢。</div>` : ""}
+    ${j.slow ? panSlowNote() : ""}
     ${(j.paths || []).length ? `<div class="small muted">仅下载所选的 ${j.paths.length} 项</div>` : ""}
     ${j.project ? `<div class="small muted">下载完成后导入 ${esc(rootLabel(j.project))}</div>` : ""}
     <div class="btnrow"><button class="btn small ghost" data-d="pancancel">取消下载</button></div></div>`;
+}
+// a netdisk download that stays slow: Baidu's limit for the account (only 超级会员 downloads are not limited)
+function panSlowNote() {
+  const vip = (S.data.baidu || {}).vip;
+  return `<div class="small warnline">${vip === 1 ? "百度网盘只对超级会员不限速，普通会员下载也可能较慢。" : "百度网盘对非超级会员账号限速，大文件下载较慢。"}</div>
+    <div class="small muted">急用时也可以用百度网盘客户端下载，再把下载的文件夹添加为素材文件夹。</div>`;
 }
 function panDLSec(a) {
   if (!a.user.shareUrl || !(a.panOnly || a.fromPan)) return "";
@@ -2051,8 +2058,7 @@ function renderDrawer(key, keepScroll) {
       <div class="field"><label>标签</label><input id="f_tags" value="${esc((u.tags || []).join(", "))}" placeholder="多个标签用逗号分隔"></div>
       ${a.virtual ? `<input id="f_booth" type="hidden" value="">` : `<div class="field"><label>Booth 链接</label><input id="f_booth" value="${esc(u.boothUrl || "")}" placeholder="${isGum(a) ? "当前关联 Gumroad 商品；填写 Booth 链接后改为关联 Booth" : a.boothId ? "已识别 #" + esc(a.boothId) : "https://booth.pm/ja/items/..."}"></div>`}
       <div class="field"><label>备注</label><textarea id="f_notes">${esc(u.notes || "")}</textarea></div>
-      ${(a.localCovers || []).length > 1 || u.cover ? `<div class="field"><label>封面</label><div class="covers">${(a.localCovers || []).map(c => `<img src="/thumb?w=160&p=${encodeURIComponent(c)}" data-cover="${esc(c)}" class="${u.cover === c ? "on" : ""}" title="${esc(c)}">`).join("")}</div></div>` : ""}
-      ${covFieldHTML(a)}${pkFieldHTML(a)}
+      ${coverField(a)}${covFieldHTML(a)}${pkFieldHTML(a)}
     </div>
     ${!isLocal(a) ? "" : `<div class="sec"><h4>使用情况</h4>
       ${(a.usage || []).length ? `<div class="uses">${a.usage.map(x => `<div class="use"><span class="st ${esc(x.status)}">${x.status === "used" ? "使用中" : "部分使用"}</span><span>${esc(x.project)}</span><span class="pct">${esc(x.matched)}/${esc(x.total)} 个资源（${Math.round(x.ratio * 100)}%）</span></div>`).join("")}</div>`
@@ -2103,6 +2109,16 @@ function closeDrawer() {
 // the dark sheet stays for as long as a dialog, a details panel or the side bar's drawer is over the page
 function scrimSync() {
   $("#scrim").classList.toggle("on", $("#modal").classList.contains("on") || $("#drawer").classList.contains("on") || document.body.classList.contains("sideopen"));
+}
+// The cover: one of the card's own pictures, or any picture on this computer (「选择图片…」: a copy of it is
+// kept, the picture itself is left as it is); 「恢复默认封面」: the card's own again.
+function coverField(a) {
+  const u = a.user, locals = a.localCovers || [];
+  const own = u.cover && !locals.includes(u.cover) ? [u.cover] : [];
+  const pics = own.concat(locals);
+  return `<div class="field"><label>封面</label><div class="ownc">
+    ${pics.length > 1 || u.cover ? `<div class="covers">${pics.map(c => `<img src="/thumb?w=160&p=${encodeURIComponent(c)}" data-cover="${esc(c)}" class="${u.cover === c ? "on" : ""}" title="${own.includes(c) ? "选择的图片" : esc(c)}">`).join("")}</div>` : ""}
+    <div class="btnrow"><button class="btn small" data-d="coverfile">选择图片…</button>${u.cover ? `<button class="btn small ghost" data-d="coverreset">恢复默认封面</button>` : ""}</div></div></div>`;
 }
 function collectUser(a) {
   const split = s => s.split(/[,，、;；]/).map(x => x.trim()).filter(Boolean);
@@ -2697,6 +2713,7 @@ function aiStatHTML() {
       off: ["", "已关闭，截图仅显示在记录中", set],
     }[c.looks || "unknown"];
     h += row(looks[0], "识图", looks[1], looks[2] || "");
+    if (window.aiUsageRow) h += aiUsageRow(row);
   }
   return h;
 }
@@ -3130,6 +3147,8 @@ document.addEventListener("click", async e => {
   if (cap) { panCaptchaAct(cap.dataset.cap, cap.dataset.capkey); return; }
   const dk = t.closest("[data-dk]");
   if (dk && window.diskAct) { diskAct(dk); return; }
+  const au = t.closest("[data-aiu]");
+  if (au && window.aiUsageAct) { aiUsageAct(au); return; }
   if (t.closest("#btnDLMissing")) {
     const list = (S.data.assets || []).filter(a => a.virtual && matches(a));
     if (!confirm(`下载这 ${list.length} 件已购商品？文件将保存到 ${S.data.dlDir}。`)) return;
@@ -3342,6 +3361,14 @@ document.addEventListener("click", async e => {
         const r = await api("/api/booth/download", { item: a.purchase.id, ids: [], importTo });
         if (!r.ok) { toast(r.err || "无法开始下载", 3500); return; }
         toast("开始下载，完成后自动导入"); await load(); return poll(true);
+      }
+      case "coverfile": case "coverreset": {
+        let r;
+        try { r = await api("/api/cover/own", { key: a.key, reset: btn.dataset.d === "coverreset" }); } catch (e) { r = { ok: false, err: "程序内部错误" }; }
+        if (!r.ok) { if (!r.cancelled) toast(r.err || "无法设置封面", 4000); return; }
+        S.coverPick = null; dr._h = null; // (what is typed in the panel stays: it is drawn again with it)
+        toast(r.cover ? "已设为封面" : "已恢复默认封面");
+        return load();
       }
       case "pandl": return startPanDL(a, "", null);
       case "pandlimp": return startPanDL(a, true, null);

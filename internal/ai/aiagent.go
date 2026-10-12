@@ -47,6 +47,7 @@ type aiSession struct {
 	st       *core.Store
 	outImgs  []aiImage // pictures the tool call in progress hands to the AI
 	rec      runRecord // what the line put on the avatar and built since it was last run, for 「保存为方案」
+	used     usageSum  // the tokens the AI's answers of this conversation took, and what they cost
 
 	// the menus of the avatars inspect_avatar last showed, by avatar name (localMenu)
 	menus map[string][]menuNode
@@ -256,6 +257,7 @@ func (s *aiSession) reset() {
 	}
 	s.steps, s.turns, s.changes, s.fixes, s.allowAll, s.soft = nil, nil, nil, 0, false, 0
 	s.rec = runRecord{}
+	s.used.reset()
 }
 
 func (s *aiSession) stop() {
@@ -1205,6 +1207,7 @@ func startAIRun(st *core.Store, req aiRunReq) error {
 		client = c
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	ctx = withUsageSink(ctx, &s.used)
 	s.busy, s.cancel = true, cancel
 	s.client, s.st, s.outImgs, s.done = client, st, nil, runDone{}
 	if req.Mode == "dress" { // the line starts over: what is saved as a recipe is this run and what follows it
@@ -2128,8 +2131,52 @@ func RegisterAI(st *core.Store, post func(string, func(http.ResponseWriter, map[
 		if !ok {
 			return
 		}
-		busy, steps, changes := aiSessionFor(p).snapshot()
-		core.WriteJSON(w, map[string]any{"ok": true, "kit": unity.AIKitStatus(p), "busy": busy, "steps": steps, "changes": changes})
+		s := aiSessionFor(p)
+		busy, steps, changes := s.snapshot()
+		core.WriteJSON(w, map[string]any{"ok": true, "kit": unity.AIKitStatus(p), "busy": busy, "steps": steps, "changes": changes,
+			"usage": map[string]any{"conv": s.used.view(), "today": usageToday()}})
+	})
+	// ---------- what the AI's answers took, and cost ----------
+	post("/api/ai/usage", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		r := usageReport()
+		r["ok"] = true
+		core.WriteJSON(w, r)
+	})
+	post("/api/ai/usage/price", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		var p *aiPrice
+		if raw := b["price"]; len(raw) > 0 && string(raw) != "null" {
+			p = &aiPrice{}
+			if err := json.Unmarshal(raw, p); err != nil {
+				fail(w, errors.New("价格须为数字"))
+				return
+			}
+		}
+		if err := setPrice(str(b, "provider"), str(b, "model"), p); err != nil {
+			fail(w, err)
+			return
+		}
+		r := usageReport()
+		r["ok"] = true
+		core.WriteJSON(w, r)
+	})
+	post("/api/ai/usage/clear", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		if err := clearUsage(); err != nil {
+			fail(w, err)
+			return
+		}
+		r := usageReport()
+		r["ok"] = true
+		core.WriteJSON(w, r)
+	})
+	post("/api/ai/balance", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		bal, err := queryBalance(ctx, st)
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		core.WriteJSON(w, map[string]any{"ok": true, "balance": bal})
 	})
 	post("/api/ai/run", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		p, ok := project(w, b)

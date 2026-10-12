@@ -271,6 +271,8 @@ select, .btn {
 .bhit .hb .btn { padding: 0 8px; }
 .covers img { width: 64px; height: 64px; object-fit: cover; border-radius: 6px; cursor: pointer; border: 2px solid transparent; }
 .covers img.on { border-color: var(--accent); }
+.ownc .covers { margin-bottom: 6px; }
+.ownc .btnrow { margin-top: 0; }
 
 /* modal */
 .modal {
@@ -1305,3 +1307,20 @@ body.paneon .offline:not([hidden]) ~ .toast { top: 104px; }
 .pandisk .dksize { flex: none; }
 .pandisk #dkjobs h4 { margin: 4px 0 8px; }
 .pafromdisk { margin-top: 2px; }
+
+/* AI usage and cost (1.7.11) */
+.aiuse .atable td { vertical-align: top; }
+.aiuse > .hint { margin-top: 10px; }
+.aiuse .atable tr.cur td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.aiuse .atable .sub { font-size: 12px; color: var(--muted); }
+.aiuse .prices .pr { display: inline-block; margin-right: 10px; white-space: nowrap; }
+.aiuse .prices .linkbtn { margin-left: 8px; }
+.aibal { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.aibal .k { color: var(--muted); }
+.aibal b { font-size: 18px; }
+.priceform { margin: 12px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
+.priceform .t { margin-bottom: 8px; }
+.priceform .pfrow { display: flex; gap: 10px; flex-wrap: wrap; }
+.priceform .pf { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.priceform .pf input { width: 110px; }
+

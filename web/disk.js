@@ -49,7 +49,7 @@ function diskJobHTML(j) {
   const pct = panPct(j);
   const line = j.stage === "download" ? `正在下载 ${Math.min(j.files + 1, j.fileN)}/${j.fileN}　${fmtSize(j.done)} / ${fmtSize(j.total)}　${fmtSpeed(j.speed)}` : j.msg || "排队中";
   return `<div class="impprog"><div class="t">${esc(name)}：${esc(line)}</div><div class="bar wide"><i style="width:${pct}%"></i></div>
-    ${j.slow ? `<div class="small warnline">百度网盘对非超级会员账号限速，大文件下载较慢。</div>` : ""}
+    ${j.slow ? panSlowNote() : ""}
     <div class="btnrow"><button class="btn small ghost" data-dk="cancel">取消下载</button></div></div>`;
 }
 // the downloads' part of the dialog: drawn again as they go on, without touching the list above it

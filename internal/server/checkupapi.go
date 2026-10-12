@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"vrclib/internal/ai"
@@ -131,6 +132,46 @@ func registerCheckup(st *core.Store, post func(string, func(http.ResponseWriter,
 		core.WriteJSON(w, map[string]any{"ok": true, "path": path})
 	})
 
+	// ---------- a picture of the player's own as a card's cover ----------
+	// picked from anywhere on this computer; a copy is kept in the program's folder (the original is left as it
+	// is). reset: the card's own cover again.
+	post("/api/cover/own", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		key := str(b, "key")
+		var reset bool
+		_ = json.Unmarshal(b["reset"], &reset)
+		if !knownCard(st, key) {
+			fail(w, errors.New("未找到该素材"))
+			return
+		}
+		cover := ""
+		if !reset {
+			src, err := core.PickFile("选择封面图片", "图片 (*.png;*.jpg;*.jpeg;*.webp;*.gif)", "*.png;*.jpg;*.jpeg;*.webp;*.gif")
+			if errors.Is(err, core.ErrPickCancelled) {
+				core.WriteJSON(w, map[string]any{"ok": false, "cancelled": true})
+				return
+			}
+			if err != nil {
+				fail(w, errors.New("无法打开选择文件的窗口："+core.TrimErr(err)))
+				return
+			}
+			if cover, err = library.CopyOwnCover(src); err != nil {
+				fail(w, err)
+				return
+			}
+		}
+		st.Mu.Lock()
+		u := st.User[key]
+		if u == nil {
+			u = &core.UserData{}
+			st.User[key] = u
+		}
+		u.Cover, u.Updated = cover, time.Now().Unix()
+		st.Mu.Unlock()
+		_ = st.Save()
+		core.BumpRev()
+		core.WriteJSON(w, map[string]any{"ok": true, "cover": cover})
+	})
+
 	// ---------- covers from prefabs ----------
 	post("/api/cover/status", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		core.WriteJSON(w, map[string]any{"ok": true, "status": ai.CoverStatusOf(st, str(b, "key"))})
@@ -168,4 +209,23 @@ func registerCheckup(st *core.Store, post func(string, func(http.ResponseWriter,
 		ai.CancelCoverBatch()
 		core.WriteJSON(w, map[string]any{"ok": true})
 	})
+}
+
+// knownCard: a card of the library — a scanned asset, or one the store keeps the player's data of (a netdisk
+// share, a purchase not downloaded yet).
+func knownCard(st *core.Store, key string) bool {
+	if key == "" {
+		return false
+	}
+	st.Mu.RLock()
+	defer st.Mu.RUnlock()
+	if st.User[key] != nil {
+		return true
+	}
+	for _, a := range st.Assets {
+		if a.Key == key {
+			return true
+		}
+	}
+	return strings.HasPrefix(key, "purchase:") && st.Purchases[strings.TrimPrefix(key, "purchase:")] != nil
 }

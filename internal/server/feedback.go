@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"vrclib/internal/core"
+	"vrclib/internal/pandl"
 	"vrclib/internal/update"
 	"vrclib/internal/webpane"
 )
@@ -54,6 +55,14 @@ func feedbackInfo(st *core.Store) string {
 		fmt.Fprintf(&b, "默认浏览器：%s\n", br)
 	}
 	fmt.Fprintf(&b, "素材 %d，网盘分享 %d，Booth 已购 %d，素材文件夹 %d，Unity 工程文件夹 %d\n", nAssets, nShares, nPurch, nRoots, nProj)
+	if a := pandl.CurrentBaiduAccount(); a.LoggedIn {
+		fmt.Fprintf(&b, "百度网盘：已登录（%s）\n", pandl.VIPLabel(a.VIP))
+	} else {
+		b.WriteString("百度网盘：未登录\n")
+	}
+	if core.Elevated() {
+		b.WriteString("以管理员身份运行\n")
+	}
 	if lines := logTail(60); len(lines) > 0 {
 		b.WriteString("\n最近的日志：\n" + strings.Join(lines, "\n") + "\n")
 	}

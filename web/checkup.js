@@ -458,7 +458,7 @@ function covFieldHTML(a) {
   if (s && s.real) return "";
   const gen = !!(s && s.generated);
   const why = !s ? "正在检查…" : s.can ? "在已打开的 Unity 工程中渲染该素材的 prefab，作为封面" : s.why;
-  return `<div class="field"><label>封面</label><div class="covgen">
+  return `<div class="field"><label></label><div class="covgen">
     <button class="btn small" data-cov="gen"${busy || !s || !s.can ? " disabled" : ""} title="${esc(why)}">${busy ? "正在生成…" : gen ? "重新生成封面" : "从 Unity 生成封面"}</button>
     ${gen && !busy ? `<button class="btn small ghost" data-cov="remove">移除</button>` : ""}
     <span class="hint">${gen ? "当前封面由 Unity 中的 prefab 生成。关联 Booth 商品或选择图片后，将改用其封面。" : s && !s.can ? esc(s.why) : covFromPkg(a) ? "生成后将替换 unitypackage 中的预览图。" : "该素材没有封面图片。"}</span></div></div>`;

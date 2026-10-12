@@ -183,8 +183,9 @@ var (
 	//   checkups.json  check-ups by the project's path on this computer
 	//   pkgcovers.json the unitypackage each preview came from, by its path (looked at again on every scan);
 	//                  the previews (covers/unitypackage) are read from the packages anew
+	//   ai-usage.json  what this computer's AI account was asked for, and the prices the player set for it
 	dataSkipFile = map[string]bool{"library.json": true, "library.json.bak": true, "guidcache.json": true, "tidy-cache.json": true,
-		"transfer.json": true, "manifest.json": true, "ai.json": true, "checkups.json": true, "pkgcovers.json": true}
+		"transfer.json": true, "manifest.json": true, "ai.json": true, "checkups.json": true, "pkgcovers.json": true, "ai-usage.json": true}
 	dataSkipDir = map[string]bool{"booth-profile": true, "booth-profile-firefox": true, "web-login": true, "web-xianyu": true, "webview": true, "webview2": true,
 		"ebwebview": true, "update": true, "vpm": true, "shots": true, "downloads": true, "covers/thumbs": true, "covers/remote": true,
 		"covers/unitypackage": true}

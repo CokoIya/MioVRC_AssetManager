@@ -661,10 +661,11 @@ type mockLLM struct {
 type mockTurn struct {
 	text   string
 	calls  []aiCall
-	status int    // refuse with this HTTP status…
-	said   string // …and these words
-	after  string // … and this Retry-After
-	cut    bool   // the output limit ended the turn (finish_reason=length, stop_reason=max_tokens)
+	status int            // refuse with this HTTP status…
+	said   string         // …and these words
+	after  string         // … and this Retry-After
+	cut    bool           // the output limit ended the turn (finish_reason=length, stop_reason=max_tokens)
+	usage  map[string]any // the answer's "usage", as the service writes it
 }
 
 func (m *mockLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -725,7 +726,11 @@ func (m *mockLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if turn.cut {
 			stop = "max_tokens"
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"role": "assistant", "content": blocks, "stop_reason": stop})
+		ans := map[string]any{"role": "assistant", "content": blocks, "stop_reason": stop}
+		if turn.usage != nil {
+			ans["usage"] = turn.usage
+		}
+		_ = json.NewEncoder(w).Encode(ans)
 		return
 	}
 	if r.URL.Path != "/v1/chat/completions" {
@@ -745,7 +750,11 @@ func (m *mockLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if turn.cut {
 		finish = "length"
 	}
-	_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": msg, "finish_reason": finish}}})
+	ans := map[string]any{"choices": []any{map[string]any{"message": msg, "finish_reason": finish}}}
+	if turn.usage != nil {
+		ans["usage"] = turn.usage
+	}
+	_ = json.NewEncoder(w).Encode(ans)
 }
 
 func dressScript() []mockTurn {

@@ -726,6 +726,24 @@ func (b *bdClient) listDir(dir string) ([]bdEntry, bool, error) {
 	return all, true, nil
 }
 
+// errBdName: Baidu refused the name of a folder to be made (errno -7)
+var errBdName = errors.New("在网盘中创建文件夹失败：百度网盘不接受这个文件夹名（百度网盘错误 -7）")
+
+// baiduName: name without what Baidu does not take in the name of a folder — characters outside the basic plane
+// (emoji and the like: errno -7), and invisible ones (joiners, variation selectors, direction marks, controls).
+func baiduName(name string) string {
+	s := strings.Map(func(r rune) rune {
+		switch {
+		case r > 0xFFFF, r < 0x20, r == 0x7F, r >= 0xD800 && r <= 0xDFFF, r >= 0xE000 && r <= 0xF8FF,
+			r >= 0x200B && r <= 0x200F, r >= 0x2028 && r <= 0x202E, r >= 0x2060 && r <= 0x206F,
+			r >= 0xFE00 && r <= 0xFE0F, r == 0xFEFF, r == 0x20E3:
+			return -1
+		}
+		return r
+	}, name)
+	return strings.Trim(strings.Join(strings.Fields(s), " "), " .")
+}
+
 // mkdir makes a folder in the player's netdisk and answers where it is: a name Baidu does not take as it is
 // comes back changed, and the path Baidu reports is the one the files are saved into.
 func (b *bdClient) mkdir(p string) (string, error) {
@@ -740,6 +758,8 @@ func (b *bdClient) mkdir(p string) (string, error) {
 	switch {
 	case errno == -8: // it is there already
 		return p, nil
+	case errno == -7: // a name Baidu does not take
+		return "", errBdName
 	case errno != 0:
 		return "", bdWriteErr("在网盘中创建文件夹", errno)
 	case r.Path != "" && r.Path != p && path.Dir(r.Path) == path.Dir(p):
@@ -1533,7 +1553,8 @@ func runPanJob(ctx context.Context, st *core.Store, j *PanJob) error {
 		TaskPanDL.Set(0, 0, j.Title+"："+m)
 	}
 	msg("正在检查百度网盘登录状态")
-	if _, _, err := b.Whoami(); err != nil {
+	vip, err := b.membership(s)
+	if err != nil {
 		return err
 	}
 	surl, sub := netdisk.SplitPanKey(j.Key)
@@ -1614,12 +1635,17 @@ func runPanJob(ctx context.Context, st *core.Store, j *PanJob) error {
 			picks = append(picks, panPick{tree: p, raw: it, dir: copyTop + d})
 		}
 	}
-	// 1. save into the player's netdisk: /MioVRCA/<name>
+	// 1. save into the player's netdisk: /MioVRCA/<name> (without what Baidu does not take in a name; the
+	// folder on this disk keeps all of it)
 	name := core.SafeName(naming.CleanName(j.Title), 60)
 	if name == "" || name == "_" {
 		name = "网盘分享 " + surl
 	}
-	dest := panSaveRoot + "/" + name
+	bdName := baiduName(name)
+	if bdName == "" || bdName == "_" {
+		bdName = "网盘分享 " + surl
+	}
+	dest := panSaveRoot + "/" + bdName
 	st.Mu.RLock()
 	if u := st.User[j.Key]; u != nil && strings.HasPrefix(u.PanCopy, panSaveRoot+"/") { // where an earlier download saved it
 		dest = u.PanCopy
@@ -1649,7 +1675,16 @@ func runPanJob(ctx context.Context, st *core.Store, j *PanJob) error {
 	if _, err := b.mkdir(panSaveRoot); err != nil {
 		return err
 	}
-	if dest, err = b.mkdir(dest); err != nil {
+	if made, err := b.mkdir(dest); err == nil {
+		dest = made
+	} else if errors.Is(err, errBdName) && path.Base(dest) != "share_"+surl {
+		// a name Baidu refuses all the same: one of letters and digits only
+		alt := panSaveRoot + "/share_" + surl
+		core.Logf("百度网盘不接受文件夹名「%s」，改用「%s」", path.Base(dest), path.Base(alt))
+		if dest, err = b.mkdir(alt); err != nil {
+			return err
+		}
+	} else {
 		return err
 	}
 	setPan(j, func(j *PanJob) { j.Saved = dest })
@@ -1776,7 +1811,7 @@ func runPanJob(ctx context.Context, st *core.Store, j *PanJob) error {
 		return err
 	}
 	purchases.PinDownloadDir(st, dlRoot)
-	if err := b.fetchFiles(j, files, localOf, total, s.VIP != 2); err != nil {
+	if err := b.fetchFiles(j, files, localOf, total, vip); err != nil {
 		return err
 	}
 	// 3. unpack (archives inside archives too); the downloaded archives can go, they are in the netdisk
@@ -1832,9 +1867,42 @@ func runPanJob(ctx context.Context, st *core.Store, j *PanJob) error {
 	return nil
 }
 
+// VIPLabel: the account's membership, as the player knows it (Baidu limits the speed of all but 超级会员).
+func VIPLabel(vip int) string {
+	switch vip {
+	case 2:
+		return "超级会员"
+	case 1:
+		return "普通会员"
+	case 0:
+		return "非会员"
+	}
+	return "会员等级未知"
+}
+
+// membership: the login is asked about again before a download, with the membership as Baidu says it now (the
+// player may have changed it since logging in): kept with the login, and shown.
+func (b *bdClient) membership(s *baiduSession) (int, error) {
+	_, vip, err := b.Whoami()
+	if err != nil {
+		return 0, err
+	}
+	if vip < 0 {
+		return s.VIP, nil
+	}
+	if vip != s.VIP {
+		s.VIP = vip
+		_ = SaveBaiduSession(s)
+		core.BumpRev()
+	}
+	return vip, nil
+}
+
 // fetchFiles downloads files of the player's netdisk to where localOf puts them, with the progress on the job
-// (and in the status bar). slowHint: the account has no 超级会员 — a slow line is said to be Baidu's limit.
-func (b *bdClient) fetchFiles(j *PanJob, files []bdFile, localOf func(string) string, total int64, slowHint bool) error {
+// (and in the status bar). vip: the account's membership — without 超级会员, a slow line is said to be Baidu's
+// limit; and the speed of the whole download is logged with it.
+func (b *bdClient) fetchFiles(j *PanJob, files []bdFile, localOf func(string) string, total int64, vip int) error {
+	slowHint := vip != 2
 	var done int64
 	winStart, winBytes := time.Now(), int64(0)
 	started := time.Now()
@@ -1865,6 +1933,9 @@ func (b *bdClient) fetchFiles(j *PanJob, files []bdFile, localOf func(string) st
 		}
 	}
 	setPan(j, func(j *PanJob) { j.Done, j.Files, j.Speed = total, len(files), 0 })
+	if d := time.Since(started); done > 0 {
+		core.Logf("网盘文件下载：%s，用时 %s，平均 %s/s（百度网盘账号：%s）", fmtBytes(done), d.Round(time.Second), fmtBytes(int64(float64(done)/max(d.Seconds(), 1))), VIPLabel(vip))
+	}
 	return nil
 }
 

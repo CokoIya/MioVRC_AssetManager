@@ -730,7 +730,7 @@ func TestExportLeavesOutMachineData(t *testing.T) {
 	st := testkit.NewStore(t)
 	st.Settings.Proxy, st.Settings.DownloadDir, st.AutoDLDir = "http://me:PROXYPASS@10.0.0.1:8080", filepath.Join(t.TempDir(), "dl-here"), filepath.Join(t.TempDir(), "auto-here")
 	st.Settings.Roots, st.Settings.HideZh = []string{t.TempDir()}, true
-	for _, f := range []string{"ai.json", "ai-key.dat", "booth-session.dat", "gumroad-session.dat", "baidu-session.dat", "web-session.dat", "library.log",
+	for _, f := range []string{"ai.json", "ai-usage.json", "ai-key.dat", "booth-session.dat", "gumroad-session.dat", "baidu-session.dat", "web-session.dat", "library.log",
 		"booth-debug.html", "pan-debug.txt", "cloud-debug.txt", "wishlist.json", "follows.json", "updates.json", "gencovers.json", "checkups.json", "pkgcovers.json",
 		"transfer.json", "tidy-cache.json", "guidcache.json", "web-login/Default/Preferences.json", "web-xianyu/EBWebView/Local State.json", "webview/EBWebView/Local State.json", "booth-profile/x.json",
 		"booth-profile-firefox/cookies.json", "covers/a.jpg", "covers/generated/g.png", "covers/thumbs/a.jpg", "covers/unitypackage/p.png", "recipes/r.json",

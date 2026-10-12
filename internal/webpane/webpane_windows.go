@@ -49,6 +49,7 @@ type WinPane struct {
 	ch   *edge.Chromium
 	port int
 	err  error
+	dead error // the browser was started, but its DevTools port did not open: said again, until it does open
 }
 
 var thePane *WinPane // for the window procedure (there is only one)
@@ -72,10 +73,19 @@ func freePort() (int, error) {
 
 func (p *WinPane) Ensure(proxy string) (int, error) {
 	p.mu.Lock()
-	port := p.port
+	port, dead := p.port, p.dead
 	p.mu.Unlock()
-	if port > 0 {
-		return port, nil
+	if port > 0 { // asked again: the page could not be reached (or this is the first page after a failure)
+		if _, err := cdpTargets(port); err == nil {
+			p.mu.Lock()
+			p.dead = nil
+			p.mu.Unlock()
+			return port, nil
+		}
+		if dead != nil {
+			return 0, dead
+		}
+		return 0, errPaneGone
 	}
 	done := make(chan struct{})
 	p.Wv.Dispatch(func() { p.create(proxy); close(done) })
@@ -99,10 +109,24 @@ func (p *WinPane) Ensure(proxy string) (int, error) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	if core.Elevated() { // WebView2 ignores the arguments a view's browser is started with when the program is elevated
-		return 0, errors.New("以管理员身份运行时内置浏览器无法启动，请以普通方式启动本软件")
+	err = errors.New("内置浏览器未开启调试端口")
+	if core.Elevated() {
+		err = elevatedPaneErr()
 	}
-	return 0, errors.New("内置浏览器未开启调试端口")
+	core.Logf("内置浏览器的调试端口 %d 没有打开：%v", port, err)
+	p.mu.Lock()
+	p.dead = err
+	p.mu.Unlock()
+	return 0, err
+}
+
+// elevatedPaneErr: what the player is told when the pane's browser could not be reached in a program that runs
+// as administrator (its arguments are given through WebView2's own interface then, which it is meant to read).
+func elevatedPaneErr() error {
+	if core.ElevatedAccount() {
+		return errors.New("当前 Windows 账户以管理员身份运行所有程序（例如系统自带的 Administrator 账户），内置浏览器无法启动。请换用普通的 Windows 账户使用本软件")
+	}
+	return errors.New("本软件正以管理员身份运行，内置浏览器无法启动。请关闭本软件后直接双击启动（不要选「以管理员身份运行」，也不要在属性的「兼容性」中勾选它）")
 }
 
 // create runs on the window's thread.
@@ -143,6 +167,10 @@ func (p *WinPane) create(proxy string) {
 	_ = os.Setenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", args)
 	ch := edge.NewChromium()
 	ch.DataPath = paneProfileDir()
+	elevated := core.Elevated()
+	if elevated { // WebView2 does not read the variable in a program that runs as administrator: its interface then
+		ch.AdditionalBrowserArgs = args
+	}
 	ch.Background = &edge.COREWEBVIEW2_COLOR{A: 255, R: 255, G: 255, B: 255}
 	thePane, p.hwnd, p.ch = p, h, ch
 	ok := ch.Embed(h)
@@ -164,7 +192,11 @@ func (p *WinPane) create(proxy string) {
 	ch.Init(paneLinkScript)
 	_ = ch.Hide()
 	p.port = port
-	core.Logf("内置浏览器已启动（调试端口 %d）", port)
+	if elevated {
+		core.Logf("内置浏览器已启动（调试端口 %d；以管理员身份运行，启动参数经 WebView2 的接口传入）", port)
+	} else {
+		core.Logf("内置浏览器已启动（调试端口 %d）", port)
+	}
 	// a Dispatch posted while Embed ran its own message loop lost its wake-up message
 	go p.Wv.Dispatch(func() {})
 }
