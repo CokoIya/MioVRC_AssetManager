@@ -270,6 +270,14 @@ func skillsInProject(p string) (kind, version string) {
 		}
 		if json.Unmarshal(b, &m) == nil {
 			if v, ok := m.Dependencies[SkillsPkg]; ok {
+				if strings.Contains(v, "://") || strings.HasSuffix(v, ".git") { // from git: what Unity fetched says its version
+					v = "Git"
+					if ms, _ := filepath.Glob(filepath.Join(p, "Library", "PackageCache", SkillsPkg+"@*", "package.json")); len(ms) > 0 {
+						if gv := pkgJSONVersion(ms[0]); gv != "" {
+							v = gv
+						}
+					}
+				}
 				return "own", v
 			}
 		}
@@ -471,6 +479,8 @@ func InstallAIKit(p string) (note string, err error) {
 	}
 	kind, ver := skillsInProject(p)
 	switch {
+	case kind == "own" && ver == "Git": // by the link of its README (a new project's, say), fetched by Unity
+		note = "工程已通过 Git 安装 UnitySkills，沿用该版本"
 	case kind == "own":
 		note = "工程已自带 UnitySkills " + ver + "，沿用现有版本"
 	case kind == "ours" && ver == SkillsVersion:
@@ -686,4 +696,17 @@ func Clip(b []byte, n int) []byte {
 		cut--
 	}
 	return append(append([]byte{}, b[:cut]...), []byte(fmt.Sprintf("…（太长，后面 %d 字节没有给出；把查询范围收小一点）", len(b)-cut))...)
+}
+
+// pkgJSONVersion: the version a package.json gives ("" when it cannot be read).
+func pkgJSONVersion(file string) string {
+	b, err := os.ReadFile(file)
+	if err != nil {
+		return ""
+	}
+	var m struct {
+		Version string `json:"version"`
+	}
+	_ = json.Unmarshal(b, &m)
+	return m.Version
 }

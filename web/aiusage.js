@@ -4,7 +4,7 @@
 // The amounts are estimates: the services' own bills are what counts.
 "use strict";
 
-const AIU = { r: null, bal: null, balErr: "", balBusy: false, edit: null, seq: 0 };
+const AIU = { r: null, bal: null, balErr: "", balBusy: false, edit: null, seq: 0, ev: null, evTimer: 0 };
 
 function fmtTok(n) {
   n = n || 0;
@@ -17,18 +17,32 @@ function fmtMoney1(cur, v) {
   return s + (v >= 100 ? v.toFixed(0) : v >= 1 ? v.toFixed(2) : v >= 0.01 ? v.toFixed(3) : v > 0 ? v.toFixed(4) : "0");
 }
 function fmtMoney(cost) { return Object.keys(cost || {}).sort().map(k => fmtMoney1(k, cost[k])).join(" + "); }
+// the share of the input the service read from its cache (cheaper): "" when it said nothing about its cache
+function hitRate(u) {
+  u = u || {};
+  const all = (u.in || 0) + (u.hit || 0) + (u.write || 0);
+  return all > 0 && u.hit > 0 ? Math.round(u.hit / all * 100) + "%" : "";
+}
 // a usage in short: the tokens, and about what they cost (or that a model has no price to count them at)
 function usageShort(u) {
   u = u || {};
-  const m = fmtMoney(u.cost);
-  return `<b>${fmtTok(u.tokens)}</b> tokens${m ? ` <span class="muted">≈ ${m}</span>` : ""}${u.unpriced && u.tokens ? ` <span class="muted small">${m ? "（部分模型未设置价格）" : "（未设置价格）"}</span>` : ""}`;
+  const m = fmtMoney(u.cost), hr = hitRate(u);
+  return `<b>${fmtTok(u.tokens)}</b> tokens${m ? ` <span class="muted">≈ ${m}</span>` : ""}${u.unpriced && u.tokens ? ` <span class="muted small">${m ? "（部分模型未设置价格）" : "（未设置价格）"}</span>` : ""}${hr ? ` <span class="muted small"><span>缓存命中</span> ${hr}</span>` : ""}`;
 }
 // the pipeline's status line
 function aiUsageRow(row) {
   const u = (AI.sess || {}).usage;
   if (!u) return "";
-  return row("", "用量", `<span>本次对话</span> ${usageShort(u.conv)}<span class="sub"><span>今日</span> ${usageShort(u.today)}</span>`,
+  const pk = u.peak ? `<span class="sub warnline"><span>DeepSeek 当前为高峰时段，价格为平时的 2 倍</span> <span>（北京时间 ${esc(u.peak.until)} 后恢复）</span></span>` : "";
+  return row("", "用量", `<span>本次对话</span> ${usageShort(u.conv)}<span class="sub"><span>今日</span> ${usageShort(u.today)}</span>${pk}`,
     `<button class="btn small ghost" data-aiu="open">明细</button>`);
+}
+// under 「运行流水线」: what a run took on average lately, with this model
+function aiEstimateHTML() {
+  const u = (AI.sess || {}).usage, e = u && u.estimate, c = AI.cfg || {};
+  if (!e || !c.ready || PIPE.noAI || ($("#pipe_noai") || {}).checked) return "";
+  const m = fmtMoney(e.cost);
+  return `<span>预计用量</span> <b>${fmtTok(e.tokens)}</b> tokens${m ? ` ≈ ${m}` : ""} <span class="muted">（<span>按最近</span> ${e.runs} <span>次运行的平均</span>）</span>`;
 }
 
 async function aiUsageOpen() {
@@ -47,6 +61,34 @@ async function aiUsageLoad() {
   if (seq !== AIU.seq) return;
   if (!r.ok) { toast(r.err || "无法读取用量", 4000); return; }
   AIU.r = r; aiUsageDraw();
+  aiEvalLoad();
+}
+// ---------- the evaluation set: the samples of the runs, asked again of the model set up now ----------
+async function aiEvalLoad(path) {
+  let r;
+  try { r = await api(path || "/api/ai/eval", {}); } catch (e) { r = { ok: false, err: "程序无响应" }; }
+  if (!r.ok) { toast(r.err || "操作失败", 5000); if (path) return; }
+  else AIU.ev = r;
+  if (!aiUsageOpenNow()) return;
+  aiUsageDraw();
+  clearTimeout(AIU.evTimer);
+  if (((AIU.ev || {}).runs || []).some(x => x.running)) AIU.evTimer = setTimeout(() => aiEvalLoad(), 1500);
+}
+function aiEvalHTML() {
+  const ev = AIU.ev; if (!ev) return "";
+  const runs = ev.runs || [], now = runs.find(x => x.running);
+  const avg = (x, f) => x.done ? f(x) : "—";
+  const pct = (n, x) => x.done ? Math.round(n / x.done * 100) + "%" : "—";
+  const rows = runs.map(x => `<tr><td>${esc(new Date(x.at * 1000).toLocaleString())}${x.stopped ? `<div class="sub">已停止</div>` : ""}</td>
+    <td><div data-i18n="off">${esc(x.model)}</div><div class="sub">${esc(x.label)}</div></td>
+    <td class="r">${x.done}/${x.samples}</td><td class="r">${pct(x.first, x)}</td><td class="r">${pct(x.fixed, x)}</td><td class="r">${pct(x.failed + x.errors, x)}</td>
+    <td class="r">${avg(x, x => fmtTok(Math.round(x.tokens / x.done)))}</td><td class="r">${avg(x, x => fmtMoney(Object.fromEntries(Object.entries(x.cost || {}).map(([k, v]) => [k, v / x.done]))) || "—")}</td>
+    <td class="r">${avg(x, x => (x.seconds / x.done).toFixed(1) + " s")}</td></tr>`).join("");
+  return `<div class="aieval"><div class="t"><b>评测</b> <span class="muted small"><span>已保存样本</span> ${ev.samples}</span></div>
+    <div class="hint2">每次用 AI 运行流水线时，自动保存发给 AI 的菜单请求（不含截图和 API Key），最多保留 60 个。评测用当前的 AI 服务和模型重新请求这些样本，比较方案的通过率、用量、花费和用时；只请求 AI，不改动任何工程。</div>
+    <div class="btnrow">${now ? `<span class="muted"><span>正在评测</span> ${now.done}/${now.samples}…</span><button class="btn small" data-aiu="evalstop">停止</button>`
+      : `<button class="btn small" data-aiu="eval"${ev.samples ? "" : " disabled"}>用当前模型评测</button>`}<button class="btn small ghost" data-aiu="evalopen">打开样本文件夹</button>${ev.samples && !now ? `<button class="btn small ghost" data-aiu="evalclear">清除样本</button>` : ""}</div>
+    ${runs.length ? `<table class="atable evtable"><thead><tr><th>时间</th><th>模型</th><th class="r">样本</th><th class="r">直接通过</th><th class="r">修改后通过</th><th class="r">未通过</th><th class="r">平均 tokens</th><th class="r">平均花费</th><th class="r">平均用时</th></tr></thead><tbody>${rows}</tbody></table>` : ""}</div>`;
 }
 async function aiUsageBalance() {
   AIU.balBusy = true; aiUsageDraw();
@@ -59,8 +101,8 @@ async function aiUsageBalance() {
 function aiUsageOpenNow() { const m = $("#modal"); return m.classList.contains("on") && m.dataset.kind === "aiusage"; }
 function aiUsageCell(u) {
   if (!u || !u.tokens) return `<span class="muted">—</span>`;
-  const m = fmtMoney(u.cost);
-  return `<b>${fmtTok(u.tokens)}</b><div class="sub">${m ? "≈ " + m : `<span>未设置价格</span>`}</div>`;
+  const m = fmtMoney(u.cost), hr = hitRate(u);
+  return `<b>${fmtTok(u.tokens)}</b><div class="sub">${m ? "≈ " + m : `<span>未设置价格</span>`}</div>${hr ? `<div class="sub"><span>缓存命中</span> ${hr}</div>` : ""}`;
 }
 function aiPriceHTML(p) {
   if (!p) return `<span class="muted">未设置价格</span>`;
@@ -88,6 +130,9 @@ function aiUsageDraw() {
     ${ms.length ? `<table class="atable"><thead><tr><th>模型</th><th class="r">今日</th><th class="r">本月</th><th class="r">累计</th><th>价格（每百万 tokens）</th></tr></thead><tbody>${rows}</tbody></table>`
       : `<div class="aiempty">尚无用量记录。使用 AI 运行流水线后，将在这里按模型统计。</div>`}
     ${aiPriceFormHTML()}
+    <div class="aibudget"><label for="aiu_budget"><span>单次运行上限</span></label><input id="aiu_budget" type="number" min="0" step="0.1" value="${r.budget ? +(r.budget / 1e6).toFixed(2) : 0}" inputmode="decimal"><span><span>百万 tokens</span></span>
+      <button class="btn small" data-aiu="budget">保存</button><span class="hint2"><span>一次运行用到上限时先暂停，询问是否继续；0 表示不限。</span></span></div>
+    ${aiEvalHTML()}
     <p class="hint">金额按上表价格估算，仅供参考，以服务商的账单为准。DeepSeek 在北京时间工作日 9:00–12:00、14:00–18:00 为高峰时段，价格为其余时段的 2 倍，法定节假日也按高峰估算。其他服务商的价格请按其官网填写。</p>
     ${r.pricesNote ? `<p class="hint">${esc(r.pricesNote)}</p>` : ""}
     ${since ? `<p class="hint"><span>统计开始于</span> ${esc(since)}</p>` : ""}
@@ -124,6 +169,22 @@ async function aiUsageAct(el) {
     if (!r.ok) { toast(r.err || "保存失败", 4000); return; }
     AIU.r = r; AIU.edit = null; aiUsageDraw(); toast(price ? "已保存价格" : "已清除自定义价格"); aiPoll();
     return;
+  }
+  if (a === "budget") {
+    const v = Number(($("#aiu_budget") || {}).value || 0);
+    if (!isFinite(v) || v < 0) { toast("上限须为不小于 0 的数字"); return; }
+    let r;
+    try { r = await api("/api/ai/usage/budget", { tokens: Math.round(v * 1e6) }); } catch (e) { r = { ok: false, err: "程序无响应" }; }
+    if (!r.ok) { toast(r.err || "保存失败", 4000); return; }
+    AIU.r = r; aiUsageDraw(); toast(v ? "已保存上限" : "已取消上限");
+    return;
+  }
+  if (a === "eval") return aiEvalLoad("/api/ai/eval/run");
+  if (a === "evalstop") return aiEvalLoad("/api/ai/eval/stop");
+  if (a === "evalopen") return aiEvalLoad("/api/ai/eval/open");
+  if (a === "evalclear") {
+    if (!confirm("清除全部评测样本？\n\n已有的评测结果会保留。")) return;
+    return aiEvalLoad("/api/ai/eval/clear");
   }
   if (a === "clear") {
     if (!confirm("清零全部用量统计？\n\n已设置的价格会保留。服务商账户中的余额和账单不受影响。")) return;

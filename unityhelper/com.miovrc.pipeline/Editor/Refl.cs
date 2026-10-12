@@ -117,7 +117,9 @@ namespace MioVRCA.Pipeline
             throw new PipelineException("场景中有 " + names.Count + " 个模型（" + string.Join("、", names.ToArray()) + "），需指定使用哪一个");
         }
 
-        // an object under the avatar, by its path below the avatar ("Outfit/Jacket") or, when that is unique, its name
+        // an object under the avatar, by its path below the avatar ("Outfit/Jacket") or, when that is unique, its name.
+        // A path written a little off is still taken when exactly one object fits it (PathMatch); when none does,
+        // the error names the objects with the nearest names.
         public static Transform FindUnder(Transform avatar, string path)
         {
             if (string.IsNullOrEmpty(path)) throw new PipelineException("未指定物体路径");
@@ -125,15 +127,22 @@ namespace MioVRCA.Pipeline
             if (p.StartsWith(avatar.name + "/")) { Transform viaRoot = Walk(avatar, p.Substring(avatar.name.Length + 1), path); if (viaRoot != null) return viaRoot; }
             Transform t = Walk(avatar, p, path);
             if (t != null) return t;
-            Transform hit = null;
-            int n = 0;
+            var objs = new List<Transform>();
+            var rel = new List<string>();
+            var names = new List<string>();
+            var weak = new List<bool>();
             foreach (Transform c in avatar.GetComponentsInChildren<Transform>(true))
             {
-                if (c != avatar && c.name == p) { hit = c; n++; }
+                if (c == avatar) continue;
+                objs.Add(c);
+                rel.Add(RelPath(avatar, c));
+                names.Add(c.name);
+                weak.Add(c.GetComponent<Renderer>() == null && c.parent != avatar); // (deeper, and no mesh: a bone, most likely)
             }
-            if (n == 1) return hit;
-            if (n > 1) throw new PipelineException("模型下有 " + n + " 个名为「" + p + "」的物体，需填写完整路径");
-            throw new PipelineException("模型下未找到「" + path + "」");
+            string why;
+            int i = PathMatch.Pick(rel, names, weak, path, out why);
+            if (i < 0) throw new PipelineException(why);
+            return objs[i];
         }
 
         // A path, one level at a time. Transform.Find takes the first of several children with one name: a menu

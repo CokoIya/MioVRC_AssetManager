@@ -22,7 +22,7 @@ namespace MioVRCA.Pipeline
     [InitializeOnLoad]
     internal static class Bridge
     {
-        public const string Version = "1.4.0";
+        public const string Version = "1.4.1";
         const string Dir = "UserSettings/MioVRCA/bridge";
 
         const string SkillsAsked = "MioVRCA.Pipeline.SkillsAsked";

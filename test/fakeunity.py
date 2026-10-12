@@ -50,7 +50,7 @@ def prefabs(folders=None):
         low = [f.lower().rstrip('/') for f in folders]
         out = [x for x in out if any(x["path"].lower() == f or x["path"].lower().startswith(f + '/') for f in low)]
     return out
-BRIDGE = os.environ.get("FAKE_BRIDGE", "1.4.0")
+BRIDGE = os.environ.get("FAKE_BRIDGE", "1.4.1")
 def doll(path, view, dressed):
     # a paper doll, so the pictures in the log look like something
     from PIL import Image, ImageDraw

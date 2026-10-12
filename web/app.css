@@ -1323,4 +1323,11 @@ body.paneon .offline:not([hidden]) ~ .toast { top: 104px; }
 .priceform .pfrow { display: flex; gap: 10px; flex-wrap: wrap; }
 .priceform .pf { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 .priceform .pf input { width: 110px; }
+.aieval { margin: 14px 0 4px; padding-top: 12px; border-top: 1px solid var(--line); }
+.aieval .t { margin-bottom: 4px; }
+.aieval .btnrow { margin: 8px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.evtable td, .evtable th { white-space: nowrap; }
+.aibudget { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 12px 0 4px; }
+.aibudget input { width: 90px; }
+.pipe_est:empty { display: none; }
 

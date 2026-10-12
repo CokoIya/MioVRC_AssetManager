@@ -48,6 +48,46 @@ def plan(n_results, last_user, last_tool=""):
         elif "截图附在后面" in last_tool: text += "\n\n我看了正面和背面的截图：水手服位置正常，没有洋红色；左肩有一小块身体穿出来。"
         elif "没有看到画面" in last_tool: text += "\n\n这次我看不了图：截图在上面的记录里，请你自己看一眼。想让我也能检查画面，可以在「AI 服务」的「识图」里设置一个视觉模型。"
     return text, calls
+# the line with an AI (1.7.12): one request for the menus of what was put on, one for a word on the result
+COLOURS = {"Envy cat": "嫉妒猫", "Heart Catcher": "心动捕手", "Melty Devil": "融化恶魔"}
+def system_of(body):
+    s = body.get("system")
+    if isinstance(s, list): s = " ".join(b.get("text", "") for b in s if isinstance(b, dict))
+    if not s:
+        for m in body.get("messages", []):
+            if m.get("role") == "system" and isinstance(m.get("content"), str): s = m["content"]
+    return s or ""
+def first_user(body):
+    for m in body.get("messages", []):
+        if m.get("role") != "user": continue
+        c = m.get("content")
+        if isinstance(c, str): return c
+        for bl in c or []:
+            if isinstance(bl, dict) and bl.get("type") == "text": return bl["text"]
+    return ""
+def menu_plan(body):
+    """the draft's items, with names a player would give them"""
+    user = first_user(body)
+    i = user.find('{"outfits"')
+    data = json.loads(user[i:]) if i >= 0 else {"outfits": []}
+    items = []
+    for o in data["outfits"]:
+        k = len(o["category"])
+        for it in o.get("draft", []):
+            if it["kind"] not in ("outfit", "part"): continue
+            it = dict(it)
+            p = list(it["path"])
+            if len(p) > k: p[k] = "恶魔水手服" if o["kind"] == "衣服" else "樱发"
+            it["path"] = p
+            if it["kind"] == "outfit" and o.get("colours"):
+                name = o["object"] if not it.get("materialsFrom") else it["materialsFrom"].rsplit("/", 1)[-1][:-len(".prefab")]
+                it["label"] = COLOURS.get(name.strip(), it["label"])
+            items.append(it)
+    return "```json\n" + json.dumps({"items": items}, ensure_ascii=False) + "\n```"
+def review(raw):
+    if "视觉模型（" in raw: return "· 截图我自己看不了，视觉模型的描述是：左肩有一小块身体穿出来，建议放大截图确认。\n· 体检没有需要处理的问题。"
+    if "截图附在后面" in raw: return "· 正面和背面的截图里水手服位置正常，没有洋红色；左肩有一小块身体穿出来。\n· 体检没有需要处理的问题。"
+    return "· 这次我看不了图：截图在上面的记录里，请你自己看一眼。\n· 体检没有需要处理的问题。"
 def read_digits(raw):
     import base64, io, re
     from PIL import Image
@@ -105,6 +145,11 @@ class H(BaseHTTPRequestHandler):
         if self.fault(): return
         time.sleep(0.5)
         msgs = body.get("messages", [])
+        system = system_of(body)
+        said = menu_plan(body) if "菜单整理助手" in system else review(raw) if "程序刚在玩家的 Unity 工程里" in system else None
+        if said is not None:
+            if self.path == '/v1/messages': return self.send(200, {"role": "assistant", "content": [{"type": "text", "text": said}], "stop_reason": "end_turn"})
+            return self.send(200, {"choices": [{"message": {"role": "assistant", "content": said}, "finish_reason": "stop"}]})
         if self.path == '/v1/messages':
             n, user = 0, ""
             for m in msgs:
