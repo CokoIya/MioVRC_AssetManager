@@ -37,6 +37,12 @@ type Chromium struct {
 
 	failed uintptr // vrclib patch: environment or controller could not be created
 
+	// AdditionalBrowserArgs: the arguments the view's browser is started with, given through the environment
+	// options (vrclib_options.go) — read also when the program runs as administrator, where WebView2 ignores
+	// WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS. Empty: no options are given (WebView2's defaults). vrclib patch.
+	AdditionalBrowserArgs string
+	envOptions            *envOptions
+
 	// Plain: a view that only shows a web site. vrclib patch. Set before Embed: nothing of the host's is put
 	// into its pages (no window.external bridge, no script at document creation), messages from its pages are
 	// not listened to, and its permissions, requests, keys and new windows are the browser's own business. What
@@ -94,7 +100,12 @@ func (e *Chromium) Embed(hwnd uintptr) bool {
 		dataPath = filepath.Join(os.Getenv("AppData"), currentExeName)
 	}
 
-	res, err := createCoreWebView2EnvironmentWithOptions(nil, windows.StringToUTF16Ptr(dataPath), 0, e.envCompleted)
+	var opts uintptr
+	if e.AdditionalBrowserArgs != "" { // vrclib patch
+		e.envOptions = newEnvOptions(e.AdditionalBrowserArgs)
+		opts = uintptr(unsafe.Pointer(e.envOptions))
+	}
+	res, err := createCoreWebView2EnvironmentWithOptions(nil, windows.StringToUTF16Ptr(dataPath), opts, e.envCompleted)
 	if err != nil {
 		log.Printf("Error calling Webview2Loader: %v", err)
 		return false

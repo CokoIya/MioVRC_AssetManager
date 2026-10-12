@@ -27,6 +27,10 @@ var NativePane paneNativeAPI
 
 var errNoPane = errors.New("本机缺少内置浏览器组件（需要 WebView2、Edge 或 Chrome）")
 
+// errPaneGone: the browser of the pane inside the window stopped answering (there is no window of its own that
+// the player could have closed)
+var errPaneGone = errors.New("内置浏览器已停止响应，请重新启动本软件")
+
 // Links that would open a new window stay in the pane (popups with a size, such as payment windows,
 // still open on their own). On a Jinxxy page, a link to another site leaves for the default browser (see
 // storepane.go; "__JX__" is replaced by the test for such a page) — but not one to a login or a payment page,
@@ -230,6 +234,9 @@ func (p *webPane) page() (*cdpConn, error) {
 		ts, err := cdpTargets(p.Port)
 		if err != nil {
 			p.Port = 0 // the window was closed
+			if p.mode == "native" {
+				return nil, errPaneGone // (the next page asks the window's pane again: NativePane.Ensure)
+			}
 			return nil, ErrCDPClosed
 		}
 		for j := range ts {
