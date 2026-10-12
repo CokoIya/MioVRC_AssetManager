@@ -157,8 +157,8 @@ func TestAIKitInstall(t *testing.T) {
 	}
 	_ = os.RemoveAll(own)
 	_ = os.WriteFile(filepath.Join(proj, "Packages", "manifest.json"), []byte(`{"dependencies":{"com.besty.unity-skills":"https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity"}}`), 0644)
-	if _, err = unity.InstallAIKit(proj); err != nil || core.StatOK(own) {
-		t.Errorf("manifest copy: %v", err)
+	if note, err = unity.InstallAIKit(proj); err != nil || core.StatOK(own) || !strings.HasPrefix(note, "工程已通过 Git 安装 UnitySkills，沿用该版本。") {
+		t.Errorf("manifest copy: %q %v", note, err)
 	}
 	// somebody else's package under our name is left alone
 	_ = unity.RemoveAIKit(proj)

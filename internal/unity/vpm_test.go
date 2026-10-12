@@ -3,6 +3,7 @@ package unity
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -240,7 +241,7 @@ func TestNewProject(t *testing.T) {
 	EdMu.Unlock()
 	parent := t.TempDir()
 	tc := FindToolchain(st)
-	if tc.UnityWant != vrcUnity || tc.DefaultDir != `D:\VRC` || len(tc.Plugins) != len(basePlugins) || len(tc.Projects) != 1 {
+	if tc.UnityWant != vrcUnity || tc.DefaultDir != `D:\VRC` || len(tc.Plugins) != len(basePlugins)+len(gitPlugins) || len(tc.Projects) != 1 {
 		t.Errorf("toolchain %+v", tc)
 	}
 	for _, c := range []NewProjectReq{{Name: "", Parent: parent}, {Name: "a/b", Parent: parent}, {Name: "ok", Parent: filepath.Join(parent, "nope")}, {Name: "ok", Parent: parent, Base: "no-such-asset"}} {
@@ -248,7 +249,10 @@ func TestNewProject(t *testing.T) {
 			t.Errorf("accepted %+v", c)
 		}
 	}
-	req := NewProjectReq{Name: "My Avatar", Parent: parent, Plugins: []string{"nadena.dev.modular-avatar", "jp.lilxyzw.liltoon", "../evil"}}
+	oldGit := gitReaches
+	gitReaches = func(context.Context, string) (bool, string) { return false, "本机未安装 Git" }
+	defer func() { gitReaches = oldGit }()
+	req := NewProjectReq{Name: "My Avatar", Parent: parent, Plugins: []string{"nadena.dev.modular-avatar", "jp.lilxyzw.liltoon", "../evil", SkillsPkg}}
 	if err := StartNewProject(st, req); err != nil {
 		t.Fatal(err)
 	}
@@ -273,6 +277,9 @@ func TestNewProject(t *testing.T) {
 	}
 	if core.StatOK(filepath.Join(p, "Packages", "com.anatawa12.avatar-optimizer")) || core.StatOK(filepath.Join(p, "Packages", "evil")) {
 		t.Error("a package that was not asked for")
+	}
+	if kind, ver := skillsInProject(p); kind != "ours" || ver != SkillsVersion || !strings.Contains(strings.Join(j.Notes, "\n"), "UnitySkills：本机未安装 Git，已安装软件自带的 "+SkillsVersion) {
+		t.Errorf("UnitySkills: %s %s %v", kind, ver, j.Notes)
 	}
 	var vm struct {
 		Dependencies map[string]struct{ Version string }

@@ -38,7 +38,8 @@ type eyeLLM struct {
 	probes    int
 	describes []string // what it was asked when describing
 	auth      []string
-	pictures  []int // pictures in each request of a run
+	pictures  []int    // pictures in each request of a run
+	sizes     []string // the size of every picture a request of a run carried ("768x384")
 	refused   int
 }
 
@@ -172,6 +173,11 @@ func (m *eyeLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	m.seen = append(m.seen, body)
 	m.pictures = append(m.pictures, len(pics))
+	for _, p := range pics {
+		if c, err := jpeg.DecodeConfig(bytes.NewReader(p)); err == nil {
+			m.sizes = append(m.sizes, fmt.Sprintf("%dx%d", c.Width, c.Height))
+		}
+	}
 	i := len(m.seen) - 1
 	if i >= len(m.script) {
 		i = len(m.script) - 1
@@ -221,7 +227,7 @@ type visionRig struct {
 func lookScript(n int) []mockTurn {
 	var s []mockTurn
 	for i := 0; i < n; i++ {
-		s = append(s, mockTurn{calls: []aiCall{{ID: fmt.Sprintf("L%d", i+1), Name: "look", Args: json.RawMessage(`{"views":["front","back"],"hide":["Pants"],"question":"外套有没有穿模"}`)}}})
+		s = append(s, mockTurn{calls: []aiCall{{ID: fmt.Sprintf("L%d", i+1), Name: "look", Args: json.RawMessage(fmt.Sprintf(`{"views":["front","back"],"hide":["Pants"],"question":"外套有没有穿模（第 %d 次）"}`, i+1))}}})
 	}
 	return append(s, mockTurn{text: "看过了。"})
 }
@@ -298,6 +304,10 @@ func testLookMain(t *testing.T, provider string) {
 	if r.llm.probes != 1 || len(r.llm.seen) != 2 || fmt.Sprint(r.llm.pictures) != "[0 2]" {
 		t.Fatalf("probes %d, requests %d, pictures %v", r.llm.probes, len(r.llm.seen), r.llm.pictures)
 	}
+	// the model gets them smaller than the player's copies
+	if fmt.Sprint(r.llm.sizes) != "[768x384 768x384]" {
+		t.Errorf("pictures the model got: %v", r.llm.sizes)
+	}
 	b, _ := json.Marshal(r.llm.seen[1])
 	js := string(b)
 	if !strings.Contains(js, "截图附在后面") || !strings.Contains(js, `hidden\":[\"Pants\"]`) || strings.Contains(js, "截图已经显示给玩家") {
@@ -324,7 +334,8 @@ func testLookMain(t *testing.T, provider string) {
 func TestLookMainOpenAI(t *testing.T) { testLookMain(t, "openai") }
 func TestLookMainClaude(t *testing.T) { testLookMain(t, "claude") }
 
-// The model is asked once whether it sees; older pictures leave the conversation.
+// The model is asked once whether it sees; a picture is sent once, and leaves the conversation when the AI has
+// answered after seeing it.
 func TestLookAgain(t *testing.T) {
 	r := newVisionRig(t, "openai", true, lookScript(4))
 	r.run(t, "多看几次")
@@ -333,12 +344,12 @@ func TestLookAgain(t *testing.T) {
 	if r.llm.probes != 1 {
 		t.Errorf("%d probes", r.llm.probes)
 	}
-	// requests: before any look, then after 1, 2, 3, 4 looks — never more than the last two looks' pictures
-	if fmt.Sprint(r.llm.pictures) != "[0 2 4 4 4]" {
+	// requests: before any look, then after 1, 2, 3, 4 looks — only the pictures of the look just made
+	if fmt.Sprint(r.llm.pictures) != "[0 2 2 2 2]" {
 		t.Errorf("pictures per request %v", r.llm.pictures)
 	}
 	b, _ := json.Marshal(r.llm.seen[4])
-	if strings.Count(string(b), "已经从对话里撤下") != 2 {
+	if strings.Count(string(b), "已经从对话里撤下") != 3 {
 		t.Error("the older looks do not say their pictures are gone")
 	}
 }
@@ -635,7 +646,7 @@ func TestSkillScreenshot(t *testing.T) {
 	mu.Unlock()
 	r.llm.mu.Lock()
 	defer r.llm.mu.Unlock()
-	if fmt.Sprint(r.llm.pictures) != "[0 1 2 2]" {
+	if fmt.Sprint(r.llm.pictures) != "[0 1 1 0]" { // each picture once: gone when the AI has answered after it
 		t.Errorf("pictures %v", r.llm.pictures)
 	}
 	b, _ := json.Marshal(r.llm.seen[3])

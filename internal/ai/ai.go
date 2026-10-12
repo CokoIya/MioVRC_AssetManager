@@ -386,12 +386,14 @@ type aiClient struct {
 // others at 4096; a menu plan needs more room than that.
 const aiOutputMax = 8192
 
+// A model that thinks before it answers may take minutes over one answer (DeepSeek keeps the line open with
+// empty lines meanwhile); the window shows how long it has been, and 「停止」 ends it at any time.
 func aiHTTP(st *core.Store, base string) *http.Client {
-	tr := &http.Transport{ResponseHeaderTimeout: 180 * time.Second}
+	tr := &http.Transport{ResponseHeaderTimeout: 5 * time.Minute}
 	if !isLocalHost(base) {
 		tr.Proxy = core.HTTPClient(st).Transport.(*http.Transport).Proxy
 	}
-	return &http.Client{Transport: tr, Timeout: 240 * time.Second,
+	return &http.Client{Transport: tr, Timeout: 10 * time.Minute,
 		// the key goes to the address the player entered and nowhere else
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) > 0 && !strings.EqualFold(req.URL.Host, via[0].URL.Host) {
@@ -934,8 +936,15 @@ func (c *aiClient) chatClaude(ctx context.Context, system string, turns []aiTurn
 		}
 		body["tools"] = ts
 	}
+	cached := !claudeNoCache(c.base) && markCache(body)
 	b, err := c.do(ctx, "POST", "/v1/messages", body)
 	var he *aiHTTPError
+	if cached && errors.As(err, &he) && he.Status == 400 && strings.Contains(he.Said, "cache_control") {
+		// a service on this wire that does not take the cache marks: without them, from now on
+		rememberClaudeNoCache(c.base)
+		unmarkCache(body)
+		b, err = c.do(ctx, "POST", "/v1/messages", body)
+	}
 	if errors.As(err, &he) && he.Status == 400 && c.lowerOutput(he) { // an older model with a smaller limit
 		c.limitOutput(body)
 		b, err = c.do(ctx, "POST", "/v1/messages", body)
@@ -972,6 +981,64 @@ func (c *aiClient) chatClaude(ctx context.Context, system string, turns []aiTurn
 	}
 	out.cut = r.StopReason == "max_tokens" && len(out.Calls) > 0
 	return out, nil
+}
+
+// ---------- the Anthropic wire's cache ----------
+// Anthropic keeps what a request begins with (tools, system, messages, in that order) for a few minutes when
+// the request marks where: read again from there it costs a tenth. Without a mark nothing is kept. The marks
+// go on the system prompt (tools and system) and on the last message (the conversation so far): each round
+// of the pipeline begins with the whole of the round before.
+
+var (
+	claudeCacheMu  sync.Mutex
+	claudeNoCaches = map[string]bool{} // addresses whose service refused the marks
+)
+
+func claudeNoCache(base string) bool {
+	claudeCacheMu.Lock()
+	defer claudeCacheMu.Unlock()
+	return claudeNoCaches[base]
+}
+
+func rememberClaudeNoCache(base string) {
+	claudeCacheMu.Lock()
+	claudeNoCaches[base] = true
+	claudeCacheMu.Unlock()
+	core.Logf("AI 服务 %s 不接受缓存标记，之后的请求不再标记", unity.RepoKey(base))
+}
+
+var ephemeral = map[string]any{"type": "ephemeral"}
+
+// markCache puts the cache marks into a request of the Anthropic wire; false when there was nowhere to put them.
+func markCache(body map[string]any) bool {
+	marked := false
+	if sys, ok := body["system"].(string); ok && sys != "" {
+		body["system"] = []map[string]any{{"type": "text", "text": sys, "cache_control": ephemeral}}
+		marked = true
+	}
+	if msgs, ok := body["messages"].([]map[string]any); ok && len(msgs) > 0 {
+		if bl, ok := msgs[len(msgs)-1]["content"].([]map[string]any); ok && len(bl) > 0 {
+			bl[len(bl)-1]["cache_control"] = ephemeral
+			marked = true
+		}
+	}
+	return marked
+}
+
+// unmarkCache takes the marks out again.
+func unmarkCache(body map[string]any) {
+	if sys, ok := body["system"].([]map[string]any); ok && len(sys) == 1 {
+		body["system"] = sys[0]["text"]
+	}
+	if msgs, ok := body["messages"].([]map[string]any); ok {
+		for _, m := range msgs {
+			if bl, ok := m["content"].([]map[string]any); ok {
+				for _, b := range bl {
+					delete(b, "cache_control")
+				}
+			}
+		}
+	}
 }
 
 // openAIParts: text and pictures as the parts of one message.

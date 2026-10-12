@@ -37,7 +37,7 @@ func TestPanDownloadCancelled(t *testing.T) {
 	b.ctx = ctx
 	done := make(chan error, 1)
 	go func() {
-		done <- b.download(bdFile{Path: "/a.zip", Rel: "a.zip", Size: 100}, filepath.Join(t.TempDir(), "a.zip"), func(int64) {})
+		done <- b.download(bdFile{Path: "/a.zip", Rel: "a.zip", Size: 100}, filepath.Join(t.TempDir(), "a.zip"), 1, func(int64) {})
 	}()
 	time.Sleep(50 * time.Millisecond) // it is waiting between two tries by now
 	cancel()
@@ -73,7 +73,7 @@ func TestPanDownloadLocalErrors(t *testing.T) {
 	b := NewBDClient(&core.Store{}, &baiduSession{Cookies: []core.SavedCookie{{Name: "BDUSS", Value: "ok"}}})
 	local := filepath.Join(t.TempDir(), "a.zip")
 	_ = os.MkdirAll(filepath.Join(local+".part", "x"), 0755) // the part file cannot be opened for writing
-	err := b.download(bdFile{Path: "/a.zip", Rel: "a.zip", Size: 1 << 20}, local, func(int64) {})
+	err := b.download(bdFile{Path: "/a.zip", Rel: "a.zip", Size: 1 << 20}, local, 1, func(int64) {})
 	if !purchases.IsLocalErr(err) || !strings.Contains(err.Error(), "无法写入「") || hits.Load() != 1 {
 		t.Errorf("%v after %d requests", err, hits.Load())
 	}
@@ -81,7 +81,7 @@ func TestPanDownloadLocalErrors(t *testing.T) {
 	purchases.DiskFree = func(string) uint64 { return 10 }
 	defer func() { purchases.DiskFree = free }()
 	hits.Store(0)
-	err = b.download(bdFile{Path: "/b.zip", Rel: "b.zip", Size: 100}, filepath.Join(t.TempDir(), "b.zip"), func(int64) {})
+	err = b.download(bdFile{Path: "/b.zip", Rel: "b.zip", Size: 100}, filepath.Join(t.TempDir(), "b.zip"), 1, func(int64) {})
 	if !purchases.IsLocalErr(err) || !strings.Contains(err.Error(), "磁盘空间不足") || hits.Load() != 0 {
 		t.Errorf("a full disk: %v after %d requests", err, hits.Load())
 	}
@@ -110,7 +110,7 @@ func TestPanDownloadSilentServer(t *testing.T) {
 	t.Setenv("VRCLIB_PCS_BASE", srv.URL)
 	b := NewBDClient(&core.Store{}, &baiduSession{Cookies: []core.SavedCookie{{Name: "BDUSS", Value: "ok"}}})
 	local := filepath.Join(t.TempDir(), "a.txt")
-	if err := b.download(bdFile{Path: "/a.txt", Rel: "a.txt", Size: 5}, local, func(int64) {}); err != nil {
+	if err := b.download(bdFile{Path: "/a.txt", Rel: "a.txt", Size: 5}, local, 1, func(int64) {}); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := os.ReadFile(local); string(got) != "hello" || hits.Load() != 2 {

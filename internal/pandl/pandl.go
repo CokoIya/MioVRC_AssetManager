@@ -271,7 +271,13 @@ var pcsUAs = []string{"pan.baidu.com", "netdisk;7.42.0.5;PC;PC-Windows;10.0.2263
 
 func NewBDClient(st *core.Store, s *baiduSession) *bdClient {
 	tr := netdisk.NewPanClient(st).HTTP.Transport // Baidu is reached directly, like the share listings
-	return &bdClient{c: &http.Client{Transport: tr, Timeout: 40 * time.Second}, dl: &http.Client{Transport: tr},
+	dl := tr
+	if t, ok := tr.(*http.Transport); ok { // a file comes over several connections (ranges.go): they are kept for its next pieces
+		t = t.Clone()
+		t.MaxIdleConnsPerHost = 2 * rangeWorkers
+		dl = t
+	}
+	return &bdClient{c: &http.Client{Transport: tr, Timeout: 40 * time.Second}, dl: &http.Client{Transport: dl},
 		ctx: context.Background(), cookies: append([]core.SavedCookie(nil), s.Cookies...)}
 }
 
@@ -1068,8 +1074,9 @@ func (b *bdClient) fetchRange(remote, part string, from, size int64, prog func(n
 var panRetryUnit = time.Second
 
 // download one file with resume: what is in local+".part" is kept between tries (and runs). What the disk
-// refuses is not tried again: only the connection is.
-func (b *bdClient) download(f bdFile, local string, prog func(n int64)) error {
+// refuses is not tried again: only the connection is. workers: connections at once for a large file
+// (downloadRanges), 1 for an account without 超级会员.
+func (b *bdClient) download(f bdFile, local string, workers int, prog func(n int64)) error {
 	if fi, err := os.Stat(local); err == nil && fi.Size() == f.Size {
 		prog(f.Size)
 		return nil // downloaded before
@@ -1084,6 +1091,13 @@ func (b *bdClient) download(f bdFile, local string, prog func(n int64)) error {
 		return nil
 	}
 	part := local + ".part"
+	if core.FileExists(rangeStateFile(part)) && readRangeState(part, f) == nil { // begun in pieces, for another version of the file
+		_ = os.Remove(part)
+		_ = os.Remove(rangeStateFile(part))
+	}
+	if (workers > 1 && f.Size >= rangeMinSize) || readRangeState(part, f) != nil {
+		return b.downloadRanges(f, local, part, workers, prog)
+	}
 	var had int64
 	if fi, err := os.Stat(part); err == nil {
 		if fi.Size() > f.Size {
@@ -1903,6 +1917,10 @@ func (b *bdClient) membership(s *baiduSession) (int, error) {
 // limit; and the speed of the whole download is logged with it.
 func (b *bdClient) fetchFiles(j *PanJob, files []bdFile, localOf func(string) string, total int64, vip int) error {
 	slowHint := vip != 2
+	workers := 1 // Baidu limits an account without 超级会员 as a whole: one connection
+	if vip == 2 {
+		workers = rangeWorkers
+	}
 	var done int64
 	winStart, winBytes := time.Now(), int64(0)
 	started := time.Now()
@@ -1910,7 +1928,7 @@ func (b *bdClient) fetchFiles(j *PanJob, files []bdFile, localOf func(string) st
 	for i, f := range files {
 		dst := localOf(f.Rel)
 		setPan(j, func(j *PanJob) { j.File, j.Files = path.Base(f.Rel), i })
-		err := b.download(f, dst, func(n int64) {
+		err := b.download(f, dst, workers, func(n int64) {
 			done += n
 			winBytes += n
 			now := time.Now()
@@ -1934,7 +1952,11 @@ func (b *bdClient) fetchFiles(j *PanJob, files []bdFile, localOf func(string) st
 	}
 	setPan(j, func(j *PanJob) { j.Done, j.Files, j.Speed = total, len(files), 0 })
 	if d := time.Since(started); done > 0 {
-		core.Logf("网盘文件下载：%s，用时 %s，平均 %s/s（百度网盘账号：%s）", fmtBytes(done), d.Round(time.Second), fmtBytes(int64(float64(done)/max(d.Seconds(), 1))), VIPLabel(vip))
+		how := VIPLabel(vip)
+		if workers > 1 {
+			how += fmt.Sprintf("，大文件分 %d 个连接下载", workers)
+		}
+		core.Logf("网盘文件下载：%s，用时 %s，平均 %s/s（百度网盘账号：%s）", fmtBytes(done), d.Round(time.Second), fmtBytes(int64(float64(done)/max(d.Seconds(), 1))), how)
 	}
 	return nil
 }

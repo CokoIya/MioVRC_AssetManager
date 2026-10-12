@@ -109,6 +109,25 @@ func normImage(data []byte, max int, note string) (aiImage, error) {
 	return aiImage{Mime: "image/jpeg", Data: out.Bytes(), Note: note}, nil
 }
 
+// aiPictureMax: the longer side of a picture the AI model itself looks at. The player's copy stays as it was
+// taken (1024); a picture of 768 costs the model about half the tokens of one of 1024, and the avatar is no less
+// clearly there (a closer look is a look at one thing: look's target, or the face).
+const aiPictureMax = 768
+
+// forAI: the pictures as they are attached for the model.
+func forAI(imgs []aiImage) []aiImage {
+	out := make([]aiImage, 0, len(imgs))
+	for _, im := range imgs {
+		if c, _, err := image.DecodeConfig(bytes.NewReader(im.Data)); err == nil && (c.Width > aiPictureMax || c.Height > aiPictureMax) {
+			if small, err := normImage(im.Data, aiPictureMax, im.Note); err == nil {
+				im = small
+			}
+		}
+		out = append(out, im)
+	}
+	return out
+}
+
 // shrink: an area average, good enough for making a picture smaller.
 func shrink(src image.Image, nw, nh int) image.Image {
 	if nw < 1 {
@@ -318,11 +337,11 @@ func (s *aiSession) present(ctx context.Context, imgs []aiImage, question string
 	case "off":
 		return "（玩家关掉了识图。截图已经显示给玩家，" + unseen + "请玩家自己看截图。）", nil, "仅显示在记录中（识图已关闭）"
 	case "main":
-		return "截图附在后面，按上面 views 的顺序。", imgs, "由当前 AI 模型直接识别"
+		return "截图附在后面，按上面 views 的顺序。", forAI(imgs), "由当前 AI 模型直接识别"
 	case "other":
 	default:
 		if mainSees(ctx, main) {
-			return "截图附在后面，按上面 views 的顺序。", imgs, "由当前 AI 模型直接识别"
+			return "截图附在后面，按上面 views 的顺序。", forAI(imgs), "由当前 AI 模型直接识别"
 		}
 	}
 	eye, eyeKey, own, ok := eyeFor(cfg, keys)
@@ -446,27 +465,25 @@ func saveShots(imgs []aiImage) []string {
 	return names
 }
 
-// agePictures: only the pictures of the last two looks stay in the conversation; older ones are taken out
-// (what was said about them stays).
+// agePictures: a picture is sent once. When the AI has answered after seeing it, it is taken out of the
+// conversation (what the AI said about it stays): sent again with every later request it would cost as much
+// each time, and the AI can take another look whenever it needs one.
 func (s *aiSession) agePictures() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	kept := 0
+	answered := false // an AI turn comes after the turn looked at
 	for i := len(s.turns) - 1; i >= 0; i-- {
-		has := false
-		for _, r := range s.turns[i].Results {
-			has = has || len(r.Images) > 0
-		}
-		if !has {
+		if s.turns[i].Role == "assistant" {
+			answered = true
 			continue
 		}
-		if kept++; kept <= 2 {
+		if !answered {
 			continue
 		}
 		for j := range s.turns[i].Results {
 			if r := &s.turns[i].Results[j]; len(r.Images) > 0 {
 				r.Images = nil
-				r.Content += "\n（这次的截图已经从对话里撤下；还要看就再拍一次。）"
+				r.Content += "\n（这些截图你已经看过，已经从对话里撤下；还要看就再拍一次。）"
 			}
 		}
 	}

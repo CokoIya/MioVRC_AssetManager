@@ -17,7 +17,9 @@ import (
 	"vrclib/internal/unity"
 )
 
-const aiMaxRounds = 40
+// aiMaxRounds: the requests one message of the player's may take at most. The limit of tokens a run may use
+// (runBudget) is what ends a long run first; what ends one that goes round in circles is aiStuck.
+const aiMaxRounds = 150
 
 type AIStep struct {
 	Kind string   `json:"kind"` // user, say, tool, ask, error
@@ -27,6 +29,7 @@ type AIStep struct {
 	Out  string   `json:"out,omitempty"`  // what came back, in short
 	Busy bool     `json:"busy,omitempty"` // the tool is still running
 	Imgs []string `json:"imgs,omitempty"` // pictures taken in this step (names for /shot)
+	Opts string   `json:"opts,omitempty"` // an ask: which answers it offers ("": allow / allow all / deny; "budget": go on / stop)
 	At   int64    `json:"at"`
 }
 
@@ -99,12 +102,15 @@ func (s *aiSession) finishStep(ok bool, out string) {
 }
 
 // confirm puts a question to the player ("the AI wants to delete …") and waits for the answer.
-func (s *aiSession) confirm(ctx context.Context, text string) bool {
+func (s *aiSession) confirm(ctx context.Context, text string) bool { return s.ask(ctx, text, "") }
+
+// ask: confirm with the answers opts names (see AIStep.Opts).
+func (s *aiSession) ask(ctx context.Context, text, opts string) bool {
 	ch := make(chan bool, 1)
 	s.mu.Lock()
 	s.askCh = ch
 	s.mu.Unlock()
-	s.add(AIStep{Kind: "ask", Text: text, Busy: true})
+	s.add(AIStep{Kind: "ask", Text: text, Busy: true, Opts: opts})
 	ok := false
 	select {
 	case ok = <-ch:
@@ -118,6 +124,9 @@ func (s *aiSession) confirm(ctx context.Context, text string) bool {
 		if s.steps[i].Kind == "ask" && s.steps[i].Busy {
 			s.steps[i].Busy, s.steps[i].OK = false, ok
 			s.steps[i].Out = map[bool]string{true: "已允许", false: "未执行"}[ok]
+			if s.steps[i].Opts == "budget" {
+				s.steps[i].Out = map[bool]string{true: "已继续", false: "已停止"}[ok]
+			}
 			break
 		}
 	}
@@ -1242,9 +1251,24 @@ func startAIRun(st *core.Store, req aiRunReq) error {
 		switch {
 		case err != nil:
 		case client == nil:
-			err = quickPipeline(ctx, st, s, req.Assets, hierarchy)
+			err = quickPipeline(ctx, st, s, req.Assets, hierarchy, nil, text)
 		default:
-			err = s.converse(ctx, client, text, hierarchy)
+			before := s.used.view()
+			if req.Mode == "dress" { // the program does the line, the AI what takes judgement (menuplan.go)
+				err = quickPipeline(ctx, st, s, req.Assets, hierarchy, client, text)
+				if err != nil && ctx.Err() == nil { // the conversation knows where it stopped
+					s.mu.Lock()
+					s.turns = append(s.turns, aiTurn{Role: "user", Text: text}, aiTurn{Role: "assistant", Text: "（流水线在中途停止：" + err.Error() + "）"})
+					s.mu.Unlock()
+				}
+				if extra := strings.TrimSpace(req.Text); err == nil && extra != "" { // what the player added is the AI's to work in
+					err = s.converse(ctx, client, "请按补充要求，在上面已完成的装配和菜单的基础上调整："+extra, hierarchy)
+				}
+			} else {
+				err = s.converse(ctx, client, text, hierarchy)
+			}
+			d := s.used.view().minus(before)
+			recordRun(runRec{At: time.Now().Unix(), Provider: client.info.ID, Model: client.model, Mode: req.Mode, Calls: d.Calls, Tokens: d.Tokens, Cost: d.Cost, OK: err == nil})
 		}
 		if err != nil {
 			s.finishStep(false, "已中断")
@@ -1257,8 +1281,9 @@ func startAIRun(st *core.Store, req aiRunReq) error {
 // How much of the conversation is sent as it is. Past aiHistorySoft the older tool answers are left out (the
 // newest stay whole); past aiHistoryMax the conversation has to be started again.
 var (
-	aiHistorySoft = 120000
-	aiHistoryMax  = 600000
+	aiHistorySoft  = 120000
+	aiHistoryMax   = 600000
+	aiHistoryAfter = 60 // percent of aiHistorySoft a conversation is taken down to once it is past it
 )
 
 const (
@@ -1284,6 +1309,10 @@ func historySize(turns []aiTurn) int {
 // ageResults keeps a long conversation within the model's context: the answers of the last few tool turns stay
 // as they are, older long ones (and their pictures) give way to a line saying so — the AI can ask again.
 // hard: the service has refused the conversation as too long, so only the newest turn stays, cut to size.
+//
+// Once past the limit it takes the conversation down to well below it (aiHistoryAfter of it), not just under:
+// every change to an earlier part of the conversation makes the service read all that follows it anew (its
+// cache holds what a request begins with), so the next many rounds only add to what was sent before.
 func (s *aiSession) ageResults(hard bool) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1326,8 +1355,8 @@ func (s *aiSession) ageResults(hard bool) bool {
 	if hard {
 		return age(1, 300)
 	}
-	any := false
-	for keep := 3; keep >= 1 && historySize(s.turns) > soft; keep-- { // three whole, fewer when even that is too much
+	any, target := false, soft*aiHistoryAfter/100
+	for keep := 3; keep >= 1 && historySize(s.turns) > target; keep-- { // three whole, fewer when even that is too much
 		any = age(keep, 800) || any
 	}
 	return any
@@ -1345,30 +1374,47 @@ func (s *aiSession) converse(ctx context.Context, c *aiClient, text, hierarchy s
 	keep := len(s.turns)
 	s.turns = append(s.turns, aiTurn{Role: "user", Text: text})
 	s.mu.Unlock()
-	system := aiSystemPrompt(s.project, hierarchy)
+	system, tools := aiSystemPrompt(s.project, hierarchy), aiTools
 	said := false
 	lastBad := "" // the call that could not be read in the round before
+	var stuck aiStuck
+	start, budget := s.used.view(), runBudget()
+	limit := budget
 	for round := 0; round < aiMaxRounds; round++ {
+		// past the run's limit: the player says whether it goes on (the tokens of the round just answered are spent)
+		if used := s.used.view().minus(start); limit > 0 && used.Tokens >= limit {
+			q := fmt.Sprintf("本次运行已用 %s tokens，达到单次运行的上限 %s。继续运行吗？", tokText(used.Tokens), tokText(limit))
+			if m := moneyText(used.Cost); m != "" {
+				q = fmt.Sprintf("本次运行已用 %s tokens（约 %s），达到单次运行的上限 %s。继续运行吗？", tokText(used.Tokens), m, tokText(limit))
+			}
+			if !s.ask(ctx, q, "budget") {
+				if ctx.Err() != nil {
+					return errors.New("已停止")
+				}
+				return fmt.Errorf("已按单次运行的用量上限停止（已用 %s tokens）。可在「用量」明细中调整上限；发送消息可让 AI 接着做", tokText(used.Tokens))
+			}
+			limit += budget
+		}
 		s.agePictures()
 		s.ageResults(false)
 		turns := s.copyTurns()
 		if historySize(turns) > aiHistoryMax {
 			return errors.New("对话过长，请点击「新对话」重新开始（已完成的改动仍保留在 Unity 中）")
 		}
-		out, err := c.chat(ctx, system, turns, aiTools)
+		out, err := c.chat(ctx, system, turns, tools)
 		var he *aiHTTPError
 		switch {
 		case errors.As(err, &he) && he.overflow():
 			// too long for this model: once more with the older tool answers left out
 			if s.ageResults(true) {
-				out, err = c.chat(ctx, system, s.copyTurns(), aiTools)
+				out, err = c.chat(ctx, system, s.copyTurns(), tools)
 			}
 			if errors.As(err, &he) && he.overflow() {
 				err = errors.New(he.Msg + "。较早的工具结果已自动省略，但仍超出上限：请点击「新对话」重新开始（已完成的改动仍保留在 Unity 中），或更换上下文更长的模型")
 			}
 		case errors.As(err, &he) && he.noPictures() && s.dropPictures():
 			// the service does not take pictures after all: once more without them
-			if out, err = c.chat(ctx, system, s.copyTurns(), aiTools); err == nil { // it was the pictures: remembered
+			if out, err = c.chat(ctx, system, s.copyTurns(), tools); err == nil { // it was the pictures: remembered
 				rememberSees(seesKey(c), false)
 				s.add(AIStep{Kind: "error", Text: "当前 AI 模型不接受图片，截图未发送给 AI（截图仍显示在上方记录中）。如需 AI 检查画面，请在「AI 服务」的「识图」中配置视觉模型。"})
 			}
@@ -1440,12 +1486,16 @@ func (s *aiSession) converse(ctx context.Context, c *aiClient, text, hierarchy s
 			content, short, ok := s.runTool(ctx, k.Name, args)
 			s.finishStep(ok, short)
 			res.Results = append(res.Results, aiResult{ID: k.ID, Name: k.Name, Content: content, IsErr: !ok, Images: s.takeOut()})
+			stuck.call(k.Name, k.Args, ok)
 		}
 		s.mu.Lock()
 		s.turns = append(s.turns, res)
 		s.mu.Unlock()
 		if ctx.Err() != nil {
 			return errors.New("已停止")
+		}
+		if why := stuck.round(out.Calls); why != "" {
+			return errors.New(why + "，已暂停：请检查 Unity 中的结果，再告诉 AI 下一步怎么做（或换一种说法）")
 		}
 		if bad != "" && bad == lastBad { // the same thing twice: a third try would end the same way
 			if strings.HasPrefix(bad, "cut") {
@@ -1456,6 +1506,69 @@ func (s *aiSession) converse(ctx context.Context, c *aiClient, text, hierarchy s
 		lastBad = bad
 	}
 	return fmt.Errorf("AI 已连续执行 %d 步仍未完成，已暂停：请检查 Unity 中的结果，再告知 AI 后续操作", aiMaxRounds)
+}
+
+// aiStuck tells a conversation that goes round in circles: the same call failing again and again, nothing but
+// failures for many rounds, or the same calls round after round.
+type aiStuck struct {
+	failed  map[string]int // a call (its name and arguments) → how often it failed
+	again   string         // the title of the call that failed for the third time
+	badRuns int            // rounds in a row in which every call failed
+	allBad  bool           // (this round so far)
+	last    string         // the calls of the round before
+	same    int            // rounds in a row with the same calls
+	inRound bool
+}
+
+func (a *aiStuck) call(name string, args json.RawMessage, ok bool) {
+	if !a.inRound {
+		a.inRound, a.allBad = true, true
+	}
+	a.allBad = a.allBad && !ok
+	if ok {
+		return
+	}
+	if a.failed == nil {
+		a.failed = map[string]int{}
+	}
+	k := name + " " + string(core.CompactJSON(args))
+	if a.failed[k]++; a.failed[k] >= 3 && a.again == "" {
+		var m map[string]any
+		_ = json.Unmarshal(args, &m)
+		a.again = toolTitle(name, m)
+	}
+}
+
+// round: the end of a round of calls; why it should stop, "" when it may go on.
+func (a *aiStuck) round(calls []aiCall) string {
+	a.inRound = false
+	if a.again != "" {
+		return "AI 第三次执行同一个失败的操作（" + a.again + "）"
+	}
+	if a.allBad {
+		a.badRuns++
+	} else {
+		a.badRuns = 0
+	}
+	if a.badRuns >= 8 {
+		return "AI 连续 8 步操作都失败了"
+	}
+	var keys []string
+	for _, k := range calls {
+		keys = append(keys, k.Name+" "+string(core.CompactJSON(k.Args)))
+	}
+	sort.Strings(keys)
+	sig := strings.Join(keys, "\n")
+	if sig == a.last {
+		a.same++
+	} else {
+		a.same = 0
+	}
+	a.last = sig
+	if a.same >= 3 {
+		return "AI 连续 4 次执行完全相同的操作"
+	}
+	return ""
 }
 
 // mendTurns: a conversation must not end on an assistant turn whose calls were never answered.
@@ -2133,8 +2246,16 @@ func RegisterAI(st *core.Store, post func(string, func(http.ResponseWriter, map[
 		}
 		s := aiSessionFor(p)
 		busy, steps, changes := s.snapshot()
-		core.WriteJSON(w, map[string]any{"ok": true, "kit": unity.AIKitStatus(p), "busy": busy, "steps": steps, "changes": changes,
-			"usage": map[string]any{"conv": s.used.view(), "today": usageToday()}})
+		cfg := loadAIConfig()
+		model := strings.TrimSpace(cfg.profile(cfg.Provider).Model)
+		usage := map[string]any{"conv": s.used.view(), "today": usageToday()}
+		if e := runEstimate(cfg.Provider, model, "dress"); e != nil {
+			usage["estimate"] = e
+		}
+		if pk := peakNow(cfg.Provider); pk != nil {
+			usage["peak"] = pk
+		}
+		core.WriteJSON(w, map[string]any{"ok": true, "kit": unity.AIKitStatus(p), "busy": busy, "steps": steps, "changes": changes, "usage": usage})
 	})
 	// ---------- what the AI's answers took, and cost ----------
 	post("/api/ai/usage", func(w http.ResponseWriter, b map[string]json.RawMessage) {
@@ -2159,6 +2280,35 @@ func RegisterAI(st *core.Store, post func(string, func(http.ResponseWriter, map[
 		r["ok"] = true
 		core.WriteJSON(w, r)
 	})
+	post("/api/ai/usage/budget", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		var tokens float64
+		if err := json.Unmarshal(b["tokens"], &tokens); err != nil {
+			fail(w, errors.New("上限须为数字"))
+			return
+		}
+		if err := setBudget(int64(tokens)); err != nil {
+			fail(w, err)
+			return
+		}
+		r := usageReport()
+		r["ok"] = true
+		core.WriteJSON(w, r)
+	})
+	// the evaluation set (evalset.go)
+	evalAnswer := func(w http.ResponseWriter, err error) {
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		r := evalView()
+		r["ok"] = true
+		core.WriteJSON(w, r)
+	}
+	post("/api/ai/eval", func(w http.ResponseWriter, b map[string]json.RawMessage) { evalAnswer(w, nil) })
+	post("/api/ai/eval/run", func(w http.ResponseWriter, b map[string]json.RawMessage) { evalAnswer(w, startEval(st)) })
+	post("/api/ai/eval/stop", func(w http.ResponseWriter, b map[string]json.RawMessage) { stopEval(); evalAnswer(w, nil) })
+	post("/api/ai/eval/open", func(w http.ResponseWriter, b map[string]json.RawMessage) { evalAnswer(w, openEvalDir()) })
+	post("/api/ai/eval/clear", func(w http.ResponseWriter, b map[string]json.RawMessage) { evalAnswer(w, clearEval()) })
 	post("/api/ai/usage/clear", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		if err := clearUsage(); err != nil {
 			fail(w, err)

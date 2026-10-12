@@ -476,3 +476,135 @@ func TestBundleMarksInScan(t *testing.T) {
 		t.Errorf("kept beside a level of a collection: %s", got)
 	}
 }
+
+// What lies in one product's folder as folders or packages of their own — its colours, its eyes, its materials,
+// its versions for each base body, folders of pictures — is no product: the product is one card (1.7.12: an
+// outfit was split into a card for each of those). A category folder still holds a product in each.
+func TestPartsAreNoProducts(t *testing.T) {
+	root := t.TempDir()
+	big := 20 * 1024
+	w := func(p string, n int) { testkit.WriteFile(t, filepath.Join(root, filepath.FromSlash(p)), n) }
+	// versions for each base body in folders, a texture folder, a readme / nothing loose at all
+	for _, b := range []string{"Kikyo", "Manuka", "Plum", "Chocolat"} {
+		w("衣服/Moonlight Fleur/"+b+"/Moonlight Fleur_"+b+".unitypackage", 100)
+		w("衣服/Starry Night/"+b+"/Starry Night_"+b+".unitypackage", 100)
+	}
+	w("衣服/Moonlight Fleur/Texture/body.png", big)
+	w("衣服/Moonlight Fleur/README.txt", 100)
+	w("衣服/Starry Night/Texture/body.png", big)
+	// a package for each base body, with a picture of each
+	for _, b := range []string{"Kikyo", "Manuka", "Plum"} {
+		w("衣服/Riptide/Riptide_"+b+".unitypackage", 100)
+		w("衣服/Riptide/Riptide_"+b+".png", big)
+	}
+	// folders of its parts named in Japanese and in Chinese, nothing loose
+	w("衣服/Melvii/目テクスチャ/eye_01.png", big)
+	w("衣服/Melvii/目テクスチャ/eye_02.png", big)
+	w("衣服/Melvii/マテリアル/a.mat", 100)
+	w("衣服/Melvii/パッケージ/Melvii.unitypackage", 100)
+	w("衣服/水手服/材质/a.mat", 100)
+	w("衣服/水手服/贴图/b.png", big)
+	w("衣服/水手服/模型/x.fbx", 100)
+	w("衣服/水手服/预制体/x.prefab", 100)
+	// a folder of pictures for each eye colour
+	for _, c := range []string{"Eye_Blue", "Eye_Red", "Eye_Green"} {
+		w("衣服/GUILTY MAKER/"+c+"/eye.png", big)
+	}
+	w("衣服/GUILTY MAKER/unitypackage/GUILTY MAKER.unitypackage", 100)
+	// a package and a picture for each eye colour next to the outfit's package
+	w("衣服/Merisiel/Merisiel.unitypackage", 100)
+	for _, c := range []string{"Eye_Blue", "Eye_Red", "Eye_Green"} {
+		w("衣服/Merisiel/"+c+".unitypackage", 100)
+		w("衣服/Merisiel/"+c+".png", big)
+	}
+	// colours as packages of their own names, with a picture each
+	for _, c := range []string{"黒", "白", "ピンク"} {
+		w("衣服/Holiday Candy/"+c+".unitypackage", 100)
+		w("衣服/Holiday Candy/"+c+".png", big)
+	}
+	// categories hold products, whatever their names
+	w("素体/Kikyo/Kikyo.unitypackage", 100)
+	w("素体/Manuka/Manuka.unitypackage", 100)
+	w("材质/Eye Texture Set A/eye_a.png", big)
+	w("材质/Eye Texture Set B/eye_b.png", big)
+	w("我的素材/衣服/Sailor Dress/Sailor Dress.unitypackage", 100)
+	w("我的素材/衣服/Maid Outfit/Maid Outfit.unitypackage", 100)
+	w("我的素材/材质/Skin Pack/skin.psd", 100)
+	_, as := scanFor(t, root)
+	var names []string
+	for n := range as {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	want := []string{"Eye Texture Set A", "Eye Texture Set B", "GUILTY MAKER", "Holiday Candy", "Kikyo", "Maid Outfit", "Manuka", "Melvii",
+		"Merisiel", "Moonlight Fleur", "Riptide", "Sailor Dress", "Skin Pack", "Starry Night", "水手服"}
+	if strings.Join(names, "|") != strings.Join(want, "|") {
+		t.Errorf("assets:\n got %v\nwant %v", names, want)
+	}
+	if a := as["Riptide"]; a == nil || len(a.Packages) != 3 {
+		t.Errorf("Riptide: %+v", a)
+	}
+	if a := as["Merisiel"]; a == nil || len(a.Packages) != 4 {
+		t.Errorf("Merisiel: %+v", a)
+	}
+}
+
+// One product's variants are no collection: an outfit with a package or a folder for each colour or each eye
+// colour is one product to a download as well; four products are still a collection.
+func TestVariantsAreNoCollection(t *testing.T) {
+	root := t.TempDir()
+	w := func(p string) { testkit.WriteFile(t, filepath.Join(root, filepath.FromSlash(p)), 100) }
+	w("a/Outfit/Outfit_Kikyo.unitypackage")
+	for _, c := range []string{"Eye_Blue", "Eye_Red", "Eye_Green", "Eye_Purple"} {
+		w("a/Outfit/" + c + ".unitypackage")
+	}
+	for _, c := range []string{"Black", "White", "Pink", "Blue"} {
+		w("b/Outfit/" + c + "/Outfit_" + c + ".unitypackage")
+	}
+	for _, c := range []string{"黒", "白", "ピンク", "水色", "Color_05"} {
+		w("c/衣装セット/" + c + ".unitypackage")
+	}
+	for _, c := range []string{"Sailor Dress", "Maid Outfit", "Gothic Coat", "Bunny Suit"} {
+		w("d/合集/" + c + ".zip")
+	}
+	defs := naming.ParseBases([]string{"Kikyo", "Plum"})
+	for dir, want := range map[string]int{"a/Outfit": 0, "b/Outfit": 0, "c/衣装セット": 0, "d/合集": 4} {
+		if got := ScanBundle(filepath.Join(root, filepath.FromSlash(dir)), nil, defs, nil).Products; got != want {
+			t.Errorf("%s: %d products, want %d", dir, got, want)
+		}
+	}
+}
+
+// A folder an older version marked as a collection at a download, which is one product with its colours by
+// the rules of now, is one card again, and its marks are gone; a real collection keeps them.
+func TestOldBundleMarksRechecked(t *testing.T) {
+	root := t.TempDir()
+	w := func(p string) { testkit.WriteFile(t, filepath.Join(root, filepath.FromSlash(p)), 100) }
+	for _, c := range []string{"Black", "White", "Pink", "Blue"} {
+		w("dl/Lolita Dress/" + c + "/Lolita Dress_" + c + ".unitypackage")
+	}
+	for _, c := range []string{"Sailor Dress", "Maid Outfit", "Gothic Coat", "Bunny Suit"} {
+		w("dl/Shop Set/" + c + "/" + c + ".unitypackage")
+	}
+	core.DataDir = t.TempDir()
+	st := core.LoadStore(filepath.Join(core.DataDir, "library.json"))
+	st.Settings.Roots = []string{root}
+	for _, d := range []string{"dl/Lolita Dress", "dl/Shop Set"} {
+		st.Overrides[core.PathKey(filepath.Join(root, filepath.FromSlash(d)))] = "bundle"
+	}
+	RunFolderScan(st, &core.Task{})
+	var names []string
+	for _, a := range st.Assets {
+		names = append(names, a.Name)
+	}
+	sort.Strings(names)
+	if got := strings.Join(names, "|"); got != "Bunny Suit|Gothic Coat|Lolita Dress|Maid Outfit|Sailor Dress" {
+		t.Errorf("assets %s", got)
+	}
+	if m := st.Overrides[core.PathKey(filepath.Join(root, "dl", "Lolita Dress"))]; m != "" {
+		t.Errorf("the outfit's mark stayed: %q", m)
+	}
+	if m := st.Overrides[core.PathKey(filepath.Join(root, "dl", "Shop Set"))]; m != "bundle" {
+		t.Errorf("the collection's mark went: %q", m)
+	}
+}

@@ -103,11 +103,12 @@ func (p aiPrice) ok() bool {
 	return (p.Currency == "CNY" || p.Currency == "USD") && (p.In > 0 || p.Out > 0)
 }
 
-// cost: what u costs at p (peak: in DeepSeek's busy hours).
+// cost: what u costs at p (peak: in DeepSeek's busy hours). Input written into the cache (only the Anthropic
+// wire says so) is 1.25 times the input price there, when no price of its own is given.
 func (p aiPrice) cost(u aiUsage, peak bool) float64 {
 	w := p.Write
 	if w == 0 {
-		w = p.In
+		w = p.In * 1.25
 	}
 	c := (float64(u.In)*p.In + float64(u.Hit)*p.Hit + float64(u.Write)*w + float64(u.Out)*p.Out) / 1e6
 	if peak && p.Peak > 0 {
@@ -151,6 +152,131 @@ type usageFile struct {
 	Since  int64              `json:"since,omitempty"` // when counting began (or began again)
 	Rows   []usageRow         `json:"rows"`
 	Prices map[string]aiPrice `json:"prices,omitempty"` // the player's own, by "service/model"
+	Runs   []runRec           `json:"runs,omitempty"`   // the last runs of the pipeline, for what the next one may take
+	Budget int64              `json:"budget,omitempty"` // tokens one run may take before the player is asked (0: defaultBudget, -1: no limit)
+}
+
+// runRec: what one run of the pipeline with an AI took.
+type runRec struct {
+	At       int64              `json:"at"`
+	Provider string             `json:"provider"`
+	Model    string             `json:"model"`
+	Mode     string             `json:"mode"` // dress (the pipeline) or chat (what the player asked for afterwards)
+	Calls    int                `json:"calls"`
+	Tokens   int64              `json:"tokens"`
+	Cost     map[string]float64 `json:"cost,omitempty"`
+	OK       bool               `json:"ok"` // it ran to its end (not stopped, not failed)
+}
+
+// defaultBudget: how many tokens one run may take before the player is asked whether to go on — far more than
+// a run of the pipeline needs, short of what a run going round in circles would take.
+const defaultBudget = 1000000
+
+// runBudget: the tokens one run may take before the player is asked (0: no limit).
+func runBudget() int64 {
+	usageMu.Lock()
+	defer usageMu.Unlock()
+	switch b := usageLocked().Budget; {
+	case b < 0:
+		return 0
+	case b == 0:
+		return defaultBudget
+	default:
+		return b
+	}
+}
+
+// setBudget: the player's limit for one run, in tokens (0: no limit).
+func setBudget(tokens int64) error {
+	if tokens < 0 || tokens > 1e10 {
+		return errors.New("上限须为 0 到 100 亿之间的数字")
+	}
+	usageMu.Lock()
+	defer usageMu.Unlock()
+	f := usageLocked()
+	if tokens == 0 {
+		f.Budget = -1
+	} else {
+		f.Budget = tokens
+	}
+	return saveUsageLocked()
+}
+
+// recordRun keeps what a run took; the last 60 are kept.
+func recordRun(r runRec) {
+	if r.Calls == 0 {
+		return
+	}
+	usageMu.Lock()
+	defer usageMu.Unlock()
+	f := usageLocked()
+	f.Runs = append(f.Runs, r)
+	if len(f.Runs) > 60 {
+		f.Runs = f.Runs[len(f.Runs)-60:]
+	}
+	if err := saveUsageLocked(); err != nil {
+		core.Logf("AI 用量记录保存失败：%v", err)
+	}
+}
+
+// runEstimate: what the next run is likely to take — the average of the last few runs of this kind with this
+// model that ran to their end. nil when there are none.
+func runEstimate(provider, model, mode string) map[string]any {
+	usageMu.Lock()
+	defer usageMu.Unlock()
+	var tokens int64
+	cost := map[string]float64{}
+	n := 0
+	runs := usageLocked().Runs
+	for i := len(runs) - 1; i >= 0 && n < 5; i-- {
+		r := runs[i]
+		if !r.OK || r.Provider != provider || !strings.EqualFold(r.Model, model) || r.Mode != mode {
+			continue
+		}
+		n++
+		tokens += r.Tokens
+		for k, v := range r.Cost {
+			cost[k] += v
+		}
+	}
+	if n == 0 {
+		return nil
+	}
+	for k := range cost {
+		cost[k] /= float64(n)
+	}
+	out := map[string]any{"tokens": tokens / int64(n), "runs": n}
+	if len(cost) > 0 {
+		out["cost"] = cost
+	}
+	return out
+}
+
+// minus: what was used between two looks at the same sum.
+func (v UsageView) minus(o UsageView) UsageView {
+	d := UsageView{Calls: v.Calls - o.Calls, Tokens: v.Tokens - o.Tokens, In: v.In - o.In, Hit: v.Hit - o.Hit, Write: v.Write - o.Write, Out: v.Out - o.Out, Unpriced: v.Unpriced - o.Unpriced}
+	for k, c := range v.Cost {
+		if c -= o.Cost[k]; c > 0 {
+			if d.Cost == nil {
+				d.Cost = map[string]float64{}
+			}
+			d.Cost[k] = c
+		}
+	}
+	return d
+}
+
+// peakNow: DeepSeek's busy hours are on (its prices are twice as high), and until when (Beijing time).
+func peakNow(provider string) map[string]any {
+	now := usageNow()
+	if provider != "deepseek" || !deepseekPeak(now) {
+		return nil
+	}
+	until := "12:00"
+	if h := now.In(time.FixedZone("CST", 8*3600)).Hour(); h >= 14 {
+		until = "18:00"
+	}
+	return map[string]any{"until": until}
 }
 
 var (
@@ -393,8 +519,12 @@ func usageReport() map[string]any {
 		out = append(out, m)
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].All.Tokens > out[j].All.Tokens })
+	budget := f.Budget
+	if budget == 0 {
+		budget = defaultBudget
+	}
 	return map[string]any{"models": out, "since": f.Since, "provider": cfg.Provider, "model": curModel,
-		"balance": balanceKind(cfg) != "", "pricesNote": pricesNote}
+		"balance": balanceKind(cfg) != "", "pricesNote": pricesNote, "budget": max(budget, 0)}
 }
 
 // usageToday: all of today's answers, of every model, with what they cost.
@@ -554,4 +684,48 @@ func queryBalance(ctx context.Context, st *core.Store) (*aiBalance, error) {
 	}
 	total := num(r.Data.Available)
 	return &aiBalance{Currency: "CNY", Total: total, Granted: num(r.Data.Voucher), Paid: num(r.Data.Cash), Usable: total > 0}, nil
+}
+
+// tokText: a number of tokens as the window writes it (fmtTok in aiusage.js): "950", "12.3k", "1.25M".
+func tokText(n int64) string {
+	short := func(v float64, prec int) string {
+		t := strconv.FormatFloat(v, 'f', prec, 64)
+		if strings.Contains(t, ".") {
+			t = strings.TrimRight(strings.TrimRight(t, "0"), ".")
+		}
+		return t
+	}
+	switch {
+	case n >= 1000000:
+		return short(float64(n)/1e6, 2) + "M"
+	case n >= 1000:
+		return short(float64(n)/1e3, 1) + "k"
+	}
+	return strconv.FormatInt(n, 10)
+}
+
+// moneyText: amounts by currency, as the player reads them ("¥0.012", "¥0.50 + $0.10").
+func moneyText(cost map[string]float64) string {
+	var keys []string
+	for k := range cost {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var parts []string
+	for _, k := range keys {
+		sym := "¥"
+		if k == "USD" {
+			sym = "$"
+		}
+		v := cost[k]
+		prec := 4
+		switch {
+		case v >= 1:
+			prec = 2
+		case v >= 0.01:
+			prec = 3
+		}
+		parts = append(parts, sym+strconv.FormatFloat(v, 'f', prec, 64))
+	}
+	return strings.Join(parts, " + ")
 }

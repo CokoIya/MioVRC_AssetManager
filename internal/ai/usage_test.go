@@ -236,3 +236,119 @@ func TestBalance(t *testing.T) {
 		t.Errorf("asked again: %v", asked)
 	}
 }
+
+// A service on the Anthropic wire that does not take the cache marks (some relays): asked again without them,
+// and never marked again.
+func TestClaudeCacheRefused(t *testing.T) {
+	r := newAgentRig(t, "claude", &sceneUnity{}, []mockTurn{
+		{status: 400, said: "cache_control: Extra inputs are not permitted"},
+		{text: "好的。"},
+		{text: "还是好的。"},
+	})
+	steps := r.chat(t, "你好")
+	if last := steps[len(steps)-1]; last.Kind != "say" || last.Text != "好的。" {
+		t.Fatalf("steps %+v", steps)
+	}
+	r.chat(t, "再来")
+	req := r.requests()
+	if len(req) != 3 || !strings.Contains(req[0], "cache_control") || strings.Contains(req[1], "cache_control") || strings.Contains(req[2], "cache_control") {
+		t.Errorf("requests: %d, marks %v %v %v", len(req), strings.Contains(req[0], "cache_control"), len(req) > 1 && strings.Contains(req[1], "cache_control"), len(req) > 2 && strings.Contains(req[2], "cache_control"))
+	}
+	if !strings.Contains(req[1], `"system":"`) {
+		t.Errorf("the system prompt without marks is not plain text again: %.200s", req[1])
+	}
+}
+
+// A run that reaches its limit of tokens stops and asks: 「停止」 ends it, 「继续运行」 gives it as much again.
+func TestRunBudget(t *testing.T) {
+	u := map[string]any{"prompt_tokens": 600, "completion_tokens": 100}
+	turn := func(id string) mockTurn {
+		return mockTurn{calls: []aiCall{{ID: id, Name: "inspect_avatar", Args: json.RawMessage(`{}`)}}, usage: u}
+	}
+	r := newAgentRig(t, "openai", &sceneUnity{}, []mockTurn{turn("a"), turn("b"), turn("c"), {text: "好了。", usage: u}})
+	if err := setBudget(1000); err != nil {
+		t.Fatal(err)
+	}
+	// every question of the run is answered goOn; the questions come back, in order
+	run := func(goOn bool) ([]AIStep, []string) {
+		t.Helper()
+		r.llm.mu.Lock()
+		r.llm.seen = nil
+		r.llm.mu.Unlock()
+		if err := startAIRun(r.st, aiRunReq{Project: r.proj, Mode: "chat", Text: "看看"}); err != nil {
+			t.Fatal(err)
+		}
+		var asked []string
+		for i := 0; i < 1000; i++ {
+			busy, steps, _ := r.s.snapshot()
+			if n := len(steps); n > 0 && steps[n-1].Kind == "ask" && steps[n-1].Busy && steps[n-1].Opts == "budget" {
+				asked = append(asked, steps[n-1].Text)
+				if !r.s.answer(goOn, false) {
+					t.Error("nobody was waiting for the answer")
+				}
+			}
+			if !busy {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		return waitRun(t, r.s), asked
+	}
+	steps, asked := run(false)
+	if strings.Join(asked, "|") != "本次运行已用 1.4k tokens，达到单次运行的上限 1k。继续运行吗？" {
+		t.Errorf("questions %q", asked)
+	}
+	if last := steps[len(steps)-1]; last.Kind != "error" || !strings.Contains(last.Text, "已按单次运行的用量上限停止（已用 1.4k tokens）") || len(r.requests()) != 2 {
+		t.Errorf("stopped: %d requests, %+v", len(r.requests()), last)
+	}
+	// 「继续运行」: as much again each time (1000, then 2000)
+	r.s.reset()
+	steps, asked = run(true)
+	if last := steps[len(steps)-1]; len(asked) != 2 || !strings.Contains(asked[1], "已用 2.1k tokens") || last.Kind != "say" || last.Text != "好了。" {
+		t.Errorf("went on: asked %q, %+v", asked, last)
+	}
+	if n := len(r.requests()); n != 4 {
+		t.Errorf("%d requests, want 4", n)
+	}
+	// no limit: never asked
+	if err := setBudget(0); err != nil || runBudget() != 0 {
+		t.Fatalf("no limit: %v %d", err, runBudget())
+	}
+	r.s.reset()
+	if _, asked = run(true); len(asked) != 0 {
+		t.Errorf("asked without a limit: %q", asked)
+	}
+	// the runs are kept for the next one's estimate (only those of this kind that ran to their end)
+	if e := runEstimate("openai", "test-model", "chat"); e == nil || e["runs"] != 2 || e["tokens"] != int64(2800) {
+		t.Errorf("estimate %v", e)
+	}
+	if runEstimate("openai", "test-model", "dress") != nil {
+		t.Error("an estimate for a kind of run never made")
+	}
+}
+
+func TestPeakNow(t *testing.T) {
+	t.Cleanup(func() { usageNow = time.Now })
+	bj := time.FixedZone("CST", 8*3600)
+	for at, want := range map[time.Time]string{
+		time.Date(2026, 10, 12, 10, 0, 0, 0, bj): "12:00", time.Date(2026, 10, 12, 15, 30, 0, 0, bj): "18:00",
+		time.Date(2026, 10, 12, 13, 0, 0, 0, bj): "", time.Date(2026, 10, 11, 10, 0, 0, 0, bj): "",
+	} {
+		usageNow = func() time.Time { return at }
+		got := ""
+		if p := peakNow("deepseek"); p != nil {
+			got = p["until"].(string)
+		}
+		if got != want || peakNow("kimi") != nil {
+			t.Errorf("%v: %q, want %q", at, got, want)
+		}
+	}
+}
+
+func TestTokText(t *testing.T) {
+	for n, want := range map[int64]string{0: "0", 950: "950", 1000: "1k", 1400: "1.4k", 12345: "12.3k", 999999: "1000k", 1000000: "1M", 1250000: "1.25M", 1006000: "1.01M", 123456789: "123.46M"} {
+		if got := tokText(n); got != want {
+			t.Errorf("tokText(%d) = %q, want %q", n, got, want)
+		}
+	}
+}

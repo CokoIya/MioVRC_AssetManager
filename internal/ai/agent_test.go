@@ -248,7 +248,7 @@ func TestHistoryShrinks(t *testing.T) {
 	t.Cleanup(func() { aiHistorySoft = oldSoft })
 	var script []mockTurn
 	for i := 0; i < 6; i++ {
-		script = append(script, mockTurn{calls: []aiCall{{ID: fmt.Sprint("p", i), Name: "list_prefabs", Args: json.RawMessage(`{"folders":["Assets/Shop/SailorSet"]}`)}}})
+		script = append(script, mockTurn{calls: []aiCall{{ID: fmt.Sprint("p", i), Name: "list_prefabs", Args: json.RawMessage(fmt.Sprintf(`{"folders":["Assets/Shop/SailorSet"],"limit":%d}`, 60+i))}}})
 	}
 	script = append(script, mockTurn{text: "看完了。"})
 	// 1. before it gets too long: with a low mark, only the newest three answers stay whole
@@ -308,23 +308,31 @@ func TestAgeResults(t *testing.T) {
 		t.Error("a short conversation was touched")
 	}
 	old := aiHistorySoft
-	aiHistorySoft = 16000
+	aiHistorySoft = 20000
 	defer func() { aiHistorySoft = old }()
 	if !s.ageResults(false) || s.ageResults(false) {
 		t.Error("aging is not done in one pass")
 	}
+	// past the mark it goes down to 60% of it (12000): three whole answers are more, two fit
 	for i, tn := range s.turns {
 		if tn.Role != "tool" {
 			continue
 		}
 		r := tn.Results[0]
-		if aged := strings.HasPrefix(r.Content, agedMark); aged != (i < 4) || (aged && (len(r.Images) != 0 || !strings.Contains(r.Content, "inspect_avatar"))) {
+		if aged := strings.HasPrefix(r.Content, agedMark); aged != (i < 6) || (aged && (len(r.Images) != 0 || !strings.Contains(r.Content, "inspect_avatar"))) {
 			t.Errorf("turn %d: %q (%d pictures)", i, r.Content[:20], len(r.Images))
 		}
 		if tn.Results[1].Content != "错误：短的留着" {
 			t.Errorf("turn %d: a short answer was replaced", i)
 		}
 	}
+	// what comes next is only added: nothing sent before changes until the mark is passed again
+	was := fmt.Sprint(s.turns)
+	s.turns = append(s.turns, aiTurn{Role: "tool", Results: []aiResult{{ID: "n", Name: "inspect_object", Content: long}}})
+	if s.ageResults(false) || !strings.HasPrefix(fmt.Sprint(s.turns), strings.TrimSuffix(was, "]")) {
+		t.Error("an answer under the mark changed what was sent before")
+	}
+	s.turns = s.turns[:len(s.turns)-1]
 	if !s.ageResults(true) {
 		t.Error("nothing more left out when the service refused")
 	}
@@ -342,7 +350,7 @@ func TestAgeResults(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		s.turns = append(s.turns, aiTurn{Role: "tool", Results: []aiResult{{ID: fmt.Sprint(i), Name: "inspect_avatar", Content: long}}})
 	}
-	aiHistorySoft = 11000
+	aiHistorySoft = 18000 // down to 10800: three whole answers are more, two fit
 	s.ageResults(false)
 	if n = strings.Count(fmt.Sprint(s.turns), long); n != 2 {
 		t.Errorf("%d answers whole under a low mark, want 2", n)
@@ -395,12 +403,12 @@ func TestRetryBusyService(t *testing.T) {
 	}
 }
 
-// pictures stay in the conversation when a request is refused for another reason
+// pictures the AI has not answered yet stay in the conversation when a request is refused for another reason
 func TestPicturesKeptOnOtherRefusal(t *testing.T) {
 	r := newAgentRig(t, "openai", &sceneUnity{}, []mockTurn{{status: 400, said: "invalid temperature"}})
 	r.s.mu.Lock()
 	r.s.turns = []aiTurn{{Role: "user", Text: "看看"}, {Role: "assistant", Calls: []aiCall{{ID: "l", Name: "look", Args: json.RawMessage(`{}`)}}},
-		{Role: "tool", Results: []aiResult{{ID: "l", Name: "look", Content: "截图附在后面", Images: []aiImage{{Mime: "image/jpeg", Data: []byte("jpg")}}}}}, {Role: "assistant", Text: "看过了。"}}
+		{Role: "tool", Results: []aiResult{{ID: "l", Name: "look", Content: "截图附在后面", Images: []aiImage{{Mime: "image/jpeg", Data: []byte("jpg")}}}}}}
 	r.s.mu.Unlock()
 	steps := r.chat(t, "再说一遍")
 	if last := steps[len(steps)-1]; last.Kind != "error" || !strings.Contains(last.Text, "invalid temperature") || len(r.requests()) != 1 {
@@ -408,7 +416,7 @@ func TestPicturesKeptOnOtherRefusal(t *testing.T) {
 	}
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
-	if len(r.s.turns) != 4 || len(r.s.turns[2].Results[0].Images) != 1 {
+	if len(r.s.turns) != 3 || len(r.s.turns[2].Results[0].Images) != 1 {
 		t.Errorf("the pictures were taken out (%d turns)", len(r.s.turns))
 	}
 }
@@ -769,5 +777,43 @@ func TestInspectForAI(t *testing.T) {
 	var any map[string]any
 	if len(out) > 40000 || json.Unmarshal([]byte(out), &any) != nil || !strings.Contains(out, "maMenuOmitted") {
 		t.Errorf("huge menu: %d bytes", len(out))
+	}
+}
+
+// A conversation that goes round in circles is stopped; one that gets somewhere goes on.
+func TestAIStuck(t *testing.T) {
+	call := func(name, args string) aiCall { return aiCall{Name: name, Args: json.RawMessage(args)} }
+	var a aiStuck
+	for i := 0; i < 3; i++ { // the same call fails three times, with other calls between
+		a.call("build_menu", json.RawMessage(`{"items": [1]}`), false)
+		a.call("inspect_avatar", json.RawMessage(`{}`), true)
+		why := a.round([]aiCall{call("build_menu", `{"items":[1]}`), call("inspect_avatar", `{}`)})
+		if (why != "") != (i == 2) || (i == 2 && !strings.Contains(why, "第三次执行同一个失败的操作")) {
+			t.Fatalf("round %d: %q", i, why)
+		}
+	}
+	a = aiStuck{}
+	for i := 0; i < 8; i++ { // nothing works, eight rounds
+		a.call("dress", json.RawMessage(fmt.Sprintf(`{"prefab":"p%d"}`, i)), false)
+		why := a.round([]aiCall{call("dress", fmt.Sprintf(`{"prefab":"p%d"}`, i))})
+		if (why != "") != (i == 7) {
+			t.Fatalf("failing round %d: %q", i, why)
+		}
+	}
+	a = aiStuck{}
+	for i := 0; i < 4; i++ { // the very same calls, round after round
+		a.call("look", json.RawMessage(`{"views":["front"]}`), true)
+		why := a.round([]aiCall{call("look", `{"views":["front"]}`)})
+		if (why != "") != (i == 3) {
+			t.Fatalf("same round %d: %q", i, why)
+		}
+	}
+	a = aiStuck{}
+	for i := 0; i < 30; i++ { // a long run that gets somewhere
+		ok := i%3 != 0
+		a.call("dress", json.RawMessage(fmt.Sprintf(`{"prefab":"p%d"}`, i)), ok)
+		if why := a.round([]aiCall{call("dress", fmt.Sprintf(`{"prefab":"p%d"}`, i))}); why != "" {
+			t.Fatalf("round %d stopped: %q", i, why)
+		}
 	}
 }

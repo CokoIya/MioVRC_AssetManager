@@ -119,7 +119,7 @@ func TestPanMembershipLogged(t *testing.T) {
 	if s := LoadBaiduSession(); s == nil || s.VIP != 2 || CurrentBaiduAccount().VIP != 2 {
 		t.Errorf("session after: %+v", s)
 	}
-	if !strings.Contains(sink.String(), "网盘文件下载：4 B，") || !strings.Contains(sink.String(), "（百度网盘账号：超级会员）") {
+	if !strings.Contains(sink.String(), "网盘文件下载：4 B，") || !strings.Contains(sink.String(), "（百度网盘账号：超级会员，大文件分 6 个连接下载）") {
 		t.Errorf("log: %s", sink.String())
 	}
 }

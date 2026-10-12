@@ -106,7 +106,7 @@ func TestPCSDownloadResume(t *testing.T) {
 	b := NewBDClient(st, &baiduSession{Cookies: []core.SavedCookie{{Name: "BDUSS", Value: "ok"}}})
 	out := filepath.Join(t.TempDir(), "sub", "Dress.zip")
 	var got int64
-	if err := b.download(bdFile{Path: "/MioVRCA/Dress/Dress.zip", Size: int64(len(data))}, out, func(n int64) { got += n }); err != nil {
+	if err := b.download(bdFile{Path: "/MioVRCA/Dress/Dress.zip", Size: int64(len(data))}, out, 1, func(n int64) { got += n }); err != nil {
 		t.Fatal(err)
 	}
 	b2, _ := os.ReadFile(out)
@@ -118,7 +118,7 @@ func TestPCSDownloadResume(t *testing.T) {
 	}
 	// a login Baidu no longer takes
 	b3 := NewBDClient(st, &baiduSession{Cookies: []core.SavedCookie{{Name: "BDUSS", Value: "old"}}})
-	err := b3.download(bdFile{Path: "/x.zip", Size: 10}, filepath.Join(t.TempDir(), "x.zip"), func(int64) {})
+	err := b3.download(bdFile{Path: "/x.zip", Size: 10}, filepath.Join(t.TempDir(), "x.zip"), 1, func(int64) {})
 	if err != ErrBaiduLogin {
 		t.Errorf("expired login: %v", err)
 	}

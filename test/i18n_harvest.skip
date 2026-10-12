@@ -14,6 +14,26 @@ func internal/ai/aiagent.go badAnswer
 func internal/ai/aiagent.go ageResults
 func internal/ai/aiagent.go mendTurns
 func internal/ai/aiagent.go langNote # the line that tells the model which language to answer in
+func internal/ai/menuplan.go menuPlanPrompt # what the AI is told when it is asked for the menus of a run (1.7.12)
+func internal/ai/menuplan.go reviewPrompt # … and when it is asked for a word on the run
+func internal/ai/menuplan.go menuPlanRequest # the outfits and their drafts, as the AI gets them
+func internal/ai/menuplan.go mergeMenuPlan # what is wrong with the AI's plan: said to the AI (the player reads a count)
+func internal/ai/menuplan.go parsePlanItems
+func internal/ai/pipeline.go menuRecord # the record of a run, as the AI reads it
+func internal/naming/parts.go init # words looked for in names
+text internal/ai/menuplan.go 方案有这些问题 # the AI is asked again
+text internal/ai/menuplan.go 这次的记录 # the record of a run, to the AI
+text internal/ai/menuplan.go 看有没有穿模
+text internal/ai/menuplan.go \n\n截图（正面、背面）
+text internal/ai/menuplan.go \n\n这次没有截图
+text internal/ai/menuplan.go \n（这个模型不接受图片
+text internal/ai/menuplan.go \n\n上传前体检
+text internal/ai/pipeline.go \n\n（程序记录 # the run's record, for the conversation
+text internal/ai/pipeline.go \n需手动完成：\n- 
+text internal/ai/pipeline.go \n注意：
+text internal/ai/aiagent.go （流水线在中途停止 # where a run stopped, for the conversation
+text internal/ai/aiagent.go 请按补充要求 # what the player added, to the AI
+text internal/pandl/pandl.go ，大文件分 # the speed in the log
 text internal/ai/aiagent.go 错误： # the tool result as the model gets it; the player reads err.Error()
 text internal/ai/aiagent.go 玩家没有同意执行这个操作
 text internal/ai/aiagent.go 玩家停止了这次操作

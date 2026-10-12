@@ -2640,7 +2640,8 @@ function renderPipeMain() {
         <div class="inline"><input id="pipe_hier" value="${esc(f.hier || (AI.cfg || {}).hierarchy || "")}" autocomplete="off"><button class="btn small" data-ai="hierdef">恢复默认</button></div>
         <div class="hint2">用 &gt; 分隔各层级。{分类} 对应素材的类别（衣服、头发、皮肤、道具、光影等），{素材} 为每个素材单独一层，{开关} 为该素材的开关；去掉 {素材} 后，每个素材仅生成一个总开关。也可用自然语言描述，由 AI 按描述排列。</div></div>
       <div class="aigo"><label class="check"><input type="checkbox" id="pipe_noai"${f.noAI ? " checked" : ""}>不使用 AI，按网格名称分组（速度快、无费用，分组较粗）</label>
-        <button class="btn big" id="pipe_go" data-ai="dress">${ICON.play}<span>运行流水线</span></button></div></section>
+        <button class="btn big" id="pipe_go" data-ai="dress">${ICON.play}<span>运行流水线</span></button></div>
+      <div class="hint2 pipe_est" id="pipe_est"></div></section>
     <section class="stn" id="stn5"><header><span class="no">5</span><h2>验收</h2><span class="hint">执行记录显示在下方。完成后请在 Unity 中检查，确认无误后再保存场景。</span>
       <div class="hacts"><button class="btn small" data-ck="run" title="检查模型能否上传、有无显示异常，并列出各项参数。不改动场景">上传前体检</button></div></header>
       <div class="ailog" id="ai_log" aria-live="polite"></div>
@@ -2723,19 +2724,37 @@ function aiLogHTML() {
   const busyTool = steps.some(s => s.busy);
   return steps.map(s => {
     if (s.kind === "ask") {
+      const btns = s.opts === "budget" // the run reached its limit of tokens: go on, or stop here
+        ? `<button class="btn small primary" data-ai="allow">继续运行</button><button class="btn small" data-ai="deny">停止</button>`
+        : `<button class="btn small primary" data-ai="allow">仅本次允许</button><button class="btn small" data-ai="allowall" title="本次对话中不再询问同类操作">本次对话始终允许</button><button class="btn small" data-ai="deny">拒绝</button>`;
       return `<div class="aistep ask${s.busy ? " open" : ""}"><div>${esc(s.text)}</div>${s.busy
-        ? `<div class="btnrow"><button class="btn small primary" data-ai="allow">仅本次允许</button><button class="btn small" data-ai="allowall" title="本次对话中不再询问同类操作">本次对话始终允许</button><button class="btn small" data-ai="deny">拒绝</button></div>`
+        ? `<div class="btnrow">${btns}</div>`
         : `<div class="out">${esc(s.out || "")}</div>`}</div>`;
     }
     if (s.kind === "tool") {
       const mark = s.busy ? `<i class="spin"></i>` : s.ok ? `<i class="mk ok">✓</i>` : `<i class="mk bad">!</i>`;
       const shots = (s.imgs || []).length ? `<span class="shots">${s.imgs.map((n, i) => `<img src="/shot?f=${encodeURIComponent(n)}" data-shot="${i}" data-shots="${esc(s.imgs.join("|"))}" alt="截图 ${i + 1}" title="点击放大" loading="lazy">`).join("")}</span>` : "";
-      return `<div class="aistep tool${s.busy ? " busy" : ""}">${mark}<span><b>${esc(s.text)}</b>${s.out ? `<span class="out">　${esc(s.out)}</span>` : ""}${shots}</span></div>`;
+      return `<div class="aistep tool${s.busy ? " busy" : ""}">${mark}<span><b>${esc(s.text)}</b>${s.out ? `<span class="out">　${esc(s.out)}</span>` : ""}${s.busy ? aiWaitHTML(s.at) : ""}${shots}</span></div>`;
     }
     // what the AI says is markdown; mdLite escapes first, so it is as safe as the plain text of the other lines
     return s.kind === "say" ? `<div class="aistep say md">${mdLite(s.text)}</div>` : `<div class="aistep ${s.kind === "error" ? "err" : esc(s.kind)}">${esc(s.text)}</div>`;
-  }).join("") + ((AI.sess || {}).busy && !busyTool ? `<div class="aistep tool busy"><i class="spin"></i><span class="out">AI 正在规划下一步…</span></div>` : "");
+  }).join("") + ((AI.sess || {}).busy && !busyTool ? `<div class="aistep tool busy"><i class="spin"></i><span class="out">AI 正在规划下一步…</span>${aiWaitHTML((steps[steps.length - 1] || {}).at)}</div>` : "");
 }
+// how long a step has been going: a long answer of a model that thinks first is still an answer coming. The
+// count goes on by itself (aiWaitTick), the log is not drawn again for it.
+function aiWaitHTML(at) { return at ? `<span class="out aiwait" data-since="${+at}"></span>` : ""; }
+function aiWaitText(since) {
+  const n = Math.max(0, Math.floor(Date.now() / 1000 - since));
+  if (n < 10) return "";
+  return n < 60 ? `（已 ${n} 秒）` : `（已 ${Math.floor(n / 60)} 分 ${n % 60} 秒）`;
+}
+function aiWaitTick() {
+  for (const el of document.querySelectorAll(".aiwait")) {
+    const t = aiWaitText(+el.dataset.since);
+    if (el.textContent !== t) el.textContent = t;
+  }
+}
+setInterval(aiWaitTick, 1000);
 function aiBtnsHTML() {
   const s = AI.sess || {};
   if (s.busy) return `<button class="btn" data-ai="stop">停止</button>`;
@@ -2745,7 +2764,8 @@ function aiBtnsHTML() {
 // only the parts that change are redrawn, so what the player is typing stays
 function aiRenderLive() {
   if (!pipeActive() || !$("#pipe_belt")) return;
-  const parts = { pipe_belt: pipeBeltHTML(), pipe_hacts: pipeHactsHTML(), ai_stat: aiStatHTML(), ai_log: aiLogHTML(), ai_btns: aiBtnsHTML(), recipe_acts: window.recipeActsHTML ? recipeActsHTML() : "" };
+  const parts = { pipe_belt: pipeBeltHTML(), pipe_hacts: pipeHactsHTML(), ai_stat: aiStatHTML(), ai_log: aiLogHTML(), ai_btns: aiBtnsHTML(), recipe_acts: window.recipeActsHTML ? recipeActsHTML() : "",
+    pipe_est: window.aiEstimateHTML ? aiEstimateHTML() : "" };
   for (const id in parts) {
     const el = $("#" + id); if (!el || el.dataset.h === parts[id]) continue;
     // the record follows its end only when it was at the end; read further up, it stays where it is

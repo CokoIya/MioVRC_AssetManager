@@ -53,6 +53,13 @@ type vpmPlugin struct {
 	Note    string `json:"note"`
 	Default bool   `json:"default"`
 	Fixed   bool   `json:"fixed,omitempty"` // always in
+	Git     bool   `json:"git,omitempty"`   // not from a VPM repository: Unity's package manager fetches it from git (gitPlugins)
+}
+
+// gitPlugins: what a new project can have that no VPM repository holds. UnitySkills goes in by the link of its
+// README when this computer's git reaches GitHub, else as the copy the program carries (installSkills).
+var gitPlugins = []vpmPlugin{
+	{Pkg: SkillsPkg, Label: "UnitySkills", Note: "让 AI 能执行更多 Unity 操作（开源，MIT）。Git 能连上 GitHub 时按官方链接安装，否则使用软件自带的版本", Default: true, Git: true},
 }
 
 var basePlugins = []vpmPlugin{

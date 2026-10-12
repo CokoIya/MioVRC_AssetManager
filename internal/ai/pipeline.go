@@ -396,7 +396,12 @@ func bodyMeshes(av avatarInfo) []string {
 	return out
 }
 
-func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []aiAsset, hierarchy string) error {
+// quickPipeline runs the line: the base body into the scene when there is none, what is ticked put on, the
+// plugins in place, the menu built and the avatar photographed. With assist (an AI), the AI is asked for the
+// menus of the outfits and hair (refineMenu) and, at the end, what it sees and what the check-up means
+// (reviewRun); task is what the player asked, for the conversation that may follow. Without, the menus go by
+// the words in the mesh names.
+func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []aiAsset, hierarchy string, assist *aiClient, task string) error {
 	p := s.project
 	if len(assets) == 0 {
 		return errors.New("未勾选要装配的素材")
@@ -665,7 +670,7 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 
 	bones := 0 // PhysBones on the avatar, as the last step told
 	verbs := map[string]string{"衣服": "装配", "头发": "装配", "配饰": "装配", "道具": "装配"}
-	dress := func(kind, label, prefab string, active bool) (object string, meshes []string, err error) {
+	dress := func(kind, label, prefab string, active bool) (object string, meshes []meshInfo, err error) {
 		err = step("dress", verbs[kind]+"「"+label+"」", func() (string, error) {
 			args := map[string]any{"avatar": av.Path, "prefab": prefab}
 			// shown or hidden is said only for what this run puts on: an outfit that is on the avatar already
@@ -683,17 +688,12 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 				Warnings  []string `json:"warnings"`
 				PhysBones int      `json:"physBones"`
 				Outfit    struct {
-					Object string `json:"object"`
-					Meshes []struct {
-						Path string `json:"path"`
-					} `json:"meshes"`
+					Object string     `json:"object"`
+					Meshes []meshInfo `json:"meshes"`
 				} `json:"outfit"`
 			}
 			_ = json.Unmarshal(raw, &r)
-			object, bones = r.Outfit.Object, max(bones, r.PhysBones)
-			for _, m := range r.Outfit.Meshes {
-				meshes = append(meshes, m.Path)
-			}
+			object, bones, meshes = r.Outfit.Object, max(bones, r.PhysBones), r.Outfit.Meshes
 			changed := r.Changed != nil && *r.Changed || r.Changed == nil && !r.Existing // an older plugin does not say
 			if changed {
 				s.changed(false)
@@ -719,11 +719,8 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 		return
 	}
 
-	type planned struct {
-		root string
-		item map[string]any
-	}
 	var plan []planned
+	var wornOnes []wornInfo // the outfits and hair put on, for the AI's look at their menus
 	var done []string
 	made := map[string]bool{}   // kinds that got menu items
 	labels := map[string]bool{} // menu names in use, by kind
@@ -997,15 +994,24 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 					} else if first {
 						outfitDefault = false
 					}
-					object, meshes, err := dress(kind, label, o.base.Path, first)
+					object, details, err := dress(kind, label, o.base.Path, first)
 					if err != nil {
 						return err
 					}
 					if object == "" {
 						continue
 					}
+					meshes := meshPaths(details)
 					label = named(kind, label, object)
 					done = append(done, label)
+					w := wornInfo{kind: kind, label: label, object: object, meshes: details, base: base, param: pm, first: first}
+					for _, c := range o.colours {
+						w.colours = append(w.colours, colourInfo{Prefab: c.Path, Label: colourLabel(c, names, aliases)})
+					}
+					mine := func(it map[string]any) { // an item of this one: the AI may redo it
+						add(it)
+						w.items = append(w.items, len(plan)-1)
+					}
 					// the body's own hair stays choosable: one picker for it, so a new hair can turn it off
 					if isHair && !ownHairDone {
 						ownHairDone = true
@@ -1021,7 +1027,10 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 					// hair with one colour and nothing to switch sits on the category level itself
 					own := perAsset && (!isHair || len(o.colours) > 0 || len(order) > 0)
 					if !own {
-						add(map[string]any{"kind": "outfit", "path": base, "label": label, "objects": []string{object}, "default": first, "parameter": pm})
+						mine(map[string]any{"kind": "outfit", "path": base, "label": label, "objects": []string{object}, "default": first, "parameter": pm})
+						if perAsset { // (the AI may still find something to switch on it)
+							wornOnes = append(wornOnes, w)
+						}
 						continue
 					}
 					where := append(append([]string{}, base...), label)
@@ -1040,13 +1049,14 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 					if len(o.colours) > 0 {
 						pick = colourLabel(o.base, names, aliases)
 					}
-					add(map[string]any{"kind": "outfit", "path": colourPath, "label": pick, "objects": []string{object}, "default": first, "parameter": pm})
+					mine(map[string]any{"kind": "outfit", "path": colourPath, "label": pick, "objects": []string{object}, "default": first, "parameter": pm})
 					for _, c := range o.colours {
-						add(map[string]any{"kind": "outfit", "path": colourPath, "label": colourLabel(c, names, aliases), "objects": []string{object}, "materialsFrom": c.Path, "parameter": pm})
+						mine(map[string]any{"kind": "outfit", "path": colourPath, "label": colourLabel(c, names, aliases), "objects": []string{object}, "materialsFrom": c.Path, "parameter": pm})
 					}
 					for _, g := range order {
-						add(map[string]any{"kind": "part", "path": where, "label": g, "objects": groups[g]})
+						mine(map[string]any{"kind": "part", "path": where, "label": g, "objects": groups[g]})
 					}
+					wornOnes = append(wornOnes, w)
 				case "配饰":
 					object, _, err := dress(kind, label, o.base.Path, true)
 					if err != nil {
@@ -1114,6 +1124,12 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 		// nothing the line can do by itself: said plainly, with what is left to do
 		say("流水线未改动模型。")
 		return nil
+	}
+	if assist != nil && len(wornOnes) > 0 {
+		plan = s.refineMenu(ctx, assist, wornOnes, plan, hierarchy)
+		if ctx.Err() != nil {
+			return errors.New("已停止")
+		}
 	}
 	// one plan per menu root, in the order their first items come
 	var roots, where []string
@@ -1200,22 +1216,72 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 		text += "头发已加入原有的头发菜单（参数 " + hairParam + "）。"
 	}
 	// a look at the result, for the player (an older plugin that cannot photograph is no reason to fail)
-	shots := 0
+	var imgs []aiImage
 	s.add(AIStep{Kind: "tool", Tool: "look", Text: "为模型截图", Busy: true})
-	if imgs, _, err := takeShots(ctx, p, map[string]any{"avatar": av.Path, "views": []string{"front", "back"}}); err != nil {
+	if got, _, err := takeShots(ctx, p, map[string]any{"avatar": av.Path, "views": []string{"front", "back"}}); err != nil {
 		s.finishStep(false, err.Error())
 	} else {
-		shots = len(imgs)
+		imgs = got
 		s.showImgs(saveShots(imgs))
 		s.finishStep(true, "正面和背面，点击图片可放大。截图为场景当前显示的状态，菜单开关的效果需在 Play 模式中查看")
 	}
-	if shots > 0 {
+	if len(imgs) > 0 {
 		text += "\n上方为模型当前的正面和背面截图，请检查是否有明显穿模、错位或整块洋红色（材质丢失）。"
 	}
-	if made["衣服"] || made["头发"] {
+	if (made["衣服"] || made["头发"]) && assist == nil {
 		text += "\n部件按网格名称中的关键词分组，分组有误时可让 AI 重新整理，或在 Unity 中手动调整。"
 	}
 	text += "\n菜单效果需在 Play 模式中用 Gesture Manager 逐项测试；确认无误后按 Ctrl+S 保存场景，如需回退按 Ctrl+Z。"
+	if assist == nil {
+		say(text)
+		return nil
+	}
+	// with an AI: the check-up, and what the AI makes of it and of the pictures, before the record
+	checkup := ""
+	s.add(AIStep{Kind: "tool", Tool: "checkup", Text: "上传前体检", Busy: true})
+	if rec, err := unity.RunCheckup(ctx, p, av.Path); err != nil {
+		s.finishStep(false, err.Error())
+	} else {
+		short := "全部通过"
+		if f, w := rec.Result.Counts(); f+w > 0 {
+			short = fmt.Sprintf("%d 项需处理，%d 项建议优化", f, w)
+		}
+		s.finishStep(true, short)
+		checkup = rec.TextForAI(6000)
+	}
+	record := text + menuRecord(plan)
+	if len(todo) > 0 {
+		record += "\n需手动完成：\n- " + strings.Join(core.UniqStrings(todo), "\n- ")
+	}
+	if len(warns) > 0 {
+		record += "\n注意：" + strings.Join(core.UniqStrings(warns), "；")
+	}
+	if review := s.reviewRun(ctx, assist, record, imgs, checkup); review != "" {
+		text = review + "\n\n" + text
+	}
 	say(text)
+	// the conversation goes on from here: the player may ask for more
+	s.mu.Lock()
+	s.turns = append(s.turns, aiTurn{Role: "user", Text: task}, aiTurn{Role: "assistant", Text: text + "\n\n（程序记录：" + strings.TrimSpace(menuRecord(plan)) + "）"})
+	s.mu.Unlock()
 	return nil
+}
+
+// menuRecord: the items of a plan, one line each, as the AI reads the record of a run.
+func menuRecord(plan []planned) string {
+	if len(plan) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n菜单项（菜单 > 路径 > 名字：类型，物体）：")
+	for _, p := range plan {
+		path := strings.Join(anyStrings(p.item["path"]), " > ")
+		label, _ := p.item["label"].(string)
+		kind, _ := p.item["kind"].(string)
+		b.WriteString("\n- " + p.root + " > " + path + " > " + label + "：" + kind + "，" + strings.Join(anyStrings(p.item["objects"]), "、"))
+		if m, _ := p.item["materialsFrom"].(string); m != "" {
+			b.WriteString("，配色 " + m)
+		}
+	}
+	return b.String()
 }

@@ -590,11 +590,12 @@ func (s *bundleScan) nameKey(name string) string {
 
 // partOf: does the name say "a part of a product", or nothing at all, rather than a product of its own? A
 // generic word or a number, a folder of the product's structure or one named after the folder it lies in
-// (parent), a PSD, texture, readme or bonus pack, a bare format or platform ("Unity", "PC版", "VRM"), or only a
-// base body's name ("Kaguya", "Plum_v2", "for Shinano": one product's versions for several base bodies).
+// (parent), a PSD, texture, readme or bonus pack, a bare format or platform ("Unity", "PC版", "VRM"), only a
+// base body's name ("Kaguya", "Plum_v2", "for Shinano": one product's versions for several base bodies), or
+// only a colour, the eyes, a type ("Eye_Blue", "黒", "Color_02": one product's variants).
 func (s *bundleScan) partOf(name, parent string) bool {
 	n := naming.CleanName(name)
-	if naming.IsGenericName(n) || netdisk.PanPartKind(name) != "variant" || s.onlyBases(n) || s.ownFolder(name) {
+	if naming.IsGenericName(n) || netdisk.PanPartKind(name) != "variant" || s.onlyBases(n) || s.ownFolder(name) || naming.IsPartName(name) {
 		return true
 	}
 	return naming.IsStructuralName(n, parent) // named after the folder it lies in

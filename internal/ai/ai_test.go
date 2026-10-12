@@ -757,20 +757,37 @@ func (m *mockLLM) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(ans)
 }
 
+// the AI's part of a run of the line: a menu plan with a mistake, the plan corrected, a word on the result
+const (
+	heart = "Assets/Shop/SailorSet/Kaguya/Kaguya prefab/Heart Catcher .prefab"
+	melty = "Assets/Shop/SailorSet/Kaguya/Kaguya prefab/Melty Devil .prefab"
+)
+
+func planItems(withMistake bool) string {
+	part := func(label string, objs ...string) map[string]any {
+		return map[string]any{"kind": "part", "path": []string{"衣服", "水手服"}, "label": label, "objects": objs}
+	}
+	items := []map[string]any{
+		{"kind": "outfit", "path": []string{"衣服", "水手服"}, "label": "原色", "objects": []string{"Envy cat"}},
+		{"kind": "outfit", "path": []string{"衣服", "水手服"}, "label": "爱心", "objects": []string{"Envy cat"}, "materialsFrom": heart},
+		{"kind": "outfit", "path": []string{"衣服", "水手服"}, "label": "融化恶魔", "objects": []string{"Envy cat"}, "materialsFrom": melty},
+		part("外套", "Envy cat/UV4_Cardigan"),
+		part("鞋袜", "Envy cat/UV2_Sandal", "Envy cat/UV2_Loose socks"),
+		part("恶魔装饰", "Envy cat/UV1_Devil horn", "Envy cat/UV1_Devil tail", "Envy cat/UV1_Devil wing"),
+		part("饰品", "Envy cat/UV1_Choker"),
+	}
+	if withMistake {
+		items[4] = part("鞋袜", "Envy cat/NOPE")
+	}
+	b, _ := json.Marshal(map[string]any{"items": items})
+	return "```json\n" + string(b) + "\n```"
+}
+
 func dressScript() []mockTurn {
-	menu := `{"items":[
-	 {"kind":"outfit","path":["衣服","水手服"],"label":"穿上","objects":["Envy cat"],"default":true},
-	 {"kind":"outfit","path":["衣服","水手服"],"label":"融化恶魔","objects":["Envy cat"],"materialsFrom":"Assets/Shop/SailorSet/Kaguya/Kaguya prefab/Melty Devil .prefab"},
-	 {"kind":"part","path":["衣服","水手服"],"label":"鞋子","objects":["Envy cat/NOPE"]}]}`
-	fixed := strings.Replace(menu, "NOPE", "UV2_Sandal", 1)
 	return []mockTurn{
-		{text: "先看看头像。", calls: []aiCall{{ID: "c1", Name: "inspect_avatar", Args: json.RawMessage(`{}`)}}},
-		{calls: []aiCall{{ID: "c2", Name: "list_prefabs", Args: json.RawMessage(`{"folders":["Assets/Shop/SailorSet"]}`)}}},
-		{calls: []aiCall{{ID: "c3", Name: "dress", Args: json.RawMessage(`{"prefab":"Assets/Shop/SailorSet/Kaguya/Kaguya prefab/Envy cat.prefab"}`)},
-			{ID: "c4", Name: "inspect_object", Args: json.RawMessage(`{"path":"Envy cat"}`)}}},
-		{calls: []aiCall{{ID: "c5", Name: "build_menu", Args: json.RawMessage(menu)}}},  // a wrong path: refused whole
-		{calls: []aiCall{{ID: "c6", Name: "build_menu", Args: json.RawMessage(fixed)}}}, // corrected
-		{text: "穿好了：水手服，带一个换色项和鞋子开关。"},
+		{text: planItems(true)},  // a mesh that is not there: told, and asked again
+		{text: planItems(false)}, // corrected
+		{text: "看过了：这次没有截图，请自己看一下模型。"},
 	}
 }
 
@@ -803,19 +820,24 @@ func testAIRun(t *testing.T, provider string) {
 		}
 		kinds = append(kinds, k)
 	}
-	want := "user refresh+ say inspect_avatar+ list_prefabs+ dress+ inspect_object+ build_menu- build_menu+ say"
+	// the program does the line; the AI is asked for the menu (twice: the first plan had a mistake) and for a
+	// word on the result. (This fake Unity takes no pictures and does no check-up.)
+	want := "user refresh+ inspect_avatar+ list_prefabs+ dress+ plan+ build_menu+ look- checkup- review+ say"
 	if got := strings.Join(kinds, " "); got != want {
 		t.Fatalf("steps:\n got %s\nwant %s\n%+v", got, want, steps)
 	}
 	if !strings.Contains(steps[0].Text, "Assets/Shop/SailorSet") || !strings.Contains(steps[0].Text, defaultHierarchy) {
 		t.Errorf("task text %q", steps[0].Text)
 	}
-	if !strings.Contains(steps[7].Out, "找不到") {
-		t.Errorf("failed step says %q", steps[7].Out)
+	if steps[5].Out != "已采用 AI 修改后的方案（7 项）" {
+		t.Errorf("plan step says %q", steps[5].Out)
+	}
+	if last := steps[len(steps)-1]; !strings.HasPrefix(last.Text, "看过了：") || !strings.Contains(last.Text, "已装配：SailorSet") {
+		t.Errorf("the last word %q", last.Text)
 	}
 	llm.mu.Lock()
 	defer llm.mu.Unlock()
-	if len(llm.seen) != 6 {
+	if len(llm.seen) != 3 {
 		t.Fatalf("%d requests", len(llm.seen))
 	}
 	for _, a := range llm.auth {
@@ -823,53 +845,132 @@ func testAIRun(t *testing.T, provider string) {
 			t.Errorf("auth %q", a)
 		}
 	}
-	first, lastReq := llm.seen[0], llm.seen[5]
-	b, _ := json.Marshal(lastReq)
-	js := string(b)
-	// the tools were offered, the system prompt went along, every call got its answer back, and the big
-	// "menu" part of a build_menu answer was left out
-	for _, w := range []string{"build_menu", "unity_skill", "头像下找不到", "Kaguya_Test", "c6"} {
-		if !strings.Contains(js, w) {
-			t.Errorf("last request lacks %q", w)
+	js := func(i int) string { b, _ := json.Marshal(llm.seen[i]); return string(b) }
+	for i := range llm.seen {
+		if llm.seen[i]["tools"] != nil {
+			t.Errorf("request %d offered tools", i)
 		}
 	}
-	if strings.Contains(js, "xxxxxxxxxx") {
-		t.Error("the whole menu went back to the AI")
+	// the plan asked for: the instructions for it, the meshes of what was put on, and the draft
+	for _, w := range []string{"菜单整理助手", "Envy cat/UV2_Sandal", "draft", "colours", "Heart Catcher"} {
+		if !strings.Contains(js(0), w) {
+			t.Errorf("the plan request lacks %q", w)
+		}
+	}
+	// what was wrong with it went back
+	if !strings.Contains(js(1), "Envy cat/NOPE") || !strings.Contains(js(1), "不是列出的网格") {
+		t.Errorf("the second request: %s", js(1)[:600])
+	}
+	// the word on the result: the record of the run with the menu that was built
+	for _, w := range []string{"AI 改模助手", "菜单项", "鞋袜", "没有截图"} {
+		if !strings.Contains(js(2), w) {
+			t.Errorf("the review request lacks %q", w)
+		}
 	}
 	if provider == "claude" {
-		if s, _ := first["system"].(string); !strings.Contains(s, "改模助手") || first["max_tokens"] == nil {
+		first := llm.seen[0]
+		sys, _ := first["system"].([]any)
+		var s0 map[string]any
+		if len(sys) == 1 {
+			s0, _ = sys[0].(map[string]any)
+		}
+		if s0 == nil || fmt.Sprint(s0["cache_control"]) != "map[type:ephemeral]" || first["max_tokens"] == nil {
 			t.Errorf("claude request %v", first)
 		}
-		if !strings.Contains(js, `"tool_result"`) || !strings.Contains(js, `"is_error":true`) || !strings.Contains(js, `"input_schema"`) {
-			t.Errorf("claude wire: %s", js[:400])
+		if n := strings.Count(js(1), "cache_control"); n != 2 {
+			t.Errorf("cache marks: %d", n)
 		}
-	} else {
-		if !strings.Contains(js, `"role":"tool"`) || !strings.Contains(js, `"tool_call_id":"c5"`) || !strings.Contains(js, `"reasoning_content"`) || !strings.Contains(js, `"role":"system"`) {
-			t.Errorf("openai wire: %s", js[:400])
-		}
+	} else if !strings.Contains(js(0), `"role":"system"`) {
+		t.Errorf("openai wire: %s", js(0)[:400])
 	}
+	// the menu built is the AI's, with the draft's parameter and default, and 一键脱光 at the end
 	u.mu.Lock()
-	defer u.mu.Unlock()
 	if len(u.dressed) != 1 || len(u.menus) != 1 {
-		t.Errorf("unity: %v", u.calls)
+		t.Fatalf("unity: %v", u.calls)
 	}
+	items, _ := u.menus[0]["items"].([]any)
+	var got []string
+	for _, it := range items {
+		o := it.(map[string]any)
+		got = append(got, fmt.Sprintf("%v/%v/%v/%v", o["kind"], o["label"], o["default"], o["parameter"]))
+	}
+	if strings.Join(got, " ") != "outfit/原色/true/Clothtoggle outfit/爱心/<nil>/Clothtoggle outfit/融化恶魔/<nil>/Clothtoggle part/外套/<nil>/<nil> part/鞋袜/<nil>/<nil> part/恶魔装饰/<nil>/<nil> part/饰品/<nil>/<nil> strip/一键脱光/<nil>/Clothtoggle" {
+		t.Errorf("menu built: %v", got)
+	}
+	u.mu.Unlock()
 	if _, _, changes := s.snapshot(); changes != 2 {
 		t.Errorf("changes %d", changes)
 	}
-	// a follow-up in the same conversation carries the history
+	if n := len(s.copyTurns()); n != 2 {
+		t.Errorf("%d turns kept for the conversation", n)
+	}
+	// a follow-up in the same conversation: the record of the run, and every tool
 	llm.script = []mockTurn{{text: "好的。"}}
 	llm.seen = nil
 	llm.mu.Unlock()
-	u.mu.Unlock()
 	if err := startAIRun(st, aiRunReq{Project: proj, Mode: "chat", Text: "把鞋子开关改名叫凉鞋"}); err != nil {
 		t.Fatal(err)
 	}
 	waitRun(t, s)
 	llm.mu.Lock()
+	b, _ := json.Marshal(llm.seen[0])
+	if !strings.Contains(string(b), "凉鞋") || !strings.Contains(string(b), "程序记录") || !strings.Contains(string(b), "鞋袜") {
+		t.Error("follow-up without the run's record")
+	}
+	if got := strings.Join(toolNames(llm.seen[0]), " "); got != allTools() {
+		t.Errorf("tools of a message of the player's: %s", got)
+	}
+}
+
+// An AI that gives no plan that holds: the draft is built (by the words in the mesh names), and the run ends as
+// one without the AI would. What the player added to the task is the AI's to work in afterwards, with every tool.
+func TestAIRunPlanFallsBack(t *testing.T) {
+	st := testkit.NewStore(t)
+	proj := t.TempDir()
+	u := &sceneUnity{}
+	unitytest.FakeUnity(t, proj, u.answer)
+	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	llm := &mockLLM{wire: "openai", script: []mockTurn{{text: "我觉得应该这样分……"}, {text: planItems(true)}, {text: "好。"}, {text: "已把外套设为默认隐藏。"}}}
+	srv := httptest.NewServer(llm)
+	defer srv.Close()
+	key := "secret-key-12345678"
+	if err := aiSave("deepseek", srv.URL, "test-model", &key, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := startAIRun(st, aiRunReq{Project: proj, Mode: "dress", Folders: []string{"Assets/Shop/SailorSet"}, Text: "外套默认隐藏"}); err != nil {
+		t.Fatal(err)
+	}
+	steps := waitRun(t, aiSessionFor(proj))
+	var plan *AIStep
+	for i := range steps {
+		if steps[i].Tool == "plan" {
+			plan = &steps[i]
+		}
+	}
+	if plan == nil || plan.OK || plan.Out != "AI 的方案有 1 处问题，未采用，已使用按网格名称分组的方案" {
+		t.Fatalf("plan step %+v", plan)
+	}
 	u.mu.Lock()
-	b, _ = json.Marshal(llm.seen[0])
-	if !strings.Contains(string(b), "凉鞋") || !strings.Contains(string(b), "c6") {
-		t.Error("follow-up without history")
+	items, _ := u.menus[0]["items"].([]any)
+	u.mu.Unlock()
+	labels := ""
+	for _, it := range items {
+		labels += fmt.Sprint(it.(map[string]any)["label"]) + " "
+	}
+	if !strings.Contains(labels, "鞋子") || strings.Contains(labels, "鞋袜") {
+		t.Errorf("the draft was not built: %s", labels)
+	}
+	llm.mu.Lock()
+	defer llm.mu.Unlock()
+	if len(llm.seen) != 4 {
+		t.Fatalf("%d requests", len(llm.seen))
+	}
+	b, _ := json.Marshal(llm.seen[3])
+	if !strings.Contains(string(b), "外套默认隐藏") || toolNames(llm.seen[3]) == nil {
+		t.Errorf("the player's addition: %s", string(b)[:300])
+	}
+	if last := steps[len(steps)-1]; last.Kind != "say" || last.Text != "已把外套设为默认隐藏。" {
+		t.Errorf("last step %+v", last)
 	}
 }
 
@@ -1044,4 +1145,26 @@ func TestAIRiskyConfirm(t *testing.T) {
 	if s.answer(true, false) {
 		t.Error("an answer without a question was taken")
 	}
+}
+
+func allTools() string {
+	var names []string
+	for _, t := range aiTools {
+		names = append(names, t.Name)
+	}
+	return strings.Join(names, " ")
+}
+
+// toolNames: the tools a request offered, on either wire.
+func toolNames(req map[string]any) []string {
+	var out []string
+	tools, _ := req["tools"].([]any)
+	for _, t := range tools {
+		m, _ := t.(map[string]any)
+		if f, ok := m["function"].(map[string]any); ok {
+			m = f
+		}
+		out = append(out, fmt.Sprint(m["name"]))
+	}
+	return out
 }

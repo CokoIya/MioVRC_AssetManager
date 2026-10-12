@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -85,7 +86,7 @@ func vccSetting(key string) string {
 }
 
 func FindToolchain(st *core.Store) Toolchain {
-	t := Toolchain{UnityWant: vrcUnity, Alcom: FindAlcom(), VCC: FindVCC(), Hub: FindUnityHub(), Plugins: basePlugins,
+	t := Toolchain{UnityWant: vrcUnity, Alcom: FindAlcom(), VCC: FindVCC(), Hub: FindUnityHub(), Plugins: append(append([]vpmPlugin{}, basePlugins...), gitPlugins...),
 		HubInstall: "unityhub://" + vrcUnity + "/" + vrcUnityRevision, Skills: SkillsVersion}
 	t.AlcomSeen = t.Alcom != "" || alcomConfigured()
 	eds := unityEditors()
@@ -362,8 +363,8 @@ func runNewProject(ctx context.Context, st *core.Store, req NewProjectReq, path 
 			wanted[p.Pkg] = "*"
 		}
 	}
-	for _, p := range req.Plugins { // anything else the window asked for by name
-		if _, known := wanted[p]; !known && validPkgName(p) {
+	for _, p := range req.Plugins { // anything else the window asked for by name (not what comes from git)
+		if _, known := wanted[p]; !known && validPkgName(p) && !isGitPlugin(p) {
 			wanted[p] = "*"
 		}
 	}
@@ -445,6 +446,14 @@ func runNewProject(ctx context.Context, st *core.Store, req NewProjectReq, path 
 	note(how)
 	if err := writeUnityManifest(path); err != nil {
 		return err
+	}
+	if core.ContainsStr(req.Plugins, SkillsPkg) {
+		stage("settings", "正在安装 UnitySkills", len(names), len(names))
+		n := installSkills(ctx, path)
+		note(n)
+		if strings.HasPrefix(n, "UnitySkills：") {
+			setNP(func(j *NewProjectJob) { j.Packages = append(j.Packages, SkillsPkg) })
+		}
 	}
 	_ = os.MkdirAll(filepath.Join(path, "Assets", safeFileName(name)), 0755) // the player's own folder, VRCAM style
 	// 5. the base body
@@ -746,4 +755,74 @@ func writeUnityManifest(project string) error {
 	}
 	b, _ := json.MarshalIndent(map[string]any{"dependencies": deps}, "", "  ")
 	return os.WriteFile(filepath.Join(project, "Packages", "manifest.json"), b, 0644)
+}
+
+func isGitPlugin(pkg string) bool {
+	for _, p := range gitPlugins {
+		if p.Pkg == pkg {
+			return true
+		}
+	}
+	return false
+}
+
+// SkillsGitURL: UnitySkills as its README has it installed — by Unity's package manager, from GitHub.
+const SkillsGitURL = "https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity"
+
+// skillsRepo: the repository of that link, as git takes it
+const skillsRepo = "https://github.com/Besty0728/Unity-Skills.git"
+
+// gitReaches: Unity's package manager fetches a git package with the git of this computer when the project
+// opens. Asked the same way beforehand: is git there, and does it reach the repository? why says what failed.
+// (A var: tests answer it themselves.)
+var gitReaches = func(ctx context.Context, repo string) (ok bool, why string) {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		return false, "本机未安装 Git"
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	cmd := core.Hidden(exec.CommandContext(ctx, git, "ls-remote", "--quiet", repo, "HEAD"))
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0") // never a password prompt nobody sees
+	if err := cmd.Run(); err != nil {
+		return false, "Git 无法连接 GitHub"
+	}
+	return true, ""
+}
+
+// installSkills puts UnitySkills into a new project: by its README's link when this computer's git reaches
+// GitHub (Unity fetches it when the project opens, and it follows GitHub from then on), else the copy the
+// program carries — a link Unity cannot fetch would keep the project from opening cleanly. The note says which.
+func installSkills(ctx context.Context, project string) string {
+	ok, why := gitReaches(ctx, skillsRepo)
+	if ok {
+		if err := addManifestDep(project, SkillsPkg, SkillsGitURL); err == nil {
+			return "UnitySkills：已按官方链接通过 Git 安装（Unity 打开工程时从 GitHub 下载，之后可在 Package Manager 中更新）"
+		} else {
+			why = fmt.Sprintf("无法写入 manifest.json（%v）", err)
+		}
+	}
+	if err := putPackage(project, SkillsPkg, writeSkillsPackage); err != nil {
+		return fmt.Sprintf("未安装 UnitySkills（%v），可稍后在流水线页点击「安装并打开 Unity」", err)
+	}
+	return fmt.Sprintf("UnitySkills：%s，已安装软件自带的 %s", why, SkillsVersion)
+}
+
+// addManifestDep: a dependency in the project's Packages/manifest.json, everything else in it as it was.
+func addManifestDep(project, pkg, ref string) error {
+	file := filepath.Join(project, "Packages", "manifest.json")
+	m := map[string]any{}
+	if b, err := os.ReadFile(file); err == nil {
+		if err := json.Unmarshal(b, &m); err != nil {
+			return err
+		}
+	}
+	deps, _ := m["dependencies"].(map[string]any)
+	if deps == nil {
+		deps = map[string]any{}
+	}
+	deps[pkg] = ref
+	m["dependencies"] = deps
+	b, _ := json.MarshalIndent(m, "", "  ")
+	return os.WriteFile(file, b, 0644)
 }

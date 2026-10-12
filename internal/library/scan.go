@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"vrclib/internal/archive"
@@ -46,6 +47,9 @@ func mergeName(raw string) string {
 
 type scanCtx struct {
 	settings  core.Settings
+	defs      []naming.BaseDef // the base bodies of the settings
+	held      map[string]bool  // holdsProduct, by folder
+	unmarked  []string         // collections marked at a download that are none by the rules of now (stillBundle)
 	overrides map[string]string
 	assets    map[string]*core.Asset
 	alt       map[string]string // name key → booth key, so id-less copies merge into the booth asset
@@ -65,7 +69,8 @@ func RunFolderScan(st *core.Store, prog *core.Task) {
 	}
 	st.Mu.RUnlock()
 
-	ctx := &scanCtx{settings: settings, overrides: ov, assets: map[string]*core.Asset{}, alt: map[string]string{}, now: time.Now().Unix(), homes: map[string]int{}}
+	ctx := &scanCtx{settings: settings, overrides: ov, assets: map[string]*core.Asset{}, alt: map[string]string{}, now: time.Now().Unix(), homes: map[string]int{},
+		defs: naming.ParseBases(settings.Bases), held: map[string]bool{}}
 	forgetManagers()
 	for i, root := range settings.Roots {
 		prog.Set(i, len(settings.Roots), "正在扫描 "+root)
@@ -115,6 +120,10 @@ func RunFolderScan(st *core.Store, prog *core.Task) {
 		st.UserFor(a) // migrates alt keys
 	}
 	st.Assets = list
+	for _, d := range ctx.unmarked { // the marks of a collection that is one product with its variants (stillBundle)
+		delete(st.Overrides, core.PathKey(d))
+		ForgetBundles(st, d)
+	}
 	if st.ScanStart == 0 {
 		st.ScanStart = ctx.now
 	}
@@ -122,6 +131,9 @@ func RunFolderScan(st *core.Store, prog *core.Task) {
 	st.Warnings = core.UniqStrings(ctx.warnings) // each once, also when two asset folders overlap
 	st.LastScan = ctx.now
 	st.Mu.Unlock()
+	if len(ctx.unmarked) > 0 {
+		_ = st.Save()
+	}
 	forgetDirs()
 	prog.Set(len(settings.Roots), len(settings.Roots), "完成")
 }
@@ -260,6 +272,9 @@ func (c *scanCtx) scanContainer(dir, root string, depth int, hints []string) {
 		if len(g.dirs) > 0 {
 			d := g.dirs[0]
 			mode := c.overrides[core.PathKey(d)]
+			if mode == "bundle" && c.overrides[core.PathKey(filepath.Dir(d))] != "bundle" && !c.stillBundle(d) {
+				mode = ""
+			}
 			if core.IsUnityProject(d) {
 				continue
 			}
@@ -286,6 +301,75 @@ func (c *scanCtx) scanContainer(dir, root string, depth int, hints []string) {
 	}
 }
 
+// stillBundle: is a folder marked as a collection at a download (and not inside another one so marked) one by
+// the rules of now? Those tell a product's variants ("Eye_Blue", "黒", "Color_02") from products since 1.7.12;
+// before, an outfit with four colours could be taken for four products. Asked once in a run of the program;
+// where the answer is no, the marks of that folder and of those under it are taken away (RunFolderScan), and
+// the folder is scanned as any other. The unpack the marks were made at is taken to have made all of it.
+func (c *scanCtx) stillBundle(d string) bool {
+	k := core.PathKey(d)
+	bundleCheckMu.Lock()
+	v, ok := bundleChecked[k]
+	bundleCheckMu.Unlock()
+	if !ok {
+		ov := make(map[string]string, len(c.overrides))
+		for p, m := range c.overrides {
+			if m != "bundle" {
+				ov[p] = m
+			}
+		}
+		for _, x := range ScanBundle(d, everythingUnder(d), c.defs, ov).Containers {
+			v = v || core.PathKey(x) == k
+		}
+		bundleCheckMu.Lock()
+		bundleChecked[k] = v
+		bundleCheckMu.Unlock()
+	}
+	if !v {
+		c.unmarked = append(c.unmarked, d)
+		under := k + string(os.PathSeparator)
+		for p, m := range c.overrides { // (this scan's copy: the levels under it are no containers now either)
+			if m == "bundle" && strings.HasPrefix(p, under) {
+				delete(c.overrides, p)
+			}
+		}
+		core.Logf("合集包标记已撤销：%s（按当前规则为同一素材的不同配色或部件）", d)
+	}
+	return v
+}
+
+var (
+	bundleCheckMu sync.Mutex
+	bundleChecked = map[string]bool{} // folder key → still a collection
+)
+
+// everythingUnder: the folders and archives under dir, as far as a collection is looked into, as the keys an
+// unpack's "made" has (Unpacked).
+func everythingUnder(dir string) map[string]bool {
+	made := map[string]bool{core.PathKey(dir): true}
+	var walk func(d string, depth int)
+	walk = func(d string, depth int) {
+		if depth > bundleDepth || len(made) > bundleReads {
+			return
+		}
+		ents, err := os.ReadDir(d)
+		if err != nil {
+			return
+		}
+		for _, e := range ents {
+			p := filepath.Join(d, e.Name())
+			if e.IsDir() {
+				made[core.PathKey(p)] = true
+				walk(p, depth+1)
+			} else if archive.IsArchiveFile(e.Name()) || core.LowerExt(e.Name()) == ".unitypackage" {
+				made[core.PathKey(p)] = true
+			}
+		}
+	}
+	walk(dir, 0)
+	return made
+}
+
 func firstOf(g *group) string {
 	if len(g.dirs) > 0 {
 		return g.dirs[0]
@@ -294,6 +378,13 @@ func firstOf(g *group) string {
 }
 
 // isContainer decides whether a folder is a category folder holding several products.
+//
+// What lies in a product's own folder as folders, packages or archives of their own is no product: what is
+// named as a part or a variant of one ("Eye_Blue", "黒", "マテリアル", "预制体"), a version for a base body
+// ("Kikyo", "for Plum") and — in a folder with no more than one thing that could be a product in it — a folder
+// holding nothing a product is made of by itself (pictures, materials, shaders: no package, archive, model or
+// PSD). Those count for a product's folder, as the folders of its structure do. In a folder whose own name says
+// category or collection ("衣服", "合集") everything in it is a product, as it was.
 func (c *scanCtx) isContainer(dir string, depth int) bool {
 	if depth >= 4 {
 		return false
@@ -306,8 +397,22 @@ func (c *scanCtx) isContainer(dir string, depth int) bool {
 	if err != nil {
 		return false
 	}
-	pile := isPile(ents)
+	pile := c.isPile(dir, ents)
 	pk := naming.NormKey(naming.CleanName(name))
+	category := naming.IsCategoryWordName(name) || naming.ReCollection.MatchString(strings.ToLower(name))
+	names := &bundleScan{defs: c.defs}
+	// a part by its name (only where this folder is no category: there every name is a product's)
+	partName := func(n string) bool {
+		return !category && (naming.IsPartName(n) || names.onlyBases(naming.CleanName(n)))
+	}
+	// what in it could be a product by what it holds
+	holding := 0
+	for _, e := range ents {
+		n := e.Name()
+		if e.IsDir() && !strings.HasPrefix(n, ".") && !skipDirNames[strings.ToLower(n)] && !partName(n) && c.holdsProduct(filepath.Join(dir, n), 3) {
+			holding++
+		}
+	}
 	items := map[string]bool{}
 	dirItems := map[string]bool{}
 	archItems := map[string]bool{}
@@ -324,6 +429,13 @@ func (c *scanCtx) isContainer(dir string, depth int) bool {
 				continue
 			}
 			k, base = naming.NormKey(n), n
+			if partName(n) || (!category && holding <= 1 && !c.holdsProduct(filepath.Join(dir, n), 3)) {
+				if !items[k] {
+					items[k] = true
+					structural++ // one product's part: as a folder of its structure
+				}
+				continue
+			}
 			dirItems[k] = true
 		} else {
 			ext := core.LowerExt(n)
@@ -333,6 +445,13 @@ func (c *scanCtx) isContainer(dir string, depth int) bool {
 			if archiveExt[ext] || ext == ".unitypackage" || strings.HasSuffix(strings.ToLower(n), ".tar.gz") {
 				base = core.StripArchiveExt(n)
 				k = naming.NormKey(base)
+				if partName(base) {
+					if !items[k] {
+						items[k] = true
+						structural++
+					}
+					continue
+				}
 				archItems[k] = true
 			} else {
 				if weakFileExt[ext] {
@@ -361,7 +480,7 @@ func (c *scanCtx) isContainer(dir string, depth int) bool {
 	if len(items) < 2 || structural*2 >= len(items) {
 		return false
 	}
-	evidence := idChildren > 0 || genericChildren >= 2 || naming.IsCategoryWordName(name) || naming.ReCollection.MatchString(strings.ToLower(name))
+	evidence := idChildren > 0 || genericChildren >= 2 || category
 	if weak || depth >= 3 {
 		return evidence
 	}
@@ -376,11 +495,48 @@ func (c *scanCtx) isContainer(dir string, depth int) bool {
 	return independent >= 2 || evidence
 }
 
+// holdsProduct: is there what a product can be made of by itself — a package, an archive, a model, a PSD —
+// in dir, at most levels folders down? (A folder of pictures or materials alone is a part of one.)
+func (c *scanCtx) holdsProduct(dir string, levels int) bool {
+	key := core.PathKey(dir) + "|" + string(rune('0'+levels))
+	if v, ok := c.held[key]; ok {
+		return v
+	}
+	found := false
+	if ents, err := os.ReadDir(dir); err == nil {
+		for _, e := range ents {
+			n := e.Name()
+			if strings.HasPrefix(n, ".") {
+				continue
+			}
+			if e.IsDir() {
+				if levels > 1 && !skipDirNames[strings.ToLower(n)] && c.holdsProduct(filepath.Join(dir, n), levels-1) {
+					found = true
+					break
+				}
+				continue
+			}
+			ext := core.LowerExt(n)
+			if ext == ".unitypackage" || archive.IsArchiveFile(n) || strings.HasSuffix(strings.ToLower(n), ".tar.gz") ||
+				ext == ".fbx" || ext == ".blend" || ext == ".vrca" || ext == ".vrm" || naming.PSDExt[ext] {
+				found = true
+				break
+			}
+		}
+	}
+	if c.held != nil {
+		c.held[key] = found
+	}
+	return found
+}
+
 // isPile: a folder where separate downloads were dropped loose — packages and archives of different names,
 // each with a picture of its own name next to it ("A.unitypackage" + "A.png", "B.zip" + "B.jpg"). A product
-// folder does not look like that: its pictures are named after what they show, not after its packages.
-func isPile(ents []os.DirEntry) bool {
-	assets, pics := map[string]bool{}, map[string]bool{}
+// folder does not look like that: its pictures are named after what they show, not after its packages; and
+// where they are (a picture for each colour or each base body's version), the packages are named as the
+// folder's product, as its parts or variants, or say one product between them.
+func (c *scanCtx) isPile(dir string, ents []os.DirEntry) bool {
+	assets, pics := map[string]string{}, map[string]bool{}
 	for _, e := range ents {
 		n := e.Name()
 		if e.IsDir() || strings.HasPrefix(n, ".") {
@@ -389,20 +545,30 @@ func isPile(ents []os.DirEntry) bool {
 		ext := core.LowerExt(n)
 		switch {
 		case ext == ".unitypackage" || archiveExt[ext] || strings.HasSuffix(strings.ToLower(n), ".tar.gz"):
-			assets[naming.NormKey(core.StripArchiveExt(n))] = true
+			assets[naming.NormKey(core.StripArchiveExt(n))] = core.StripArchiveExt(n)
 		case naming.StrongFileExt[ext]:
 			return false // loose models, scenes, sources: one product's own files
 		case ImageExt[ext]:
 			pics[naming.NormKey(strings.TrimSuffix(n, filepath.Ext(n)))] = true
 		}
 	}
+	names := &bundleScan{defs: c.defs}
+	parent := names.nameKey(filepath.Base(dir))
+	var products []string
 	paired := 0
-	for k := range assets {
+	for k, stem := range assets {
+		if len([]rune(parent)) >= 4 && strings.Contains(k, parent) {
+			return false // the folder's own product: its packages, and pictures of them
+		}
+		if naming.IsPartName(stem) || names.onlyBases(naming.CleanName(stem)) {
+			continue // a colour, a part, a base body's version: no product of its own
+		}
+		products = append(products, stem)
 		if pics[k] {
 			paired++
 		}
 	}
-	return paired >= 2 && (len(assets) >= 3 || paired == len(assets))
+	return paired >= 2 && (len(products) >= 3 || paired == len(products)) && names.different(products, 2)
 }
 
 func kindOf(path string, isDir bool) string {

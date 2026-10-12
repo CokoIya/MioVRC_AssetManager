@@ -426,7 +426,8 @@ async def crawl(b, lang):
     await js("aiAction({dataset: {ai: 'reset'}})", None, wait=1200)
     await js("document.querySelector('#pipe_noai').checked = false; PIPE.noAI = false; pipeStart()", None)
     await run_done(pg, 120000)
-    said = "window.__data = (window.__data || []).concat(AI.sess.steps.filter(s => s.kind === 'say').map(s => s.text.split(/\\n+/).map(l => [l, l.replace(/^\\s*[-·*]\\s*/, '')])).flat(2))"  # the model's own words
+    # the model's own words: its lines of a say step (those of the program after them are the program's, and translated)
+    said = "window.__data = (window.__data || []).concat(AI.sess.steps.filter(s => s.kind === 'say').map(s => s.text.split(/\\n+/).filter(l => /^\\s*[-·*]|^好的，已经记下/.test(l)).map(l => [l, l.replace(/^\\s*[-·*]\\s*/, '')])).flat(2))"
     await pg.evaluate(said)
     await snap('pipeline run with AI', wait=1500)
     c.said = await pg.evaluate("AI.sess.steps.filter(s => s.kind === 'say').map(s => s.text).join('\\n')")
@@ -434,6 +435,14 @@ async def crawl(b, lang):
     await run_done(pg, 120000)
     await pg.evaluate(said)
     await snap('pipeline chat', wait=1200)
+    # the usage and the evaluation set: the AI run of above left a sample, asked again of the fake model
+    await js("aiUsageOpen()", 'AI usage', wait=1500)
+    await js("const b = document.querySelector('#modal [data-aiu=\"eval\"]'); if (b) b.click()", 'AI usage evaluating', wait=400)
+    try: await pg.wait_for_function("AIU.ev && (AIU.ev.runs || []).length && !AIU.ev.runs.some(x => x.running)", timeout=60000)
+    except Exception: pass
+    await snap('AI usage evaluated', wait=800)
+    c.eval_run = await pg.evaluate("((AIU.ev || {}).runs || [])[0] || null")
+    await js("closeModal()", None)
     # steps of every kind, as the program writes them
     await js("""AI.sess = Object.assign({}, AI.sess, {busy: true, changes: 2, steps: [
       {kind: 'tool', tool: 'inspect_avatar', text: '查看模型和现有菜单', ok: true, out: '模型「Kaguya」，含 12 个子物体'}, {kind: 'tool', text: '查看「Envy cat」中的网格', ok: true, out: '9 个网格'},
@@ -447,7 +456,10 @@ async def crawl(b, lang):
       {kind: 'ask', text: 'AI 请求在 Unity 中执行「gameobject_delete」：{"name":"x"}\\n会删除内容；会修改工程中的文件，无法通过 Ctrl+Z 撤销；UnitySkills 标注的风险等级为 high。', busy: true},
       {kind: 'ask', text: 'AI 请求在 Unity 中执行「editor_play」\\n会进入或退出 Play 模式；会触发 Unity 重新编译。', out: '已允许'},
       {kind: 'error', text: '操作中途中断。已完成的改动仍保留在场景中（尚未保存）：已装配 2 件（Envy cat、Khaki），菜单已生成或更新，另有 1 项通过 UnitySkills 进行的改动。如需回退，每点击一次「撤销上一步」或在 Unity 中按一次 Ctrl+Z 撤销一步。\\n中断原因：DeepSeek：API Key 不正确或已失效，或无权使用该模型（HTTP 401）。服务返回：invalid key'},
-      {kind: 'error', text: 'AI 已连续执行 40 步仍未完成，已暂停：请检查 Unity 中的结果，再告知 AI 后续操作'}, {kind: 'error', text: '当前 AI 模型不接受图片，截图未发送给 AI（截图仍显示在上方记录中）。如需 AI 检查画面，请在「AI 服务」的「识图」中配置视觉模型。'},
+      {kind: 'tool', tool: 'plan', text: 'AI 整理菜单方案', ok: true, out: '已采用 AI 修改后的方案（7 项）'}, {kind: 'tool', tool: 'plan', text: 'AI 整理菜单方案', ok: false, out: 'AI 的方案有 3 处问题，未采用，已使用按网格名称分组的方案'},
+      {kind: 'tool', tool: 'plan', text: 'AI 整理菜单方案', ok: false, out: 'AI 的回答不是菜单方案，已使用按网格名称分组的方案'}, {kind: 'tool', tool: 'review', text: 'AI 检查结果', busy: true, at: Date.now() / 1000 - 75},
+      {kind: 'error', text: 'AI 第三次执行同一个失败的操作（生成菜单（4 项）），已暂停：请检查 Unity 中的结果，再告诉 AI 下一步怎么做（或换一种说法）'}, {kind: 'error', text: 'AI 连续 4 次执行完全相同的操作，已暂停：请检查 Unity 中的结果，再告诉 AI 下一步怎么做（或换一种说法）'},
+      {kind: 'error', text: 'AI 已连续执行 150 步仍未完成，已暂停：请检查 Unity 中的结果，再告知 AI 后续操作'}, {kind: 'error', text: '当前 AI 模型不接受图片，截图未发送给 AI（截图仍显示在上方记录中）。如需 AI 检查画面，请在「AI 服务」的「识图」中配置视觉模型。'},
       {kind: 'error', text: 'Unity 未响应，可能正在编译、导入，或有对话框等待操作。请切换到 Unity 处理后重试'}]}); clearTimeout(AI.timer); aiRenderLive()""", 'pipeline steps', wait=600)
     await js("""AI.sess = {busy: false, steps: [], kit: {pipeline: false, running: false, editor: 'x'}}; AI.cfg = Object.assign({}, AI.cfg, {ready: false}); clearTimeout(AI.timer); aiRenderLive(); renderPipeSide()""", 'pipeline nothing installed')
     await js("""AI.sess = {busy: false, steps: [], kit: {pipeline: true, pipelineOld: true, alive: true, skills: 'own', skillsVer: '2.8.4', skillsOn: true, port: 8090, mode: 'Auto', running: true, hint: 'Unity 处于 Play 模式，请先退出 Play 模式，再由 AI 修改场景'}};
@@ -514,6 +526,8 @@ async def part_crawl(b):
         check(f'{lang}: the menu written into the avatar is in that language', want_strip in labels and '一键脱光' not in labels, labels)
         said = getattr(c, 'said', '')
         check(f'{lang}: the AI was told to answer in that language', bool(said), said[:80])
+        ev = getattr(c, 'eval_run', None)
+        check(f'{lang}: the evaluation set: the run of the line left a sample, and the fake model\'s plan holds', bool(ev) and ev.get('done', 0) >= 1 and ev.get('first', 0) >= 1, ev)
     stop_all()
 
 # ---------- the page's own texts through the real lookup ----------
