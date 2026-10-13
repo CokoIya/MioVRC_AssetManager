@@ -1,10 +1,13 @@
 package ai
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,6 +20,7 @@ import (
 
 	"vrclib/internal/core"
 	"vrclib/internal/testkit"
+	"vrclib/internal/unity"
 	"vrclib/internal/unity/unitytest"
 )
 
@@ -94,6 +98,225 @@ func TestAIConfigAndKeys(t *testing.T) {
 	}
 	if got := loadAIConfig().Imported[core.PathKey(`C:\Proj\A`)]["Assets/Shop"]; got != "booth:1" {
 		t.Errorf("imported %q", got)
+	}
+}
+
+// brokenCopies: what was kept of a file that did not parse or decrypt.
+func brokenCopies(t *testing.T, file string) [][]byte {
+	t.Helper()
+	names, _ := filepath.Glob(file + ".broken-*")
+	var out [][]byte
+	for _, n := range names {
+		b, err := os.ReadFile(n)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, b)
+	}
+	return out
+}
+
+// ai.json that does not parse (edited by hand) is read as nothing saved; the save that writes over it keeps it
+// first, as ai.json.broken-<time>.
+func TestAIConfigBroken(t *testing.T) {
+	core.DataDir = t.TempDir()
+	logs := captureLog(t)
+	bad := []byte(`{"provider":"openai","profiles":{"openai":{"baseUrl":"https://relay.example.com/v1"`)
+	if err := os.WriteFile(aiConfigFile(), bad, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if v := aiView(); v.Provider != "" || v.Hierarchy != defaultHierarchy {
+		t.Errorf("view %+v", v)
+	}
+	if len(brokenCopies(t, aiConfigFile())) != 0 {
+		t.Error("kept before anything was written")
+	}
+	key := "sk-test-1234567890abcd"
+	if err := aiSave("deepseek", "", "", &key, nil); err != nil {
+		t.Fatal(err)
+	}
+	if kept := brokenCopies(t, aiConfigFile()); len(kept) != 1 || !bytes.Equal(kept[0], bad) {
+		t.Errorf("kept %q", kept)
+	}
+	if v := aiView(); v.Provider != "deepseek" || !v.Ready {
+		t.Errorf("after save %+v", v)
+	}
+	aiRemember(`C:\Proj\A`, "booth:1", []string{"Assets/Shop"}) // the file is whole now: nothing more is kept
+	if kept := brokenCopies(t, aiConfigFile()); len(kept) != 1 {
+		t.Errorf("%d copies", len(kept))
+	}
+	if !strings.Contains(logs(), "ai.json 无法解析（") || !strings.Contains(logs(), "原文件另存为 ai.json.broken-") {
+		t.Errorf("log:\n%s", logs())
+	}
+}
+
+// A key file that does not decrypt (made by another Windows user, or on another computer) is read as no keys,
+// and kept as it is until a key saved here writes over it: then as ai-key.dat.broken-<time>. One that decrypts
+// to something that does not parse, the same.
+func TestAIKeysBroken(t *testing.T) {
+	core.DataDir = t.TempDir()
+	logs := captureLog(t)
+	k1, k2 := "sk-test-1234567890abcd", "relay-key-000011112222"
+	if err := aiSave("deepseek", "", "", &k1, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := aiSave("openai", "https://relay.example.com/v1", "gpt-x", &k2, nil); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(aiKeyFile())
+	orig := unprotect
+	defer func() { unprotect = orig }()
+	unprotect = func([]byte) ([]byte, error) { return nil, errors.New("key not valid for use in specified state") }
+	if v := aiView(); len(v.Keys) != 0 || v.Ready || v.Provider != "openai" {
+		t.Errorf("view %+v", v)
+	}
+	if err := aiSave("openai", "https://relay.example.com/v1", "gpt-y", nil, nil); err != nil { // no key written
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(aiKeyFile()); !bytes.Equal(b, before) || len(brokenCopies(t, aiKeyFile())) != 0 {
+		t.Error("key file written without a key")
+	}
+	k3 := "sk-new-key-99998888"
+	if err := aiSave("deepseek", "", "", &k3, nil); err != nil {
+		t.Fatal(err)
+	}
+	if kept := brokenCopies(t, aiKeyFile()); len(kept) != 1 || !bytes.Equal(kept[0], before) {
+		t.Errorf("kept %q", kept)
+	}
+	unprotect = orig
+	if v := aiView(); v.Keys["deepseek"] != "…8888" || v.Keys["openai"] != "" || v.Profiles["openai"].Model != "gpt-y" {
+		t.Errorf("after save %+v", v)
+	}
+	if !strings.Contains(logs(), "ai-key.dat 无法解密（key not valid for use in specified state），原文件另存为 ai-key.dat.broken-") {
+		t.Errorf("log:\n%s", logs())
+	}
+	// decrypted, and not keys
+	names, _ := filepath.Glob(aiKeyFile() + ".broken-*")
+	for _, n := range names {
+		_ = os.Remove(n)
+	}
+	if err := os.WriteFile(aiKeyFile(), []byte("not json"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	unprotect = func(b []byte) ([]byte, error) { return b, nil }
+	err := aiSave("deepseek", "", "", &k1, nil)
+	unprotect = orig
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kept := brokenCopies(t, aiKeyFile()); len(kept) != 1 || string(kept[0]) != "not json" {
+		t.Errorf("kept %q", kept)
+	}
+	if v := aiView(); v.Keys["deepseek"] != "…abcd" {
+		t.Errorf("after save %+v", v)
+	}
+	if !strings.Contains(logs(), "ai-key.dat 无法解析（") {
+		t.Errorf("log:\n%s", logs())
+	}
+}
+
+// ai.json or ai-key.dat that is there and cannot be read (another program holds it, no right to it) is read
+// again for a moment; failing that the defaults are shown and nothing is written over it: a save in the AI
+// panel says so, what is recorded in the background is not kept. (Root reads any file: run as another user.)
+func TestAIFilesUnreadable(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads any file")
+	}
+	core.DataDir = t.TempDir()
+	logs := captureLog(t)
+	wait := aiReadWait
+	defer func() { aiReadWait = wait }()
+	aiReadWait = 10 * time.Millisecond
+	k1, k2 := "sk-test-1234567890abcd", "relay-key-000011112222"
+	if err := aiSave("deepseek", "", "", &k1, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := aiSave("openai", "https://relay.example.com/v1", "gpt-x", &k2, nil); err != nil {
+		t.Fatal(err)
+	}
+	aiRemember(`C:\Proj\A`, "booth:1", []string{"Assets/Shop"})
+	cfg, _ := os.ReadFile(aiConfigFile())
+	keys, _ := os.ReadFile(aiKeyFile())
+	lock := func(f string) {
+		t.Helper()
+		if err := os.Chmod(f, 0); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.ReadFile(f); err == nil {
+			t.Skip("the file can still be read")
+		}
+		t.Cleanup(func() { _ = os.Chmod(f, 0600) })
+	}
+
+	lock(aiConfigFile())
+	if v := aiView(); v.Provider != "" || len(v.Recent) != 0 || v.Keys["openai"] != "…2222" {
+		t.Errorf("view %+v", v)
+	}
+	h := "主菜单 > 换装 > {衣服} > {开关}"
+	k3 := "sk-new-key-99998888"
+	for i, err := range []error{
+		aiSave("", "", "", nil, &h),
+		aiSave("deepseek", "", "deepseek-v4-pro", nil, nil),
+		aiSave("deepseek", "", "", &k3, nil),
+		aiSaveVision(AIVision{Mode: "off"}, nil),
+	} {
+		if err != errAIConfigUnread {
+			t.Errorf("save %d: %v", i, err)
+		}
+	}
+	if errAIConfigUnread.Error() != "AI 设置文件暂时无法读取，未保存修改，请稍后重试" {
+		t.Error(errAIConfigUnread)
+	}
+	aiRemember(`C:\Proj\B`, "booth:2", []string{"Assets/Other"}) // background records
+	rememberSees("openai|relay.example.com/v1|gpt-x", true)
+	_ = os.Chmod(aiConfigFile(), 0600)
+	if b, _ := os.ReadFile(aiConfigFile()); !bytes.Equal(b, cfg) {
+		t.Errorf("ai.json written over:\n%s", b)
+	}
+	if b, _ := os.ReadFile(aiKeyFile()); !bytes.Equal(b, keys) {
+		t.Error("ai-key.dat written while ai.json could not be read")
+	}
+	if v := aiView(); v.Provider != "openai" || v.Hierarchy != defaultHierarchy || len(v.Recent) != 1 {
+		t.Errorf("view after %+v", v)
+	}
+
+	lock(aiKeyFile())
+	if v := aiView(); len(v.Keys) != 0 || v.Provider != "openai" {
+		t.Errorf("view %+v", v)
+	}
+	for i, err := range []error{
+		aiSave("deepseek", "", "", &k3, nil),
+		aiSave("openai", "https://other.example.com/v1", "gpt-x", nil, nil), // whether a key goes with the old address is not known
+		aiSaveVision(AIVision{Mode: "other", BaseURL: "https://open.bigmodel.cn/api/paas/v4", Model: "glm-4.6v-flash"}, &k3),
+		aiSaveVision(AIVision{Mode: "other", BaseURL: "https://open.bigmodel.cn/api/paas/v4", Model: "glm-4.6v-flash"}, nil),
+	} {
+		if err != errAIKeysUnread {
+			t.Errorf("key save %d: %v", i, err)
+		}
+	}
+	if err := aiSave("openai", "https://relay.example.com/v1", "gpt-y", nil, nil); err != nil { // no key, same address
+		t.Error(err)
+	}
+	_ = os.Chmod(aiKeyFile(), 0600)
+	if b, _ := os.ReadFile(aiKeyFile()); !bytes.Equal(b, keys) {
+		t.Error("ai-key.dat written over")
+	}
+	if v := aiView(); v.Keys["deepseek"] != "…abcd" || v.Keys["openai"] != "…2222" || v.Profiles["openai"].Model != "gpt-y" || v.Vision.Mode != "" {
+		t.Errorf("view after %+v", v)
+	}
+	if got := logs(); strings.Count(got, "ai.json 无法读取") != 1 || strings.Count(got, "ai-key.dat 无法读取") != 1 {
+		t.Errorf("log:\n%s", got)
+	}
+
+	// held for a moment: read again, not taken for nothing saved
+	aiReadWait = 100 * time.Millisecond
+	lock(aiConfigFile())
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		_ = os.Chmod(aiConfigFile(), 0600)
+	}()
+	if v := aiView(); v.Provider != "openai" {
+		t.Errorf("not read again: %+v", v)
 	}
 }
 
@@ -1167,4 +1390,109 @@ func toolNames(req map[string]any) []string {
 		out = append(out, fmt.Sprint(m["name"]))
 	}
 	return out
+}
+
+// A base body the table does not know: the avatar's own name picks the version of an outfit made for it, and
+// the record says so — not both versions put on.
+func TestQuickDressUnknownBase(t *testing.T) {
+	logs := captureLog(t)
+	st := testkit.NewStore(t)
+	var bases []string
+	for _, b := range st.Settings.Bases {
+		if !strings.HasPrefix(b, "Kaguya=") {
+			bases = append(bases, b)
+		}
+	}
+	st.Settings.Bases = bases
+	proj := t.TempDir()
+	u := &sceneUnity{}
+	unitytest.FakeUnity(t, proj, u.answer)
+	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	if err := startAIRun(st, aiRunReq{Project: proj, Mode: "dress", NoAI: true, Folders: []string{"Assets/Shop/SailorSet"}, Hierarchy: "主菜单 > 换装 > {衣服} > {开关}"}); err != nil {
+		t.Fatal(err)
+	}
+	steps := waitRun(t, aiSessionFor(proj))
+	last := steps[len(steps)-1]
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if len(u.dressed) != 1 || !strings.Contains(fmt.Sprint(u.dressed[0]["prefab"]), "/Kaguya/") {
+		t.Fatalf("dressed %v", u.dressed)
+	}
+	if !strings.Contains(last.Text, "素体识别规则中没有「kaguya」，已按模型名称只装配素材中「kaguya」的版本") {
+		t.Errorf("record: %s", last.Text)
+	}
+	// the log has the run: what it was, how it ended (the line is written before the run counts as ended)
+	got := logs()
+	if !strings.Contains(got, "流水线（1 个素材）开始：工程 "+filepath.Base(proj)+"，不使用 AI") || !strings.Contains(got, "流水线（1 个素材）完成：工程 "+filepath.Base(proj)+"，用时 ") {
+		t.Errorf("log:\n%s", got)
+	}
+}
+
+// captureLog: what is written to the log from now on.
+func captureLog(t *testing.T) func() string {
+	var mu sync.Mutex
+	var b strings.Builder
+	old := core.Logger
+	core.Logger = log.New(writerFunc(func(p []byte) (int, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		return b.Write(p)
+	}), "", 0)
+	t.Cleanup(func() { core.Logger = old })
+	return func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return b.String()
+	}
+}
+
+type writerFunc func(p []byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
+
+func TestAvatarBaseHint(t *testing.T) {
+	for _, c := range []struct {
+		av   avatarInfo
+		want string
+	}{
+		{avatarInfo{Name: "Kipfel_PC Variant", Prefab: "Assets/Kipfel/Kipfel_PC.prefab"}, "Kipfel"},
+		{avatarInfo{Name: "Kipfel_v1.2.0 Variant"}, "Kipfel"},
+		{avatarInfo{Name: "Kipfel (1)"}, "Kipfel"},
+		{avatarInfo{Name: "Mio", Prefab: "Assets/X/Body.prefab"}, "Mio"},
+		{avatarInfo{Name: "Avatar"}, ""},
+		{avatarInfo{Name: "AB"}, ""},
+	} {
+		if got := avatarBaseHint(c.av); got != c.want {
+			t.Errorf("%+v: %q, want %q", c.av, got, c.want)
+		}
+	}
+	list := []prefabInfo{{Path: "Assets/A/Kipfel/a.prefab"}, {Path: "Assets/A/Mame/a.prefab"}}
+	if !narrows(list, "kipfel") || narrows(list[:1], "kipfel") || narrows(list, "none") {
+		t.Error("narrows")
+	}
+}
+
+// A project that builds for Quest (Android) gets the base body's Quest version placed.
+func TestQuickPipelineQuestProject(t *testing.T) {
+	st := testkit.NewStore(t)
+	proj := t.TempDir()
+	u := &sceneUnity{empty: true, extra: []prefabInfo{
+		{Path: "Assets/IKUSIA/kaguya/kaguya.prefab", Name: "kaguya", WholeAvatar: true, Renderers: 12},
+		{Path: "Assets/IKUSIA/kaguya/kaguya_Quest.prefab", Name: "kaguya_Quest", WholeAvatar: true, Renderers: 6},
+	}}
+	unitytest.FakeUnity(t, proj, u.answer)
+	if err := os.WriteFile(filepath.Join(unity.BridgeDir(proj), "target"), []byte("quest"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	req := aiRunReq{Project: proj, Mode: "dress", NoAI: true, Assets: []aiAsset{{Folder: "Assets/IKUSIA/kaguya", Kind: "素体", Name: "辉夜"}}}
+	if err := startAIRun(st, req); err != nil {
+		t.Fatal(err)
+	}
+	waitRun(t, aiSessionFor(proj))
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if len(u.placed) != 1 || !strings.HasSuffix(fmt.Sprint(u.placed[0]["prefab"]), "/kaguya_Quest.prefab") {
+		t.Fatalf("placed %v", u.placed)
+	}
 }

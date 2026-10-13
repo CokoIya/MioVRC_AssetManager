@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -228,6 +229,60 @@ func TestPipelineStopsWhenQuitting(t *testing.T) {
 	RunFolderScan(st, &core.Task{})
 	if len(st.Assets) != 4 {
 		t.Errorf("afterwards: %d assets", len(st.Assets))
+	}
+}
+
+// A rescan asked for just as a run of the pipeline ends (a download or an import that finished then) is not
+// lost: from the moment the run has found nothing more to do, a request starts a run of its own.
+func TestPipelineRequestAtTheEnd(t *testing.T) {
+	root := t.TempDir()
+	testkit.WriteFile(t, filepath.Join(root, "Alpha Coat", "Alpha Coat.unitypackage"), 100)
+	waitIdle()
+	st := testkit.NewStore(t)
+	st.Settings.Roots = []string{root}
+	st.Settings.NoWatch, st.Settings.HideZh = true, true // (no names sent to the translator from a test)
+	var once sync.Once
+	started := make(chan bool, 1)
+	pipeMu.Lock()
+	pipeEnded = func() {
+		once.Do(func() { // the download that ends right then, and the rescan it asks for
+			if err := os.MkdirAll(filepath.Join(root, "Beta Hair"), 0755); err != nil {
+				t.Error(err)
+			}
+			if err := os.WriteFile(filepath.Join(root, "Beta Hair", "Beta Hair.unitypackage"), make([]byte, 100), 0644); err != nil {
+				t.Error(err)
+			}
+			started <- StartPipeline(st, true, true, false, false, nil)
+		})
+	}
+	pipeMu.Unlock()
+	t.Cleanup(func() {
+		waitIdle()
+		pipeMu.Lock()
+		pipeEnded = nil
+		pipeMu.Unlock()
+	})
+	if !StartPipeline(st, true, true, false, false, nil) {
+		t.Fatal("not started")
+	}
+	select {
+	case ok := <-started:
+		if !ok {
+			t.Error("the rescan was left to the run that had ended")
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("the run does not end")
+	}
+	waitIdle()
+	st.Mu.RLock()
+	var names []string
+	for _, a := range st.Assets {
+		names = append(names, a.Name)
+	}
+	st.Mu.RUnlock()
+	sort.Strings(names)
+	if strings.Join(names, ",") != "Alpha Coat,Beta Hair" {
+		t.Errorf("assets after the rescan: %v", names)
 	}
 }
 

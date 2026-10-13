@@ -101,10 +101,87 @@ type AIConfig struct {
 	Sees      map[string]string            `json:"sees,omitempty"`     // address and model → yes / no: does it read pictures (asked once)
 }
 
+// aiMu guards ai.json and ai-key.dat, and what was last read of them. It is never held together with the
+// library's st.Mu: nothing under aiMu takes st.Mu (menuLang, library views, core.HTTPClient), nothing under st.Mu
+// takes aiMu (loadAIConfig, aiKey, aiSave, aiView, aiRemember) — what one guards is read before the other is taken.
 var aiMu sync.Mutex
 
 func aiConfigFile() string { return filepath.Join(core.DataDir, "ai.json") }
 func aiKeyFile() string    { return filepath.Join(core.DataDir, "ai-key.dat") }
+
+// The file is there and could not be read (another program holds it, no right to it): the defaults are shown
+// meanwhile, and a save is refused — what the file holds is not written over.
+var (
+	errAIConfigUnread = errors.New("AI 设置文件暂时无法读取，未保存修改，请稍后重试")
+	errAIKeysUnread   = errors.New("API Key 文件暂时无法读取，未保存修改，请稍后重试")
+)
+
+// what the last read of each of the two files found, for the save that follows it under aiMu
+var (
+	aiUnread = map[string]bool{}         // there, and could not be read: not written over
+	aiBroken = map[string]aiBrokenFile{} // did not parse or decrypt: kept beside itself before it is written over
+)
+
+type aiBrokenFile struct {
+	b       []byte
+	err     error
+	decrypt bool // it would not decrypt (made by another Windows user or computer), rather than not parse
+}
+
+// aiReadWait: the pause before a file that could not be read is read again (five times: about a second). A
+// var: tests wait less.
+var aiReadWait = 200 * time.Millisecond
+
+// unprotect: how the key file is decrypted (Windows DPAPI: this Windows user's only). A var: tests make a file
+// that does not decrypt.
+var unprotect = core.UnprotectData
+
+// readAIFile: one of the two files, nil when there is none; false when it is there and could not be read. One
+// held for a moment (a virus scanner, a cloud drive) is read again; one that stays unreadable is logged once,
+// and read again without waiting until it can be. Caller holds aiMu.
+func readAIFile(p string) ([]byte, bool) {
+	b, err := os.ReadFile(p)
+	for i := 0; i < 5 && err != nil && !os.IsNotExist(err) && !aiUnread[p]; i++ {
+		time.Sleep(aiReadWait)
+		b, err = os.ReadFile(p)
+	}
+	delete(aiBroken, p)
+	if err != nil && !os.IsNotExist(err) {
+		if !aiUnread[p] {
+			core.Logf("%s 无法读取（%v），在能读取之前不写入该文件", filepath.Base(p), err)
+		}
+		aiUnread[p] = true
+		return nil, false
+	}
+	delete(aiUnread, p)
+	return b, true
+}
+
+// writeAIFile replaces one of the two files in one step. One that could not be read is not written over
+// (unread is the answer); one that did not parse or decrypt is kept first, as <name>.broken-<time>. Caller holds
+// aiMu, and read the file under it.
+func writeAIFile(p string, b []byte, unread error) error {
+	if aiUnread[p] {
+		return unread
+	}
+	if old, ok := aiBroken[p]; ok {
+		keep := p + ".broken-" + time.Now().Format("20060102-150405")
+		if err := os.WriteFile(keep, old.b, 0600); err != nil {
+			return err // not written over without the copy
+		}
+		if old.decrypt {
+			core.Logf("%s 无法解密（%v），原文件另存为 %s", filepath.Base(p), old.err, filepath.Base(keep))
+		} else {
+			core.Logf("%s 无法解析（%v），原文件另存为 %s", filepath.Base(p), old.err, filepath.Base(keep))
+		}
+		delete(aiBroken, p)
+	}
+	tmp := p + ".tmp"
+	if err := os.WriteFile(tmp, b, 0600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, p)
+}
 
 func loadAIConfig() AIConfig {
 	aiMu.Lock()
@@ -112,10 +189,21 @@ func loadAIConfig() AIConfig {
 	return loadAIConfigLocked()
 }
 
+// loadAIConfigLocked: ai.json as saved, the defaults where it says nothing (all of them when it could not be read).
 func loadAIConfigLocked() AIConfig {
+	c, _ := readAIConfigLocked()
+	return c
+}
+
+// readAIConfigLocked: loadAIConfigLocked, and errAIConfigUnread when the file is there and could not be read —
+// the defaults that come back then are not to be saved.
+func readAIConfigLocked() (AIConfig, error) {
 	c := AIConfig{}
-	if b, err := os.ReadFile(aiConfigFile()); err == nil {
-		_ = json.Unmarshal(b, &c)
+	b, ok := readAIFile(aiConfigFile())
+	if len(b) > 0 {
+		if err := json.Unmarshal(b, &c); err != nil {
+			aiBroken[aiConfigFile()] = aiBrokenFile{b: b, err: err}
+		}
 	}
 	if c.Profiles == nil {
 		c.Profiles = map[string]*AIProfile{}
@@ -129,16 +217,17 @@ func loadAIConfigLocked() AIConfig {
 	if h := strings.TrimSpace(c.Hierarchy); h == "" || h == oldHierarchy {
 		c.Hierarchy = defaultHierarchy
 	}
-	return c
+	if !ok {
+		return c, errAIConfigUnread
+	}
+	return c, nil
 }
 
+// saveAIConfigLocked writes ai.json (as writeAIFile does). While it cannot be read, what is recorded in the
+// background (recent and imported folders, which models see) is not kept: the read has logged that once.
 func saveAIConfigLocked(c AIConfig) error {
 	b, _ := json.MarshalIndent(c, "", "  ")
-	tmp := aiConfigFile() + ".tmp"
-	if err := os.WriteFile(tmp, b, 0600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, aiConfigFile())
+	return writeAIFile(aiConfigFile(), b, errAIConfigUnread)
 }
 
 // profile: the address and model in use for a provider (the provider's defaults where nothing was entered).
@@ -162,17 +251,30 @@ func (c AIConfig) profile(id string) AIProfile {
 }
 
 func loadAIKeysLocked() map[string]string {
-	keys := map[string]string{}
-	b, err := os.ReadFile(aiKeyFile())
-	if err != nil {
-		return keys
-	}
-	dec, err := core.UnprotectData(b)
-	if err != nil {
-		return keys // copied from another computer or Windows user: the keys have to be entered again
-	}
-	_ = json.Unmarshal(dec, &keys)
+	keys, _ := readAIKeysLocked()
 	return keys
+}
+
+// readAIKeysLocked: the saved keys, and errAIKeysUnread when the file is there and could not be read.
+func readAIKeysLocked() (map[string]string, error) {
+	keys := map[string]string{}
+	b, ok := readAIFile(aiKeyFile())
+	if !ok {
+		return keys, errAIKeysUnread
+	}
+	if len(b) == 0 {
+		return keys, nil
+	}
+	dec, err := unprotect(b)
+	if err != nil {
+		// copied from another computer or Windows user: the keys have to be entered again (the file is kept)
+		aiBroken[aiKeyFile()] = aiBrokenFile{b: b, err: err, decrypt: true}
+		return keys, nil
+	}
+	if err := json.Unmarshal(dec, &keys); err != nil {
+		aiBroken[aiKeyFile()] = aiBrokenFile{b: b, err: err}
+	}
+	return keys, nil
 }
 
 func saveAIKeysLocked(keys map[string]string) error {
@@ -181,11 +283,7 @@ func saveAIKeysLocked(keys map[string]string) error {
 	if err != nil {
 		return err
 	}
-	tmp := aiKeyFile() + ".tmp"
-	if err := os.WriteFile(tmp, enc, 0600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, aiKeyFile())
+	return writeAIFile(aiKeyFile(), enc, errAIKeysUnread)
 }
 
 func aiKey(id string) string {
@@ -224,12 +322,13 @@ func keyTail(k string) string {
 }
 
 func aiView() AIView {
+	lang := menuLang() // (it takes st.Mu: before aiMu, see aiMu)
 	aiMu.Lock()
 	defer aiMu.Unlock()
 	c := loadAIConfigLocked()
 	keys := loadAIKeysLocked()
 	v := AIView{Provider: c.Provider, Providers: aiProviders, Profiles: map[string]AIProfile{}, Keys: map[string]string{},
-		Hierarchy: localHierarchy(menuLang(), c.Hierarchy), DefaultHi: hierarchyIn(menuLang()), Recent: c.Recent}
+		Hierarchy: localHierarchy(lang, c.Hierarchy), DefaultHi: hierarchyIn(lang), Recent: c.Recent}
 	for _, p := range aiProviders {
 		v.Profiles[p.ID] = c.profile(p.ID)
 		if t := keyTail(keys[p.ID]); t != "" {
@@ -255,7 +354,10 @@ func aiSave(provider, base, model string, key *string, hierarchy *string) error 
 	}
 	aiMu.Lock()
 	defer aiMu.Unlock()
-	c := loadAIConfigLocked()
+	c, err := readAIConfigLocked()
+	if err != nil {
+		return err
+	}
 	if provider != "" {
 		base = strings.TrimSpace(base)
 		if base != "" {
@@ -267,11 +369,15 @@ func aiSave(provider, base, model string, key *string, hierarchy *string) error 
 		was := c.profile(provider).BaseURL
 		c.Provider = provider
 		c.Profiles[provider] = &AIProfile{BaseURL: base, Model: strings.TrimSpace(model)}
-		if key == nil && loadAIKeysLocked()[provider] != "" && !sameService(was, c.profile(provider).BaseURL) {
+		moved := !sameService(was, c.profile(provider).BaseURL)
+		keys, err := readAIKeysLocked()
+		if err != nil && (key != nil || moved) {
+			return err // (nor is it known then whether a key is saved for the old address)
+		}
+		if key == nil && keys[provider] != "" && moved {
 			return errKeyForOtherHost // a saved key is never sent to an address it was not entered for
 		}
 		if key != nil {
-			keys := loadAIKeysLocked()
 			if k := strings.TrimSpace(*key); k == "" {
 				delete(keys, provider)
 			} else {

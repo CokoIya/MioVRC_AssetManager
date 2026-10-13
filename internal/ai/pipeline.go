@@ -8,9 +8,11 @@ import (
 	"io/fs"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"vrclib/internal/core"
 	"vrclib/internal/unity"
@@ -223,6 +225,42 @@ func (h folderHolds) String() string {
 		return "未找到可识别的文件"
 	}
 	return "内有 " + strings.Join(parts, "、")
+}
+
+// avatarBaseHint: the name of the base body an avatar is built on, as its prefab or its own name says it, for a
+// base body the table does not know: "Kipfel" of "Kipfel_PC Variant", "Kipfel_v1.2.0". "" when the name says
+// nothing of one ("Avatar", "Body").
+func avatarBaseHint(av avatarInfo) string {
+	for _, n := range []string{strings.TrimSuffix(baseName(av.Prefab), ".prefab"), av.Name} {
+		n = strings.TrimSpace(n)
+		for prev := ""; prev != n; {
+			prev = n
+			n = strings.Trim(reHintTail.ReplaceAllString(n, ""), " _-.")
+		}
+		low := strings.ToLower(n)
+		if len([]rune(n)) >= 3 && !genericAvatarNames[low] && strings.IndexFunc(n, unicode.IsLetter) >= 0 && !strings.ContainsAny(n, "/\\") {
+			return n
+		}
+	}
+	return ""
+}
+
+var (
+	reHintTail         = regexp.MustCompile(`(?i)(?:[ _\-.]+|^)(?:v(?:er)?\.?\d[\w.\-]*|\d+(?:\.\d+)+|pc|quest|android|variant|\(clone\)|\(\d+\)|copy|コピー|\d+)$`)
+	genericAvatarNames = map[string]bool{"avatar": true, "avatars": true, "model": true, "body": true, "base": true, "character": true, "chara": true,
+		"prefab": true, "root": true, "armature": true, "new": true, "test": true, "sample": true, "default": true, "unity": true, "vrc": true,
+		"vrchat": true, "main": true, "player": true, "my avatar": true, "new avatar": true, "fbx": true, "mesh": true}
+)
+
+// narrows: some of the prefabs, and not all, are under a path that names the base body.
+func narrows(list []prefabInfo, hint string) bool {
+	h := strings.ToLower(hint)
+	some, all := false, true
+	for _, p := range list {
+		in := strings.Contains(strings.ToLower(p.Path), h)
+		some, all = some || in, all && in
+	}
+	return some && !all
 }
 
 // baseFits: is an asset made for these base bodies (the library's 适配素体) right for the avatar, whose base
@@ -515,8 +553,17 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 			if len(whole) == 0 {
 				return "", errors.New("「" + b.Folder + "」中没有完整模型的 prefab（需带 VRC Avatar Descriptor），请更换素体，或先在 Unity 中打开包含模型的场景")
 			}
-			// the plain PC version first: not a Quest/lite/face-tracking variant, then the fewest words in its name
+			// the plain PC version first: not a Quest/lite/face-tracking variant, then the fewest words in its name —
+			// in a project that builds for Quest (Android), its Quest version first
+			quest := unity.ProjectTarget(p) == "quest"
+			isQuest := func(x prefabInfo) bool {
+				n := strings.ToLower(x.Name)
+				return strings.Contains(n, "quest") || strings.Contains(n, "android") || strings.Contains(n, "mobile")
+			}
 			sort.SliceStable(whole, func(i, j int) bool {
+				if quest && isQuest(whole[i]) != isQuest(whole[j]) {
+					return isQuest(whole[i])
+				}
 				odd := func(x prefabInfo) int {
 					n := strings.ToLower(x.Name)
 					o := 0
@@ -582,6 +629,16 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 	bodyName := av.Name // what the avatar's base body is called, in messages
 	if len(aliases) > 0 {
 		bodyName = aliases[0]
+	}
+	// what picks the version of an outfit made for this base body by its path: the table's names — or, for a
+	// base body the table does not know (yet), the avatar's own name ("Kipfel"), so that only one version of an
+	// outfit made for several is put on. (Whether an asset is made for the base body is told by the table's
+	// names alone.)
+	hints, hint, hintUsed := aliases, "", false
+	if len(hints) == 0 {
+		if hint = avatarBaseHint(av); hint != "" {
+			hints = []string{hint}
+		}
 	}
 
 	// ---- what the folders hold ----
@@ -786,7 +843,7 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 				"，将模型拖入 Avatar 栏，选择眼部和嘴部的精度后点击安装（Apply Face Tracking Addon）。安装前请确认素体版本在该面捕支持的范围内；精度越高占用的同步参数越多（高精度的眼部加嘴部约 160 位，上限 256 位）")
 			return nil
 		}
-		pick, names := pickPlugin(sub, aliases)
+		pick, names := pickPlugin(sub, hints)
 		if pick == nil && len(names) == 0 {
 			line := "「" + label + "」未放置：其中没有可放置的 prefab（" + holds.String() + "）。"
 			switch {
@@ -895,10 +952,10 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 			todo = append(todo, line)
 			return
 		}
-		if len(aliases) > 0 {
+		if len(hints) > 0 {
 			var mine []prefabInfo
 			for _, x := range src {
-				for _, al := range aliases {
+				for _, al := range hints {
 					if strings.Contains(strings.ToLower(x.Path), strings.ToLower(al)) {
 						mine = append(mine, x)
 						break
@@ -921,7 +978,7 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 		for _, x := range src {
 			l := label
 			if len(src) > 1 {
-				l = tidyName(x.Name, aliases)
+				l = tidyName(x.Name, hints)
 			}
 			l = named("皮肤", l, x.Name)
 			add(map[string]any{"kind": "skin", "path": base, "label": l, "objects": body, "materialsFrom": x.Path, "parameter": skinParam})
@@ -954,7 +1011,13 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 				warns = append(warns, "「"+a.Folder+"」中没有 prefab，已跳过")
 				continue
 			}
-			outfits, skipped := pickOutfits(sub, aliases)
+			// (the avatar's own name only where it names one of the versions: what it does not name, it is not
+			// known to be the base body of)
+			by := aliases
+			if hint != "" && narrows(sub, hint) {
+				by, hintUsed = hints, true
+			}
+			outfits, skipped := pickOutfits(sub, by)
 			if len(outfits) == 0 {
 				warns = append(warns, "「"+a.Folder+"」中没有可装配的 prefab（均为完整模型），已跳过")
 				continue
@@ -1006,7 +1069,7 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 					done = append(done, label)
 					w := wornInfo{kind: kind, label: label, object: object, meshes: details, base: base, param: pm, first: first}
 					for _, c := range o.colours {
-						w.colours = append(w.colours, colourInfo{Prefab: c.Path, Label: colourLabel(c, names, aliases)})
+						w.colours = append(w.colours, colourInfo{Prefab: c.Path, Label: colourLabel(c, names, hints)})
 					}
 					mine := func(it map[string]any) { // an item of this one: the AI may redo it
 						add(it)
@@ -1047,11 +1110,11 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 						pick = "戴上"
 					}
 					if len(o.colours) > 0 {
-						pick = colourLabel(o.base, names, aliases)
+						pick = colourLabel(o.base, names, hints)
 					}
 					mine(map[string]any{"kind": "outfit", "path": colourPath, "label": pick, "objects": []string{object}, "default": first, "parameter": pm})
 					for _, c := range o.colours {
-						mine(map[string]any{"kind": "outfit", "path": colourPath, "label": colourLabel(c, names, aliases), "objects": []string{object}, "materialsFrom": c.Path, "parameter": pm})
+						mine(map[string]any{"kind": "outfit", "path": colourPath, "label": colourLabel(c, names, hints), "objects": []string{object}, "materialsFrom": c.Path, "parameter": pm})
 					}
 					for _, g := range order {
 						mine(map[string]any{"kind": "part", "path": where, "label": g, "objects": groups[g]})
@@ -1098,6 +1161,9 @@ func quickPipeline(ctx context.Context, st *core.Store, s *aiSession, assets []a
 			add(map[string]any{"kind": "strip", "path": base, "label": stripLabel, "parameter": param})
 			notes = append(notes, "已在衣服菜单末尾添加「"+stripLabel+"」：它只脱下该菜单中的衣服，素体自带的内衣和原装衣服不受其控制（如需一并隐藏，可在 Unity 中将对应物体加入该菜单项的 MA Object Toggle 并取消勾选）")
 		}
+	}
+	if hintUsed {
+		notes = append(notes, "素体识别规则中没有「"+hint+"」，已按模型名称只装配素材中「"+hint+"」的版本；在设置的「素体识别规则」中添加后，素材库也能按它筛选和核对素体")
 	}
 	say := func(text string) {
 		if len(notes) > 0 {

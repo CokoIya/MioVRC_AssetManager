@@ -70,12 +70,33 @@ type cdpConn struct {
 
 var ErrCDPClosed = errors.New("浏览器窗口已关闭")
 
-func cdpDial(wsURL string, timeout time.Duration) (*cdpConn, error) {
+// errDevToolsAddr: the browser named another place for its DevTools connection than its debugging port here.
+var errDevToolsAddr = errors.New("浏览器调试接口的地址异常，已拒绝连接")
+
+// devToolsAddr: the address a DevTools (or WebDriver BiDi) connection may go to — a ws:// one on this computer
+// (127.0.0.1 or localhost), on port, the debugging port of the browser the program started. The address comes
+// from what the browser answers (webSocketDebuggerUrl), and the saved logins are sent over the connection
+// (restoreLogins): wherever else it points — another host, another port — nothing is connected to.
+func devToolsAddr(wsURL string, port int) (*url.URL, error) {
 	u, err := url.Parse(wsURL)
+	if err != nil || u.Scheme != "ws" || u.Opaque != "" || u.User != nil || port <= 0 || u.Port() != strconv.Itoa(port) {
+		return nil, errDevToolsAddr
+	}
+	if h := strings.ToLower(u.Hostname()); h != "127.0.0.1" && h != "localhost" {
+		return nil, errDevToolsAddr
+	}
+	return u, nil
+}
+
+// cdpDial connects to the browser's DevTools address wsURL, which must be its debugging port on this computer
+// (devToolsAddr).
+func cdpDial(wsURL string, port int, timeout time.Duration) (*cdpConn, error) {
+	u, err := devToolsAddr(wsURL, port)
 	if err != nil {
 		return nil, err
 	}
-	conn, err := net.DialTimeout("tcp", u.Host, timeout)
+	// (127.0.0.1 also for "localhost": the debugging port listens there, whatever the name is made to mean)
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", u.Port()), timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -418,7 +439,7 @@ func CloseDebugBrowser(port int) {
 	if v.WS == "" {
 		return
 	}
-	if c, err := cdpDial(v.WS, 4*time.Second); err == nil {
+	if c, err := cdpDial(v.WS, port, 4*time.Second); err == nil {
 		_, _ = c.call("Browser.close", nil, 4*time.Second)
 		c.Close()
 	}

@@ -2,6 +2,7 @@ package purchases
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -93,6 +94,35 @@ func TestPaneFileLeavesPlayersArchives(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := "Moon Dress/MoonDress_v1.0.zip,Moon Dress/new/Moon.unitypackage,Moon Dress/original/MoonDress_PSD.zip"
+	if got := strings.Join(testkit.ListTree(lib), ","); got != want {
+		t.Errorf("after the download: %s", got)
+	}
+}
+
+// The player's own volumes of the downloaded file's name in that folder (an earlier "Moon Dress.z01", ".z02"):
+// 7-Zip reads them with the new, whole "Moon Dress.zip", but only the download is removed — they were deleted for
+// good with it.
+func TestPaneFileLeavesPlayersVolumes(t *testing.T) {
+	if _, err := exec.LookPath("7z"); err != nil {
+		t.Skip("no 7z here")
+	}
+	st := testkit.NewStore(t)
+	t.Cleanup(settleBackground)
+	lib := t.TempDir()
+	st.Settings.Roots, st.Settings.DownloadDir, st.Settings.NoWatch, st.Settings.HideZh = []string{lib}, lib, true, true
+	mine := filepath.Join(lib, "Moon Dress")
+	_ = os.MkdirAll(mine, 0755)
+	for _, n := range []string{"Moon Dress.z01", "Moon Dress.z02"} {
+		_ = os.WriteFile(filepath.Join(mine, n), []byte("the player's "+n), 0644)
+	}
+	in := paneIncomingDir(st)
+	_ = os.MkdirAll(in, 0755)
+	src := filepath.Join(in, "8d0e5a51-7c4b-4f9a-9c43-2f6a1e0b7d21")
+	testkit.MakeZip(t, src, map[string]string{"new/Moon.unitypackage": "pkg"})
+	if _, err := adoptPaneFile(st, src, "Moon Dress.zip"); err != nil {
+		t.Fatal(err)
+	}
+	want := "Moon Dress/Moon Dress.z01,Moon Dress/Moon Dress.z02,Moon Dress/new/Moon.unitypackage"
 	if got := strings.Join(testkit.ListTree(lib), ","); got != want {
 		t.Errorf("after the download: %s", got)
 	}

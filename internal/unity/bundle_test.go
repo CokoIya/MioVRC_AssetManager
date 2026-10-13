@@ -505,3 +505,26 @@ func TestSplitJobPassword(t *testing.T) {
 		t.Fatalf("after: %s", got)
 	}
 }
+
+// 下载并导入 of an item whose download unpacks into a folder of several products' packages: the paths are what
+// the download brought (the unpacked folder), and the item's own folder is what the check for a collection
+// looks at — as importing from its card does. It is imported, and nothing is marked as a collection.
+func TestImportAfterDownloadLooksAtTheItemsFolder(t *testing.T) {
+	st, root := bundleLibrary(t)
+	item := filepath.Join(root, "9000003 Moon Set")
+	sub := filepath.Join(item, "MoonSet_v1.1")
+	for _, n := range []string{"Hat", "Bag", "Glasses", "Earrings"} {
+		put(t, filepath.Join(sub, n, n+".unitypackage"), packageOf(t, n))
+	}
+	proj := newProject(t)
+	if err := StartImport(st, ImportReq{Key: "purchase:9000003", Paths: []string{sub}, Within: item, Project: proj}); err != nil {
+		t.Fatal(err)
+	}
+	j := ended(t)
+	if j.Stage != "done" || j.Bundle != 0 || len(j.Imported) != 4 {
+		t.Fatalf("the job: %+v; in the project: %s", j, imported(proj))
+	}
+	if got := marks(st, root); got != "" {
+		t.Errorf("marked: %s", got)
+	}
+}

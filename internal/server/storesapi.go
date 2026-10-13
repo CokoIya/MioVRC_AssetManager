@@ -52,8 +52,8 @@ func registerStores(st *core.Store, post func(string, func(http.ResponseWriter, 
 		core.WriteJSON(w, map[string]any{"ok": booth.WishRemove(str(b, "key"))})
 	})
 	post("/api/wish/note", func(w http.ResponseWriter, b map[string]json.RawMessage) {
-		if !booth.WishNote(str(b, "key"), str(b, "note")) {
-			fail(w, "该商品已不在愿望单中")
+		if err := booth.WishNote(str(b, "key"), str(b, "note")); err != nil {
+			fail(w, err.Error())
 			return
 		}
 		core.WriteJSON(w, map[string]any{"ok": true})
@@ -102,8 +102,8 @@ func registerStores(st *core.Store, post func(string, func(http.ResponseWriter, 
 		core.WriteJSON(w, map[string]any{"ok": booth.FollowRemove(str(b, "sub"))})
 	})
 	post("/api/follow/note", func(w http.ResponseWriter, b map[string]json.RawMessage) {
-		if !booth.FollowNote(str(b, "sub"), str(b, "note")) {
-			fail(w, "已取消关注该店铺")
+		if err := booth.FollowNote(str(b, "sub"), str(b, "note")); err != nil {
+			fail(w, err.Error())
 			return
 		}
 		core.WriteJSON(w, map[string]any{"ok": true})

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"vrclib/internal/archive"
 	"vrclib/internal/core"
@@ -27,10 +28,11 @@ type projIndex struct {
 	root   string
 	byGUID map[string]string // guid → path inside the project ("Assets/a/b.prefab")
 	byPath map[string]string // lower-case path → guid
+	given  map[string]string // lower-case path → guid: where the files of this import go (all its packages)
 }
 
 func indexProject(root string) *projIndex {
-	idx := &projIndex{root: root, byGUID: map[string]string{}, byPath: map[string]string{}}
+	idx := &projIndex{root: root, byGUID: map[string]string{}, byPath: map[string]string{}, given: map[string]string{}}
 	for _, sub := range []string{"Assets", "Packages"} {
 		base := filepath.Join(root, sub)
 		_ = filepath.WalkDir(base, func(p string, d fs.DirEntry, err error) error {
@@ -61,6 +63,7 @@ type pkgItem struct {
 	path     string // as written in the package
 	meta     []byte
 	hasAsset bool
+	seq      int // where it comes in the package
 }
 
 func pkgEntry(name string) (guid, part string) {
@@ -99,7 +102,7 @@ func readPackageItems(pkg string) (map[string]*pkgItem, error) {
 	items := map[string]*pkgItem{}
 	get := func(g string) *pkgItem {
 		if items[g] == nil {
-			items[g] = &pkgItem{guid: g}
+			items[g] = &pkgItem{guid: g, seq: len(items)}
 		}
 		return items[g]
 	}
@@ -142,6 +145,16 @@ func cleanPkgPath(p string) string {
 		}
 	}
 	p = path.Clean(p)
+	if p == "Assets" {
+		return "" // the project's own Assets folder: it has no .meta (one would go next to it, outside Assets)
+	}
+	for _, seg := range strings.Split(p, "/") {
+		// Windows opens "Avatar.prefab." and "Avatar.prefab " as "Avatar.prefab", and "AVATAR~1.PRE" as the file
+		// whose short name it is: another asset than the path names (Unity makes no such names)
+		if strings.HasSuffix(seg, ".") || strings.HasSuffix(seg, " ") || shortName(seg) {
+			return ""
+		}
+	}
 	top := strings.SplitN(p, "/", 2)[0]
 	if top != "Assets" && top != "Packages" {
 		return ""
@@ -150,6 +163,21 @@ func cleanPkgPath(p string) string {
 		return "" // Packages/manifest.json and the like belong to the project
 	}
 	return p
+}
+
+// shortName: the name could be the 8.3 short name Windows gives a file of a longer name ("AVATAR~1.PRE",
+// "PROGRA~1") — at most eight characters with "~" and a digit in them, and at most three after a dot.
+func shortName(seg string) bool {
+	name, ext, _ := strings.Cut(seg, ".")
+	if utf8.RuneCountInString(name) > 8 || utf8.RuneCountInString(ext) > 3 || strings.Contains(ext, ".") {
+		return false
+	}
+	for i := 0; i+1 < len(name); i++ {
+		if name[i] == '~' && name[i+1] >= '0' && name[i+1] <= '9' {
+			return true
+		}
+	}
+	return false
 }
 
 type importStats struct {
@@ -180,20 +208,33 @@ func (idx *projIndex) target(it *pkgItem, isDir bool) string {
 	if p == "" {
 		return ""
 	}
-	if g, ok := idx.byPath[strings.ToLower(p)]; ok && g != it.guid && !isDir {
+	if !isDir && idx.taken(p, it.guid) {
 		// another asset has this name: Unity would add a number
 		ext := path.Ext(p)
 		stem := strings.TrimSuffix(p, ext)
 		for i := 1; ; i++ {
 			q := fmt.Sprintf("%s %d%s", stem, i, ext)
-			if _, taken := idx.byPath[strings.ToLower(q)]; !taken {
-				if _, err := os.Stat(filepath.Join(idx.root, filepath.FromSlash(q))); os.IsNotExist(err) {
-					return q
-				}
+			if !idx.taken(q, "") {
+				return q
 			}
 		}
 	}
 	return p
+}
+
+// taken: whether p is another asset's than guid's — one the project has, one an item of this import goes to,
+// or a file on disk with no .meta yet (put into Assets while Unity was closed: Unity gives it one when the
+// project opens, and then numbers the package's copy).
+func (idx *projIndex) taken(p, guid string) bool {
+	lp := strings.ToLower(p)
+	if g, ok := idx.byPath[lp]; ok {
+		return g != guid
+	}
+	if g, ok := idx.given[lp]; ok {
+		return g != guid
+	}
+	_, err := os.Lstat(filepath.Join(idx.root, filepath.FromSlash(p)))
+	return err == nil
 }
 
 func writeMeta(full string, it *pkgItem) error {
@@ -243,10 +284,15 @@ func importUnityPackage(pkg string, idx *projIndex) (importStats, error) {
 		}
 		stats.Folders++
 	}
+	// the files in the order of the package: of two with one path, the second gets a number (as in Unity)
+	var files []*pkgItem
 	for _, it := range items {
-		if !it.hasAsset {
-			continue
+		if it.hasAsset {
+			files = append(files, it)
 		}
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].seq < files[j].seq })
+	for _, it := range files {
 		rel := idx.target(it, false)
 		if rel == "" {
 			stats.Skipped++
@@ -258,6 +304,7 @@ func importUnityPackage(pkg string, idx *projIndex) (importStats, error) {
 			continue
 		}
 		dest[it.guid] = rel
+		idx.given[strings.ToLower(rel)] = it.guid
 		segs := strings.Split(rel, "/")
 		if len(segs) > 2 {
 			tops[segs[0]+"/"+segs[1]] = true
@@ -343,6 +390,9 @@ type PkgChoice struct {
 	Size  int64    `json:"size"`
 	Bases []string `json:"bases,omitempty"`
 	Pick  bool     `json:"pick"`
+	// why it is not ticked, or what to know of it (pkgpick.go): "old", "quest", "pc", "alt", "dup", "addon"; Note says it
+	Why  string `json:"why,omitempty"`
+	Note string `json:"note,omitempty"`
 }
 
 type ImportJob struct {
@@ -354,7 +404,9 @@ type ImportJob struct {
 	Done     int         `json:"done"`
 	Total    int         `json:"total"`
 	Choices  []PkgChoice `json:"choices,omitempty"`
-	Failed   []string    `json:"failed,omitempty"` // archives that did not unpack
+	Why      string      `json:"why,omitempty"`     // what the player is asked, at "choose": "bases" or "overlap"
+	Skipped  []PkgSkip   `json:"skipped,omitempty"` // packages of the card left out: there twice, older versions, Quest (or PC) versions
+	Failed   []string    `json:"failed,omitempty"`  // archives that did not unpack
 	Unpacked int         `json:"unpacked,omitempty"`
 	Removed  int         `json:"removed,omitempty"`
 	Imported []string    `json:"imported,omitempty"`
@@ -368,6 +420,7 @@ type ImportJob struct {
 	At       int64       `json:"at"`
 
 	places  []string
+	within  string // ImportReq.Within
 	pwd     string
 	recycle bool
 	chosen  chan []string
@@ -415,13 +468,17 @@ func setImp(f func(j *ImportJob)) {
 
 type ImportReq struct {
 	Key     string   `json:"key"`
-	Paths   []string `json:"paths"` // instead of an asset: folders that were just downloaded
+	Paths   []string `json:"paths"` // instead of an asset: what was just downloaded — folders, or the files themselves
 	Project string   `json:"project"`
 	Pwd     string   `json:"pwd"`
 	Recycle bool     `json:"recycle"`
 	// no import: the asset is a collection of products (合集包) — it is unpacked as for an import and split
 	// into a card for each product. No project is needed.
 	Split bool `json:"split"`
+	// the folder a download put the item into (下载并导入), when Paths is only what that download brought: the
+	// check for a collection of products looks at it, as at a card's folder — a folder unpacked inside it is
+	// one of the item's parts, not a collection of its own (never from the window)
+	Within string `json:"-"`
 }
 
 // importPlaces: what an asset brings along — its own files, and the downloads of the same product
@@ -507,8 +564,8 @@ func findPackages(places []string) []string {
 			if err != nil {
 				return nil
 			}
-			if d.IsDir() && strings.HasSuffix(d.Name(), ".extracting") {
-				return filepath.SkipDir
+			if d.IsDir() && (strings.HasSuffix(d.Name(), ".extracting") || strings.HasSuffix(d.Name(), ".joining")) {
+				return filepath.SkipDir // an unpack under way works in it (archive): what is there is not finished
 			}
 			if !d.IsDir() && strings.EqualFold(filepath.Ext(fp), ".unitypackage") && !seen[strings.ToLower(fp)] {
 				seen[strings.ToLower(fp)] = true
@@ -560,6 +617,33 @@ func choosePackages(st *core.Store, pkgs []string, projBases, assetBases []strin
 	return choices, false
 }
 
+// ImportAsk: what the player is asked before a card is imported into a project, "" when nothing — a base body
+// into a project built on another base body (the import's project is the one picked last; one just made, or
+// one that another page had, is easily missed).
+func ImportAsk(st *core.Store, key, project string) string {
+	if key == "" || project == "" {
+		return ""
+	}
+	var name, cat string
+	var bases []string
+	st.Mu.RLock()
+	for _, v := range library.AllViews(st) {
+		if v.Key == key {
+			name, cat, bases = v.Name, v.Category, v.Bases
+			break
+		}
+	}
+	st.Mu.RUnlock()
+	if cat != "素体" || len(bases) == 0 {
+		return ""
+	}
+	have := projectBases(st, project)
+	if len(have) == 0 || overlap(bases, have) {
+		return ""
+	}
+	return fmt.Sprintf("「%s」是 %s 的素体，目标工程「%s」用的是 %s 素体。仍要导入到这个工程吗？", name, strings.Join(bases, "、"), filepath.Base(project), strings.Join(have, "、"))
+}
+
 // StartImport begins the import in the background — or, for req.Split, the split of a collection.
 func StartImport(st *core.Store, req ImportReq) error {
 	label := labelImport
@@ -593,31 +677,72 @@ func StartImport(st *core.Store, req ImportReq) error {
 		return errImportBusy
 	}
 	impJob = &ImportJob{ID: time.Now().UnixNano(), Key: req.Key, Project: req.Project, Split: req.Split, Stage: "unpack", At: time.Now().Unix(),
-		places: places, pwd: req.Pwd, recycle: req.Recycle, chosen: make(chan []string, 1)}
+		places: places, within: req.Within, pwd: req.Pwd, recycle: req.Recycle, chosen: make(chan []string, 1)}
+	id := impJob.ID
 	impMu.Unlock()
 	core.BumpRev()
 	go func() {
 		TaskImport.Relabel(label)
-		core.RunTask(TaskImport, func() { runImport(st, bases) })
+		core.RunTask(TaskImport, func() {
+			defer func() {
+				if r := recover(); r != nil {
+					importPanicked(id, req.Split, r)
+				}
+			}()
+			runImport(st, bases)
+		})
 	}()
 	return nil
 }
 
-// StartImportWhenFree: an import that follows a download; it waits for an import already running.
+// importPanicked ends a run that went wrong: its job fails with what happened. Left at "unpack" or "import"
+// (core.RunTask only logs it), it would have every later import refused as busy until the program restarts.
+// A job that had ended, or one that has taken its place since, stays as it is.
+func importPanicked(id int64, split bool, r any) {
+	msg := fmt.Sprint("程序内部错误：", r)
+	if split {
+		core.Logf("拆分出错：%v", r)
+	} else {
+		core.Logf("导入出错：%v", r)
+	}
+	impMu.Lock()
+	open := impJob != nil && impJob.ID == id && impJob.Stage != "done" && impJob.Stage != "failed"
+	if open {
+		impJob.Stage, impJob.Err, impJob.Msg = "failed", msg, msg
+	}
+	impMu.Unlock()
+	if open {
+		TaskImport.Set(0, 0, msg)
+		core.BumpRev()
+	}
+}
+
+// StartImportWhenFree: an import that follows a download; it waits for an import already running. Why it could
+// not begin is shown in the place of the job only when there is none or it has ended: a job under way is never
+// replaced (its run goes on writing into impJob, and waits for the player's choice on its own channel).
 func StartImportWhenFree(st *core.Store, req ImportReq) {
 	go func() {
+		logged := false
 		for i := 0; i < 1800; i++ {
 			err := StartImport(st, req)
 			if err == nil {
 				return
 			}
 			if err != errImportBusy {
-				core.Logf("下载后导入没能开始：%v", err)
+				if !logged {
+					core.Logf("下载后导入没能开始：%v", err)
+					logged = true
+				}
 				impMu.Lock()
-				impJob = &ImportJob{ID: time.Now().UnixNano(), Key: req.Key, Project: req.Project, Stage: "failed", Err: err.Error(), Msg: err.Error(), At: time.Now().Unix()}
+				free := impJob == nil || impJob.Stage == "done" || impJob.Stage == "failed"
+				if free {
+					impJob = &ImportJob{ID: time.Now().UnixNano(), Key: req.Key, Project: req.Project, Stage: "failed", Err: err.Error(), Msg: err.Error(), At: time.Now().Unix()}
+				}
 				impMu.Unlock()
-				core.BumpRev()
-				return
+				if free {
+					core.BumpRev()
+					return
+				}
 			}
 			time.Sleep(2 * time.Second)
 		}
@@ -699,7 +824,7 @@ func runImport(st *core.Store, assetBases []string) {
 	// 1. unpack everything, archives inside archives too
 	TaskImport.Set(0, 0, "正在解压")
 	impMu.Lock()
-	places, pwd, recycle, chosen := impJob.places, impJob.pwd, impJob.recycle, impJob.chosen
+	places, within, pwd, recycle, chosen := impJob.places, impJob.within, impJob.pwd, impJob.recycle, impJob.chosen
 	impMu.Unlock()
 	var remove func([]string) error
 	if recycle {
@@ -707,10 +832,29 @@ func runImport(st *core.Store, assetBases []string) {
 		// (a removable or network drive) they stay where they are
 		remove = core.RecycleOnly
 	}
-	res := archive.UnpackAll(places, pwd, remove, func(name string, i, n int) {
+	report := func(name string, i, n int) {
 		setImp(func(j *ImportJob) { j.Msg, j.Done, j.Total = "正在解压 "+name, i, n })
 		TaskImport.Set(i, n, "正在解压 "+name)
-	})
+	}
+	// a folder is gone through for every archive in it; a file (what a download brought) is unpacked itself and
+	// nothing else — not the other archives next to it, nor a folder of its name that was there before
+	var dirs, given []string
+	for _, p := range places {
+		if core.IsDir(p) {
+			dirs = append(dirs, p)
+		} else {
+			given = append(given, p)
+		}
+	}
+	res := archive.UnpackAll(dirs, pwd, remove, report)
+	if len(given) > 0 {
+		more := archive.UnpackFiles(given, pwd, remove, report)
+		res.Done, res.From = append(res.Done, more.Done...), append(res.From, more.From...)
+		for a, e := range more.Failed {
+			res.Failed[a] = e
+		}
+		res.Removed += more.Removed
+	}
 	var failed []string
 	for a, e := range res.Failed {
 		failed = append(failed, filepath.Base(a)+"："+e)
@@ -734,7 +878,11 @@ func runImport(st *core.Store, assetBases []string) {
 	library.KeepUnpacked(st, res.Done, res.From) // (not what the player said is one asset)
 	unpacked := library.Unpacked(res.Done, res.From)
 	products := 0
-	for _, top := range bundleTops(places, res.Done) {
+	checked := places
+	if within != "" && core.IsDir(within) {
+		checked = []string{within}
+	}
+	for _, top := range bundleTops(checked, res.Done) {
 		if b := library.MarkBundles(st, top, unpacked); len(b.Containers) > 0 {
 			products += b.Products
 		}
@@ -787,10 +935,18 @@ func runImport(st *core.Store, assetBases []string) {
 		return
 	}
 	// 2. which packages
-	choices, ask := choosePackages(st, pkgs, projectBases(st, j.Project), assetBases)
+	plan := planPackages(st, pkgs, projectBases(st, j.Project), assetBases, ProjectTarget(j.Project), func(i, n int) {
+		setImp(func(j *ImportJob) { j.Msg, j.Done, j.Total = "正在检查 unitypackage", i, n })
+		TaskImport.Set(i, n, "正在检查 unitypackage")
+	})
 	var pick []string
-	if ask {
-		setImp(func(j *ImportJob) { j.Stage, j.Choices, j.Msg = "choose", choices, "选择要导入的 unitypackage" })
+	if plan.ask {
+		if plan.why == "overlap" {
+			core.Logf("导入 %s：有 unitypackage 会写入同一批文件，等待玩家选择（%d 个）", filepath.Base(j.Project), len(plan.choices))
+		}
+		setImp(func(j *ImportJob) {
+			j.Stage, j.Choices, j.Why, j.Msg = "choose", plan.choices, plan.why, "选择要导入的 unitypackage"
+		})
 		TaskImport.Set(0, 0, "选择要导入的 unitypackage")
 		select {
 		case pick = <-chosen:
@@ -801,13 +957,22 @@ func runImport(st *core.Store, assetBases []string) {
 			TaskImport.Set(0, 0, "已取消")
 			return
 		}
+		pick = plan.sortPicks(pick)
 	} else {
-		for _, c := range choices {
+		for _, c := range plan.choices {
 			if c.Pick {
 				pick = append(pick, c.Path)
 			}
 		}
-		setImp(func(j *ImportJob) { j.Choices = choices })
+		setImp(func(j *ImportJob) { j.Choices = plan.choices })
+	}
+	skipped := plan.skips(pick)
+	if len(skipped) > 0 {
+		var names []string
+		for _, s := range skipped {
+			names = append(names, skipText(s))
+		}
+		core.Logf("导入到 %s 时未导入：%s", filepath.Base(j.Project), strings.Join(names, "、"))
 	}
 	// 3. import
 	setImp(func(j *ImportJob) { j.Stage, j.Msg = "import", "正在读取工程" })
@@ -833,12 +998,15 @@ func runImport(st *core.Store, assetBases []string) {
 	}
 	sort.Strings(keptPkgs)
 	msg := fmt.Sprintf("已导入 %d 个 unitypackage，共 %d 个文件", len(done), files)
+	if len(skipped) > 0 {
+		msg += fmt.Sprintf("；%d 个旧版本、重复或会互相覆盖的 unitypackage 未导入", len(skipped))
+	}
 	if n := keptNote(kept, keptPkgs); n != "" {
 		msg += "；" + n
 	}
 	setImp(func(j *ImportJob) {
 		j.Stage, j.Msg, j.Imported, j.Files, j.Tops, j.Done, j.Total = "done", msg, done, files, tops, len(pick), len(pick)
-		j.Kept, j.KeptPkgs = kept, keptPkgs
+		j.Kept, j.KeptPkgs, j.Skipped = kept, keptPkgs, skipped
 	})
 	TaskImport.Set(1, 1, msg+"，目标工程："+filepath.Base(j.Project))
 	AfterImport(j.Project, j.Key, tops) // the pipeline page starts from what was just imported

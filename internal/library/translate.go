@@ -2,22 +2,44 @@ package library
 
 import (
 	"strings"
+	"sync"
 	"time"
 
 	"vrclib/internal/core"
 	"vrclib/internal/translate"
 )
 
+var (
+	transMu    sync.Mutex // translate.TransAgain and TransBusy are looked at and set together under it
+	transEnded func()     // tests: called once a run has let go
+)
+
 // KickTranslate translates names that appeared since the last run, in the background.
 // A request arriving while a run is in progress makes that run go round once more.
 func KickTranslate(st *core.Store) {
+	transMu.Lock()
 	translate.TransAgain.Store(true)
-	if !translate.TransBusy.CompareAndSwap(false, true) {
+	if translate.TransBusy.Load() {
+		transMu.Unlock()
 		return
 	}
+	translate.TransBusy.Store(true)
+	transMu.Unlock()
 	go func() {
-		defer translate.TransBusy.Store(false)
-		for translate.TransAgain.Swap(false) {
+		for {
+			transMu.Lock()
+			if !translate.TransAgain.Swap(false) {
+				// let go in the same look that found no request: one from here on starts a run of its own,
+				// instead of being left to this one, which is over
+				ended := transEnded
+				translate.TransBusy.Store(false)
+				transMu.Unlock()
+				if ended != nil {
+					ended()
+				}
+				return
+			}
+			transMu.Unlock()
 			core.RunTask(translate.TaskTrans, func() { RunTranslate(st, translate.TaskTrans, zhSources(st)) })
 			_ = st.Save()
 			core.BumpRev()

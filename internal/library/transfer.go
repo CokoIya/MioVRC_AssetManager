@@ -375,8 +375,16 @@ func writeZip(st *core.Store, dst, kind string, files []string, extra map[string
 			prog(i, len(files))
 		}
 		src, err := os.Open(filepath.Join(core.DataDir, filepath.FromSlash(rel)))
-		if err != nil {
+		switch {
+		case err == nil:
+		case os.IsNotExist(err):
 			continue // gone since it was listed
+		case kind == kindBackup:
+			// there, and not to be read: the import would write over it, with no copy to take it back from
+			return fail(err)
+		default:
+			core.Logf("导出时跳过无法读取的文件 %s: %v", rel, err)
+			continue
 		}
 		method := zip.Deflate
 		if ext := strings.ToLower(filepath.Ext(rel)); ext != ".json" && dataExt[ext] && ext != ".txt" && ext != ".md" && ext != ".csv" {
@@ -938,6 +946,11 @@ func remapStore(in *core.Store, rootMap, projMap map[string]string, coverHere fu
 		} else {
 			continue
 		}
+		if f, ok := m.apply(c.File); ok && c.File != "" {
+			c.File = f
+		} else {
+			c.File = ""
+		}
 		out.Downloaded[id] = &c
 	}
 	out.Settings.Roots = nil
@@ -998,16 +1011,45 @@ type transferState struct {
 	Created []string `json:"created,omitempty"`
 }
 
-var transferMu sync.Mutex // transfer.json is read and written under it
+var (
+	transferMu  sync.Mutex // transfer.json is read and written under it
+	transferBad string     // why it could not be read, as logged (once)
+)
 
 func transferFile() string { return filepath.Join(core.DataDir, "transfer.json") }
 
-func loadTransfer() *transferState {
+// loadTransfer reads transfer.json (caller holds transferMu); not there, nothing waits. One that is there but
+// cannot be read (held by another program, no access) is an error, and nothing may be written over it: what
+// waits for a folder, and the backup of the last import, are in it. One that is damaged is moved out of the
+// way first (".broken-<time>"), and nothing waits.
+func loadTransfer() (*transferState, error) {
 	s := &transferState{}
-	if b, err := os.ReadFile(transferFile()); err == nil {
-		_ = json.Unmarshal(b, s)
+	b, err := core.ReadDataFileAgain(transferFile(), transferBad != "")
+	var bad error // damaged, and not kept either
+	if err == nil {
+		if perr := json.Unmarshal(b, s); perr != nil {
+			s = &transferState{}
+			kept, kerr := core.KeepBroken(transferFile(), b)
+			if kerr != nil {
+				err, bad = kerr, perr
+			} else if kept != "" {
+				core.Logf("transfer.json 无法读取，已另存为 %s: %v", filepath.Base(kept), perr)
+			}
+		}
 	}
-	return s
+	switch {
+	case err == nil || (os.IsNotExist(err) && bad == nil):
+		transferBad = ""
+		return s, nil
+	case core.TrimErr(err) != transferBad:
+		transferBad = core.TrimErr(err)
+		if bad != nil {
+			core.Logf("transfer.json 已损坏（%v），也未能另存，暂不使用也不覆盖: %v", bad, err)
+		} else {
+			core.Logf("transfer.json 无法读取，暂不使用也不覆盖: %v", err)
+		}
+	}
+	return s, errors.New("无法读取导入记录文件 transfer.json：" + core.TrimErr(err))
 }
 
 func saveTransfer(s *transferState) error {
@@ -1044,7 +1086,7 @@ type TransferView struct {
 
 func TransferState() TransferView {
 	transferMu.Lock()
-	s := loadTransfer()
+	s, _ := loadTransfer() // (one that cannot be read shows nothing waiting, and is not written over)
 	transferMu.Unlock()
 	v := TransferView{Run: TransferStatus(), Pending: []PendingView{}, Backups: []BackupView{}, From: s.ImportFrom, Mode: s.ImportMode}
 	for _, p := range s.Pending {
@@ -1446,8 +1488,12 @@ func backupNow(st *core.Store, incoming []*zip.File) (string, error) {
 	}
 	// what waits for a folder goes along, next to library.json
 	transferMu.Lock()
-	pend, _ := json.Marshal(loadTransfer().Pending)
+	ts, err := loadTransfer()
 	transferMu.Unlock()
+	if err != nil {
+		return "", err
+	}
+	pend, _ := json.Marshal(ts.Pending)
 	if _, _, err := writeZip(st, dst, kindBackup, files, map[string][]byte{"pending.json": pend}, nil); err != nil {
 		return "", err
 	}
@@ -1518,12 +1564,16 @@ func ImportLibrary(st *core.Store, opt ImportOptions) (*ImportResult, error) {
 	backup, err := backupNow(st, z.data)
 	if err == nil {
 		transferMu.Lock()
-		ts := loadTransfer()
-		was = *ts
-		ts.Backup, ts.BackupAt, ts.ImportFrom, ts.ImportMode, ts.Created = backup, time.Now().Unix(), filepath.Base(opt.Path), opt.Mode, nil
-		if err = saveTransfer(ts); err != nil {
-			_ = saveTransfer(&was)
+		var ts *transferState
+		if ts, err = loadTransfer(); err != nil { // (one that cannot be read is not written over: no import)
 			_ = os.Remove(backup)
+		} else {
+			was = *ts
+			ts.Backup, ts.BackupAt, ts.ImportFrom, ts.ImportMode, ts.Created = backup, time.Now().Unix(), filepath.Base(opt.Path), opt.Mode, nil
+			if err = saveTransfer(ts); err != nil {
+				_ = saveTransfer(&was)
+				_ = os.Remove(backup)
+			}
 		}
 		transferMu.Unlock()
 	}
@@ -1546,7 +1596,7 @@ func ImportLibrary(st *core.Store, opt ImportOptions) (*ImportResult, error) {
 		release()
 		reloadData()
 		transferMu.Lock()
-		ts := loadTransfer()
+		ts, terr := loadTransfer()
 		if rerr == nil { // nothing of this import is left to undo
 			ts.Backup, ts.BackupAt, ts.ImportFrom, ts.ImportMode, ts.Created = was.Backup, was.BackupAt, was.ImportFrom, was.ImportMode, was.Created
 			err = errors.New(err.Error() + "。数据文件已恢复为导入前的状态，素材库未改动")
@@ -1555,8 +1605,10 @@ func ImportLibrary(st *core.Store, opt ImportOptions) (*ImportResult, error) {
 			ts.Created = created
 			err = errors.New(err.Error() + "。部分数据文件已被替换且未能自动恢复，请在设置的「备份与待映射文件夹」中点击「撤销上次导入」")
 		}
-		if serr := saveTransfer(ts); serr != nil {
-			core.Logf("transfer.json 保存失败: %v", serr)
+		if terr == nil { // (one that cannot be read is not written over)
+			if serr := saveTransfer(ts); serr != nil {
+				core.Logf("transfer.json 保存失败: %v", serr)
+			}
 		}
 		transferMu.Unlock()
 		core.BumpRev()
@@ -1571,7 +1623,7 @@ func ImportLibrary(st *core.Store, opt ImportOptions) (*ImportResult, error) {
 		res.Pending = append(res.Pending, p.Root)
 	}
 	transferMu.Lock()
-	ts := loadTransfer()
+	ts, terr := loadTransfer()
 	st.Mu.Lock()
 	if opt.Mode == "replace" {
 		adoptStore(st, rm.store)
@@ -1591,7 +1643,9 @@ func ImportLibrary(st *core.Store, opt ImportOptions) (*ImportResult, error) {
 	st.Settings.SetupDone = true // (taken in from the first-run screen: there is a library now)
 	st.Mu.Unlock()
 	ts.Created = created
-	err = saveTransfer(ts)
+	if err = terr; err == nil { // (one that cannot be read now is not written over: logged, as a save that fails is)
+		err = saveTransfer(ts)
+	}
 	transferMu.Unlock()
 	if err != nil {
 		core.Logf("transfer.json 保存失败: %v", err)
@@ -1621,8 +1675,11 @@ func UndoImport(st *core.Store) error {
 		return errors.New("正在扫描或下载，请在其完成后再撤销")
 	}
 	transferMu.Lock()
-	ts := loadTransfer()
+	ts, err := loadTransfer()
 	transferMu.Unlock()
+	if err != nil {
+		return err
+	}
 	backup := ts.Backup
 	if backup == "" || !core.FileExists(backup) {
 		return errors.New("未找到上次导入前的备份")
@@ -1656,10 +1713,11 @@ func UndoImport(st *core.Store) error {
 		adoptStore(st, z.store)
 		st.Mu.Unlock()
 		transferMu.Lock()
-		ts = loadTransfer()
-		ts.Pending = pendingInBackup(z)
-		ts.Backup, ts.BackupAt, ts.ImportFrom, ts.ImportMode, ts.Created = "", 0, "", "", nil
-		_ = saveTransfer(ts)
+		if ts, terr := loadTransfer(); terr == nil { // (one that cannot be read is not written over)
+			ts.Pending = pendingInBackup(z)
+			ts.Backup, ts.BackupAt, ts.ImportFrom, ts.ImportMode, ts.Created = "", 0, "", "", nil
+			_ = saveTransfer(ts)
+		}
 		transferMu.Unlock()
 		afterImport(st)
 		core.Logf("已撤销导入，素材库恢复自 %s", backup)
@@ -1700,7 +1758,10 @@ func MapPending(st *core.Store, oldRoot, newRoot string) (int, error) {
 	}
 	transferMu.Lock()
 	defer transferMu.Unlock()
-	ts := loadTransfer()
+	ts, err := loadTransfer()
+	if err != nil {
+		return 0, err
+	}
 	var p *PendingRoot
 	kept := ts.Pending[:0]
 	for i := range ts.Pending {
@@ -1748,7 +1809,10 @@ func MapPending(st *core.Store, oldRoot, newRoot string) (int, error) {
 func DropPending(oldRoot string) error {
 	transferMu.Lock()
 	defer transferMu.Unlock()
-	ts := loadTransfer()
+	ts, err := loadTransfer()
+	if err != nil {
+		return err
+	}
 	kept := ts.Pending[:0]
 	for _, p := range ts.Pending {
 		if p.Root != oldRoot {

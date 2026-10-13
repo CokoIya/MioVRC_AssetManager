@@ -2,6 +2,7 @@ package archive
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,7 +28,8 @@ func TestGroupArchives(t *testing.T) {
 		got = append(got, filepath.Base(s.Main)+"/"+s.Name+"/"+string(rune('0'+len(s.Parts))))
 	}
 	sort.Strings(got)
-	want := "A.zip/A/1,B.part1.rar/B/2,C.7z.001/C/2,D.zip/D/2,F.rar/F/2"
+	// (E.part2.rar: a set all the same, without the volume that opens it — unpacking it says so)
+	want := "./E/1,A.zip/A/1,B.part1.rar/B/2,C.7z.001/C/2,D.zip/D/2,F.rar/F/2"
 	if strings.Join(got, ",") != want {
 		t.Errorf("got %s", strings.Join(got, ","))
 	}
@@ -38,7 +40,7 @@ func TestGroupArchivesByScheme(t *testing.T) {
 	d := t.TempDir()
 	names := []string{
 		// the real volume sets
-		"Z.zip", "Z.z01", "Z.z02", "R.rar", "R.r00", "R.r01", "P.part1.rar", "P.part02.rar", "S.7z.001", "S.7z.002", "N.zip.001", "N.zip.002",
+		"Z.zip", "Z.z01", "Z.z02", "R.rar", "R.r00", "R.r01", "P.part01.rar", "P.part02.rar", "S.7z.001", "S.7z.002", "N.zip.001", "N.zip.002",
 		// one name, several archives
 		"Dress.zip", "Dress.7z", "Dress.rar", "Dress.part1.rar", "Dress.part2.rar", "Dress.7z.001", "Dress.7z.002", "Dress.zip.001",
 		"Coat.zip", "Coat.r00", "Hat.rar", "Hat.z01", "Bag.7z", "Bag.z01", "Bag.r00",
@@ -56,17 +58,23 @@ func TestGroupArchivesByScheme(t *testing.T) {
 			parts = append(parts, filepath.Base(p))
 		}
 		sort.Strings(parts)
+		if s.Main == "" { // volumes without the one that opens them
+			got["("+parts[0]+")"] = s.Name + ":" + strings.Join(parts, "+")
+			continue
+		}
 		got[filepath.Base(s.Main)] = s.Name + ":" + strings.Join(parts, "+")
 		if rp := readParts(s); len(rp) != len(s.Parts) {
 			t.Errorf("%s: read %v of %v", s.Main, rp, s.Parts)
 		}
 	}
 	want := map[string]string{
-		"Z.zip": "Z:Z.z01+Z.z02+Z.zip", "R.rar": "R:R.r00+R.r01+R.rar", "P.part1.rar": "P:P.part02.rar+P.part1.rar",
+		"Z.zip": "Z:Z.z01+Z.z02+Z.zip", "R.rar": "R:R.r00+R.r01+R.rar", "P.part01.rar": "P:P.part01.rar+P.part02.rar",
 		"S.7z.001": "S:S.7z.001+S.7z.002", "N.zip.001": "N:N.zip.001+N.zip.002",
 		"Dress.zip": "Dress:Dress.zip", "Dress.7z": "Dress:Dress.7z", "Dress.rar": "Dress:Dress.rar",
 		"Dress.part1.rar": "Dress:Dress.part1.rar+Dress.part2.rar", "Dress.7z.001": "Dress:Dress.7z.001+Dress.7z.002", "Dress.zip.001": "Dress:Dress.zip.001",
-		"Coat.zip": "Coat:Coat.zip", "Hat.rar": "Hat:Hat.rar", "Bag.7z": "Bag:Bag.7z", // (a lone .r00 / .z01 has no archive to open it)
+		"Coat.zip": "Coat:Coat.zip", "Hat.rar": "Hat:Hat.rar", "Bag.7z": "Bag:Bag.7z",
+		// a lone .r00 / .z01 has no archive to open it: a set of its own, which says what is missing
+		"(Coat.r00)": "Coat:Coat.r00", "(Hat.z01)": "Hat:Hat.z01", "(Bag.z01)": "Bag:Bag.z01", "(Bag.r00)": "Bag:Bag.r00",
 	}
 	for m, w := range want {
 		if got[m] != w {
@@ -77,7 +85,7 @@ func TestGroupArchivesByScheme(t *testing.T) {
 		t.Errorf("sets: %v", got)
 	}
 	// one file asked for: its own set, not the others of its name
-	for file, n := range map[string]int{"Dress.zip": 1, "Dress.7z": 1, "Dress.part2.rar": 2, "Z.z01": 3, "Coat.r00": 0} {
+	for file, n := range map[string]int{"Dress.zip": 1, "Dress.7z": 1, "Dress.part2.rar": 2, "Z.z01": 3, "Coat.r00": 1} {
 		sets := findArchives(filepath.Join(d, file))
 		if n == 0 && len(sets) == 0 {
 			continue
@@ -98,6 +106,54 @@ func TestGroupArchivesByScheme(t *testing.T) {
 	odd := archiveSet{Main: filepath.Join(d, "Dress.zip"), Parts: []string{filepath.Join(d, "Dress.zip"), filepath.Join(d, "Dress.7z"), filepath.Join(d, "Dress.rar"), filepath.Join(d, "Z.z01")}}
 	if rp := readParts(odd); len(rp) != 1 || rp[0] != odd.Main {
 		t.Errorf("read of a mixed set: %v", rp)
+	}
+}
+
+// Two RAR sets of one name whose numbers have more and fewer digits (an earlier version's part1, part2 next to a
+// newer part01 … part03) are two archives: what unpacking one reads, and so may remove, holds none of the other's
+// volumes, and a set without its first volume still names the one of its own numbering.
+func TestRarSetsOfOneNameByDigits(t *testing.T) {
+	d := t.TempDir()
+	var files []string
+	for _, n := range []string{"Dress.part1.rar", "Dress.part2.rar", "Dress.part01.rar", "Dress.part02.rar", "Dress.part03.rar"} {
+		p := filepath.Join(d, n)
+		_ = os.WriteFile(p, []byte(n), 0644)
+		files = append(files, p)
+	}
+	got := map[string]string{}
+	for _, s := range groupArchives(files) {
+		var read []string
+		for _, p := range readParts(s) {
+			read = append(read, filepath.Base(p))
+		}
+		got[filepath.Base(s.Main)] = string(rune('0'+len(s.Parts))) + ":" + strings.Join(read, "+")
+	}
+	want := map[string]string{"Dress.part1.rar": "2:Dress.part1.rar+Dress.part2.rar", "Dress.part01.rar": "3:Dress.part01.rar+Dress.part02.rar+Dress.part03.rar"}
+	if len(got) != len(want) || got["Dress.part1.rar"] != want["Dress.part1.rar"] || got["Dress.part01.rar"] != want["Dress.part01.rar"] {
+		t.Errorf("sets: %v", got)
+	}
+	// one file asked for: the set of its own numbering
+	for file, main := range map[string]string{"Dress.part2.rar": "Dress.part1.rar", "Dress.part02.rar": "Dress.part01.rar", "Dress.part03.rar": "Dress.part01.rar"} {
+		if sets := findArchives(filepath.Join(d, file)); len(sets) != 1 || filepath.Base(sets[0].Main) != main {
+			t.Errorf("%s alone: %+v", file, sets)
+		}
+	}
+	// the earlier version's first volume gone: its part2 is a set without it, which says so
+	_ = os.Remove(filepath.Join(d, "Dress.part1.rar"))
+	sets := findArchives(filepath.Join(d, "Dress.part2.rar"))
+	if len(sets) != 1 || sets[0].Main != "" || len(sets[0].Parts) != 1 {
+		t.Fatalf("part2 without part1: %+v", sets)
+	}
+	if got := missingVolumes(sets[0]); got != "缺少分卷：Dress.part1.rar（找到 1 卷），请把全部分卷下载到同一个文件夹后再解压" {
+		t.Errorf("part2 without part1: %s", got)
+	}
+	if sets := findArchives(filepath.Join(d, "Dress.part01.rar")); len(sets) != 1 || len(sets[0].Parts) != 3 || missingVolumes(sets[0]) != "" {
+		t.Errorf("the newer set: %+v", sets)
+	}
+	// (the digits as written, leading zeros too, in any case; other schemes have none to tell sets apart by)
+	n := func(base string) string { d, pad := partDigits(base); return fmt.Sprint(d, pad) }
+	if n("X.PART001.RAR") != "3 true" || n("X.part9.rar") != "1 false" || n("X.part10.rar") != "2 false" || n("X.zip.001") != "0 false" || n("X.rar") != "0 false" {
+		t.Error("partDigits")
 	}
 }
 
@@ -164,6 +220,50 @@ func TestUnpackFilesLeavesTheRest(t *testing.T) {
 		if core.StatOK(filepath.Join(dir, p)) {
 			t.Errorf("%s should not be there", p)
 		}
+	}
+}
+
+// A volume of the set that lies next to a download without being one of the files handed over — the player's own,
+// of an earlier version — is read when the unpack needs it, but only the files handed over go to remove.
+// UnpackAll, given the folder, takes the set whole, as it always did.
+func TestUnpackFilesRemovesOnlyTheFilesGiven(t *testing.T) {
+	// pieces of a zip, joined here: the download brought the first, the second was there
+	zb := testkit.ZipBytes(t, map[string][]byte{"Coat/Coat.unitypackage": noise(60000)})
+	dir := t.TempDir()
+	split(t, dir, "Coat.zip", zb, 2)
+	var removed []string
+	rec := func(p []string) error { removed = append(removed, p...); return RemoveFiles(p) }
+	res := UnpackFiles([]string{filepath.Join(dir, "Coat.zip.001")}, "", rec, nil)
+	if len(res.Done) != 1 || len(res.Failed) != 0 || res.Removed != 1 || len(removed) != 1 || filepath.Base(removed[0]) != "Coat.zip.001" {
+		t.Errorf("done %v, failed %s, removed %v", res.Done, failedSay(res), removed)
+	}
+	if !core.FileExists(filepath.Join(dir, "Coat.zip.002")) {
+		t.Error("the volume that was not handed over is gone")
+	}
+	if _, err := exec.LookPath("7z"); err != nil {
+		return
+	}
+	// the player's spanned volumes of an earlier Dress next to a new, whole Dress.zip: 7-Zip unpacks the zip
+	mk := func() string {
+		d := t.TempDir()
+		_ = os.WriteFile(filepath.Join(d, "Dress.z01"), []byte("the player's volume 1"), 0644)
+		_ = os.WriteFile(filepath.Join(d, "Dress.z02"), []byte("the player's volume 2"), 0644)
+		testkit.MakeZip(t, filepath.Join(d, "Dress.zip"), map[string]string{"Dress/a.txt": "new", "Dress/b.txt": "new"})
+		return d
+	}
+	dir, removed = mk(), nil
+	res = UnpackFiles([]string{filepath.Join(dir, "Dress.zip")}, "", rec, nil)
+	if len(res.Done) != 1 || len(res.Failed) != 0 || res.Removed != 1 || len(removed) != 1 || filepath.Base(removed[0]) != "Dress.zip" {
+		t.Errorf("done %v, failed %s, removed %v", res.Done, failedSay(res), removed)
+	}
+	for _, n := range []string{"Dress.z01", "Dress.z02"} {
+		if b, _ := os.ReadFile(filepath.Join(dir, n)); !strings.HasPrefix(string(b), "the player's") {
+			t.Errorf("the player's %s is gone", n)
+		}
+	}
+	dir, removed = mk(), nil
+	if res := UnpackAll([]string{dir}, "", func(p []string) error { removed = append(removed, p...); return nil }, nil); len(res.Done) != 1 || len(removed) != 3 {
+		t.Errorf("the folder: done %v, failed %s, removed %v", res.Done, failedSay(res), removed)
 	}
 }
 
@@ -276,5 +376,27 @@ func TestUnpackTellsWhatEachFolderCameFrom(t *testing.T) {
 		if res.Done[i] != filepath.Join(asset, w[0]) || res.From[i] != filepath.Join(asset, w[1]) {
 			t.Errorf("%d: %s from %s, want %s from %s", i, res.Done[i], res.From[i], w[0], w[1])
 		}
+	}
+}
+
+// A set whose numbers are not padded grows by a digit after part9 (WinRAR and 7-Zip go on with part10): it is
+// one set, all of whose volumes are read and handed over.
+func TestRarSetWhoseNumbersGrow(t *testing.T) {
+	d := t.TempDir()
+	var files []string
+	for i := 1; i <= 11; i++ {
+		p := filepath.Join(d, fmt.Sprintf("Big.part%d.rar", i))
+		_ = os.WriteFile(p, []byte("x"), 0644)
+		files = append(files, p)
+	}
+	sets := groupArchives(files)
+	if len(sets) != 1 || filepath.Base(sets[0].Main) != "Big.part1.rar" || len(sets[0].Parts) != 11 || len(readParts(sets[0])) != 11 {
+		t.Fatalf("sets: %+v", sets)
+	}
+	if got := missingVolumes(sets[0]); got != "" {
+		t.Errorf("missing: %s", got)
+	}
+	if sets := findArchives(filepath.Join(d, "Big.part10.rar")); len(sets) != 1 || len(sets[0].Parts) != 11 {
+		t.Errorf("part10 alone: %+v", sets)
 	}
 }

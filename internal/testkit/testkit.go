@@ -8,8 +8,10 @@ import (
 	"image/jpeg"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"testing"
+	"time"
 
 	"vrclib/internal/core"
 )
@@ -20,6 +22,32 @@ func NewStore(t *testing.T) *core.Store {
 	st := core.LoadStore(filepath.Join(core.DataDir, "library.json"))
 	st.Settings.Proxy = "direct"
 	return st
+}
+
+// Unreadable takes the files' read permission away (as a virus scanner or a sync client holding them, a file in
+// the cloud that cannot be fetched, or a missing permission do) and returns what gives it back; data files are
+// tried again only briefly meanwhile. Root reads any file and Windows has no such mode: the test is left out
+// there.
+func Unreadable(t *testing.T, files ...string) (giveBack func()) {
+	t.Helper()
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs a file that cannot be read: run as a user other than root")
+	}
+	patience := core.DataPatience
+	core.DataPatience = 50 * time.Millisecond
+	t.Cleanup(func() { core.DataPatience = patience })
+	for _, f := range files {
+		if err := os.Chmod(f, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	giveBack = func() {
+		for _, f := range files {
+			_ = os.Chmod(f, 0644)
+		}
+	}
+	t.Cleanup(giveBack)
+	return giveBack
 }
 
 func JPEG(w, h int, c color.RGBA) []byte {

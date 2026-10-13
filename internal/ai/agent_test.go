@@ -672,7 +672,7 @@ func TestUndoCountsRealChanges(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(home, ".unity_skills", "registry.json"), []byte(fmt.Sprintf(`{%q:{"path":%q,"port":%s,"last_active":%d}}`, proj, proj, addr[strings.LastIndex(addr, ":")+1:], time.Now().Unix())), 0644)
 	s := aiSessionFor(proj)
 	s.mu.Lock()
-	s.allowAll = true
+	s.allowOps = map[string]bool{"texture_set_size": true} // 「本次对话始终允许」 given to it before
 	s.mu.Unlock()
 	ctx := context.Background()
 	changes := func() int { _, _, n := s.snapshot(); return n }

@@ -258,7 +258,7 @@ func (p *webPane) page() (*cdpConn, error) {
 	if pick == nil {
 		return nil, errors.New("页面尚未就绪")
 	}
-	c, err := cdpDial(pick.WSURL, 6*time.Second)
+	c, err := cdpDial(pick.WSURL, p.Port, 6*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -867,7 +867,7 @@ func (p *webPane) watchWindows(port int) {
 	if v.WS == "" {
 		return
 	}
-	c, err := cdpDial(v.WS, 4*time.Second)
+	c, err := cdpDial(v.WS, port, 4*time.Second)
 	if err != nil {
 		return
 	}

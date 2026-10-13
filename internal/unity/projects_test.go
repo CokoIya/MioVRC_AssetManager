@@ -59,8 +59,8 @@ func TestCoverHelper(t *testing.T) {
 			t.Errorf("missing %s", f)
 		}
 	}
-	if core.StatOK(dir + "~") {
-		t.Error("temp folder left")
+	if left, _ := filepath.Glob(dir + "*~"); len(left) > 0 {
+		t.Errorf("temp folder left: %v", left)
 	}
 	var m map[string]any
 	b, _ := os.ReadFile(filepath.Join(dir, "package.json"))

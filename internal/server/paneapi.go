@@ -93,11 +93,17 @@ func registerPane(st *core.Store, post func(string, func(http.ResponseWriter, ma
 		act, xy := str(b, "act"), boolean(b, "xy")
 		if act == "external" {
 			u, err := webpane.PageAct("url", xy)
-			if err != nil || u == "" {
+			if err != nil || u == "" || u == "about:blank" {
 				core.WriteJSON(w, map[string]any{"ok": false, "err": "当前未打开任何页面"})
 				return
 			}
-			core.WriteJSON(w, map[string]any{"ok": core.OpenURL(u) == nil})
+			// where the page is, as /api/openurl takes a web page (webLink): it goes into a command line too
+			link, ok := webLink(u)
+			if !ok {
+				core.WriteJSON(w, map[string]any{"ok": false, "err": "网址无效"})
+				return
+			}
+			core.WriteJSON(w, map[string]any{"ok": core.OpenURL(link) == nil})
 			return
 		}
 		text, err := webpane.PageAct(act, xy)

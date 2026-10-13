@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"unicode"
 
 	"vrclib/internal/core"
@@ -323,6 +324,16 @@ func AssetBooth(st *core.Store, key string, a *core.Asset) (string, string) {
 
 // ---------- remote thumbnails (Booth search results) ----------
 
+// remoteExts: what a remote thumbnail is kept as (".jpeg" only by older versions)
+var remoteExts = []string{".jpg", ".png", ".webp", ".gif", ".jpeg"}
+
+var (
+	remoteMu    sync.Mutex
+	remoteSwept string // the folder whose leftovers have been removed
+)
+
+// RemoteThumb: a picture of Booth's, from the cache (covers/remote) or fetched into it. Only ever a picture: one
+// that is not what its name says is fetched again.
 func RemoteThumb(st *core.Store, u string) (string, error) {
 	pu, err := url.Parse(u)
 	if err != nil || pu.Scheme != "https" || !(pu.Host == "booth.pximg.net" || strings.HasSuffix(pu.Host, ".booth.pm") || pu.Host == "booth.pm") {
@@ -333,11 +344,61 @@ func RemoteThumb(st *core.Store, u string) (string, error) {
 	h := sha1.Sum([]byte(u))
 	name := hex.EncodeToString(h[:10])
 	dir := filepath.Join(core.CoversDir(), "remote")
-	for _, ext := range []string{".jpg", ".png", ".webp", ".gif", ".jpeg"} {
-		if p := filepath.Join(dir, name+ext); core.FileExists(p) {
+	sweepRemote(dir)
+	for _, ext := range remoteExts {
+		p := filepath.Join(dir, name+ext)
+		if !core.FileExists(p) {
+			continue
+		}
+		if keptPicture(p) {
 			return p, nil
 		}
+		_ = os.Remove(p) // (an older version kept whatever came, under the extension of the address)
 	}
 	_ = os.MkdirAll(dir, 0755)
 	return DownloadTo(core.HTTPClient(st), u, filepath.Join("remote", name))
+}
+
+// keptPicture: the file is the picture its extension says it is.
+func keptPicture(p string) bool {
+	f, err := os.Open(p)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	head := make([]byte, 512)
+	n, _ := io.ReadFull(f, head)
+	ext := core.LowerExt(p)
+	if ext == ".jpeg" {
+		ext = ".jpg"
+	}
+	return pictureExt(head[:n]) == ext
+}
+
+// sweepRemote: older versions kept a remote file under the extension of its address — a page or an SVG among
+// them, which the program's own address then served. What the cache holds under any other extension than a
+// picture's is removed, once per data folder.
+func sweepRemote(dir string) {
+	remoteMu.Lock()
+	defer remoteMu.Unlock()
+	if remoteSwept == dir {
+		return
+	}
+	remoteSwept = dir
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	n := 0
+	for _, e := range ents {
+		if e.IsDir() || core.ContainsStr(remoteExts, core.LowerExt(e.Name())) {
+			continue
+		}
+		if os.Remove(filepath.Join(dir, e.Name())) == nil {
+			n++
+		}
+	}
+	if n > 0 {
+		core.Logf("远程缩略图缓存：已删除旧版本留下的 %d 个非图片文件", n)
+	}
 }

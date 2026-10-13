@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"vrclib/internal/core"
 	"vrclib/internal/testkit"
@@ -90,5 +91,44 @@ func TestProjectAssets(t *testing.T) {
 	}
 	if a := got["Assets/KDress"]; a.Worn || a.Prefabs != 2 {
 		t.Errorf("live kdress %+v", a)
+	}
+}
+
+// The pipeline page asks for the AI settings and for the project's assets at once, while the library is being
+// written: aiView may not hold aiMu while it waits for st.Mu, nor projectAssets st.Mu while it waits for aiMu
+// (behind the writer, the three waited on each other for good).
+func TestProjectAssetsBesideAIView(t *testing.T) {
+	st := testkit.NewStore(t)
+	proj := t.TempDir()
+	for _, f := range []string{"Assets/Shop/Item/a.prefab", "ProjectSettings/ProjectVersion.txt"} {
+		testkit.WriteFile(t, filepath.Join(proj, filepath.FromSlash(f)), 1)
+	}
+	aiRemember(proj, "a1", []string{"Assets/Shop/Item"})
+	// aiView is held where it asks for the interface's language until the other two are under way
+	orig := menuLang
+	defer func() { menuLang = orig }()
+	gate, inView := make(chan struct{}), make(chan struct{}, 1)
+	menuLang = func() string {
+		select {
+		case inView <- struct{}{}:
+		default:
+		}
+		<-gate
+		return storeLang(st)
+	}
+	view, list, write := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	go func() { aiView(); close(view) }() // /api/ai/config
+	<-inView
+	go func() { projectAssets(st, proj); close(list) }() // /api/pipe/assets
+	time.Sleep(100 * time.Millisecond)
+	go func() { st.Mu.Lock(); st.Mu.Unlock(); close(write) }() // a scan, an edit
+	time.Sleep(100 * time.Millisecond)
+	close(gate)
+	for _, done := range []chan struct{}{view, list, write} {
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("aiView, projectAssets and a writer of the library wait on each other")
+		}
 	}
 }

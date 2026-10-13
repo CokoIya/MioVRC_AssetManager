@@ -54,3 +54,20 @@ func TestSafeNameKeepsExtension(t *testing.T) {
 		t.Errorf("short name: %q", got)
 	}
 }
+
+// Whoever calls OpenURL — a route that checked the address, or a page of a built-in browser (闲鱼's, given to the
+// default browser) — nothing it hands to Windows can end the address on the command line it is put into.
+func TestOpenURLRefusesWhatEndsTheAddress(t *testing.T) {
+	for _, u := range []string{"", `https://www.goofish.com/search?q=" --new-window "https://evil.example/`, "https://booth.pm/?q=a b", "https://booth.pm/x\t",
+		"https://booth.pm/\r\n--x", "https://booth.pm/\x00", "https://booth.pm/\u3000x", `https://booth.pm\@evil.example/`, `https://booth.pm/x\`} {
+		if err := OpenURL(u); err == nil {
+			t.Errorf("%q was handed over", u)
+		}
+	}
+	for u, want := range map[string]string{"https://www.goofish.com/item/it's": "https://www.goofish.com/item/it%27s", "mailto:a@b.example?body=it's": "mailto:a@b.example?body=it%27s",
+		"unityhub://2022.3.22f1/887be4894c44": "unityhub://2022.3.22f1/887be4894c44", "https://booth.pm/ja/search/%E8%A1%A3": "https://booth.pm/ja/search/%E8%A1%A3"} {
+		if got, err := shellAddress(u); err != nil || got != want {
+			t.Errorf("%q → %q %v, want %q", u, got, err, want)
+		}
+	}
+}

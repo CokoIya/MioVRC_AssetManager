@@ -19,6 +19,7 @@ import (
 	"vrclib/internal/core"
 	"vrclib/internal/naming"
 	"vrclib/internal/testkit"
+	"vrclib/internal/unity"
 )
 
 func TestDownloadJob(t *testing.T) {
@@ -128,6 +129,108 @@ func TestDownloadLeavesPackedArchivesInItemFolder(t *testing.T) {
 	}
 	if j.Path != folder || j.Status != "done" {
 		t.Errorf("job: %+v", j)
+	}
+}
+
+// "下载并导入": the import that follows is given what this round of downloads brought — the folder its archive was
+// unpacked to, or the archive itself where it stays packed — and not the item's folder, where it would unpack
+// (and put in the Recycle Bin) what the player keeps packed there: an earlier version, a download kept packed.
+func TestImportAfterDownloadTakesWhatTheDownloadBrought(t *testing.T) {
+	newZip := testkit.ZipBytes(t, map[string][]byte{"MoonDress_v1.1/MoonDress.unitypackage": []byte("NEW VERSION")})
+	var got []unity.ImportReq
+	start := startImport
+	startImport = func(st *core.Store, req unity.ImportReq) { got = append(got, req) }
+	t.Cleanup(func() { startImport = start })
+	run := func(noExtract, keepZip bool) (folder string, paths []string) {
+		t.Helper()
+		core.DataDir = t.TempDir()
+		lib := t.TempDir()
+		boothServer(t, map[string][2]string{"90000031": {"MoonDress_v1.1.zip", string(newZip)}})
+		st := &core.Store{Path: filepath.Join(core.DataDir, "library.json"), Settings: core.Settings{Roots: []string{lib}, NoExtract: noExtract, KeepZip: keepZip, NoWatch: true, Proxy: "direct"},
+			Purchases: map[string]*core.Purchase{"9000003": {ID: "9000003", Name: "Moon Dress", Files: []string{"MoonDress_v1.1.zip"}, Downloads: []string{"90000031"}}}}
+		settlePipeline(t)
+		folder = filepath.Join(lib, "9000003 Moon Dress")
+		_ = os.MkdirAll(folder, 0755)
+		testkit.MakeZip(t, filepath.Join(folder, "MoonDress_v1.0.zip"), map[string]string{"MoonDress_v1.0/MoonDress.unitypackage": "OLD VERSION"})
+		testkit.MakeZip(t, filepath.Join(folder, "MoonDress_PSD.zip"), map[string]string{"tex.psd": "kept packed"})
+		got = nil
+		SetPendingImport("9000003", unity.ImportReq{Project: "P", Recycle: true})
+		j := &DLJob{ID: "90000031", Item: "9000003", Name: "MoonDress_v1.1.zip", Status: "running"}
+		if err := downloadJob(context.Background(), st, j); err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 1 || got[0].Key != "purchase:9000003" || got[0].Project != "P" || !got[0].Recycle {
+			t.Fatalf("import: %+v", got)
+		}
+		return folder, got[0].Paths
+	}
+	for _, c := range []struct {
+		name               string
+		noExtract, keepZip bool
+		want               string
+	}{
+		{"unpacked", false, false, "MoonDress_v1.1"},
+		{"kept packed (「不自动解压」): the import unpacks it", true, false, "MoonDress_v1.1.zip"},
+		{"unpacked, the archive kept (解压后保留压缩包): the folder stands for it", false, true, "MoonDress_v1.1"},
+	} {
+		folder, paths := run(c.noExtract, c.keepZip)
+		if len(paths) != 1 || paths[0] != filepath.Join(folder, c.want) {
+			t.Errorf("%s: import of %v", c.name, paths)
+		}
+	}
+	// nothing of the downloads there any more: the item's folder, as before
+	folder := t.TempDir()
+	got = nil
+	SetPendingImport("9000004", unity.ImportReq{Project: "P"})
+	keepForImport(&DLJob{Item: "9000004"}, []string{filepath.Join(folder, "gone.zip")})
+	importAfterDownload(nil, &DLJob{Item: "9000004"}, folder)
+	if len(got) != 1 || len(got[0].Paths) != 1 || got[0].Paths[0] != folder {
+		t.Errorf("nothing there: %+v", got)
+	}
+	// a round put off by another file of the item queued meanwhile: both rounds are imported
+	a, b := filepath.Join(folder, "A"), filepath.Join(folder, "B.unitypackage")
+	_ = os.Mkdir(a, 0755)
+	_ = os.WriteFile(b, []byte("pkg"), 0644)
+	got = nil
+	SetPendingImport("9000004", unity.ImportReq{Project: "P"})
+	keepForImport(&DLJob{Item: "9000004"}, []string{a})
+	keepForImport(&DLJob{Item: "9000004"}, []string{b, a})
+	keepForImport(&DLJob{Item: "9000005"}, []string{b}) // (no import waits for that one)
+	importAfterDownload(nil, &DLJob{Item: "9000004"}, folder)
+	if len(got) != 1 || strings.Join(got[0].Paths, ",") != a+","+b {
+		t.Errorf("two rounds: %+v", got)
+	}
+	pendMu.Lock()
+	_, kept := pendImports["9000005"]
+	pendMu.Unlock()
+	if kept {
+		t.Error("an import nobody asked for")
+	}
+}
+
+// What a round brought, for the import: the outermost folders its archives were unpacked to, and the files no such
+// folder stands for (the volumes of an archive that was unpacked and kept are not among them).
+func TestBroughtPaths(t *testing.T) {
+	d := t.TempDir()
+	for _, n := range []string{"Tex.7z.001", "Tex.7z.002", "Hair.zip", "readme.txt", "Locked.zip"} {
+		testkit.WriteFile(t, filepath.Join(d, n), 10)
+	}
+	for _, n := range []string{"Tex/PSD", "Hair"} {
+		_ = os.MkdirAll(filepath.Join(d, n), 0755)
+	}
+	files := []string{"Tex.7z.001", "Tex.7z.002", "Hair.zip", "readme.txt", "Locked.zip", "Gone.zip"}
+	for i, n := range files {
+		files[i] = filepath.Join(d, n)
+	}
+	in := func(n ...string) []string {
+		for i := range n {
+			n[i] = filepath.Join(d, n[i])
+		}
+		return n
+	}
+	got := broughtPaths(files, in("Tex", "Tex/PSD", "Hair"), in("Tex.7z.001", "Tex/PSD.zip", "Hair.zip"))
+	if want := in("Tex", "Hair", "readme.txt", "Locked.zip"); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("got %v", got)
 	}
 }
 
@@ -321,5 +424,37 @@ func TestSessionFile(t *testing.T) {
 	}
 	if h := cookieHeader(got); h != "adult=t; "+boothSessionCookie+"=abc" {
 		t.Errorf("header %q", h)
+	}
+}
+
+// A set whose first volume came in a round of its own (「缺少后面的分卷」, and the player fetched the rest later):
+// once the set is whole it is unpacked, and every volume this program downloaded goes with it — the earlier one
+// too, which is no file of the player's.
+func TestEarlierVolumeOfTheSetGoesWithIt(t *testing.T) {
+	core.DataDir = t.TempDir()
+	lib := t.TempDir()
+	zip := testkit.ZipBytes(t, map[string][]byte{"Coat/Coat.unitypackage": bytes.Repeat([]byte("c"), 4000)})
+	half := len(zip) / 2
+	boothServer(t, map[string][2]string{
+		"80000011": {"Coat.zip.001", string(zip[:half])},
+		"80000012": {"Coat.zip.002", string(zip[half:])},
+	})
+	st := &core.Store{Path: filepath.Join(core.DataDir, "library.json"), Settings: core.Settings{Roots: []string{lib}, NoWatch: true, Proxy: "direct", HideZh: true}, Purchases: map[string]*core.Purchase{
+		"8000001": {ID: "8000001", Name: "Coat", Files: []string{"Coat.zip.001", "Coat.zip.002"}, Downloads: []string{"80000011", "80000012"}}}}
+	settlePipeline(t)
+	folder := filepath.Join(lib, "8000001 Coat")
+	for _, id := range []string{"80000011", "80000012"} { // one round each
+		j := &DLJob{ID: id, Item: "8000001", Status: "running"}
+		if err := downloadJob(context.Background(), st, j); err != nil {
+			t.Fatal(err)
+		}
+		if id == "80000011" {
+			if got := strings.Join(testkit.ListTree(folder), ","); got != "Coat.zip.001" {
+				t.Fatalf("after the first volume: %s", got)
+			}
+		}
+	}
+	if got := strings.Join(testkit.ListTree(folder), ","); got != "Coat/Coat.unitypackage" {
+		t.Errorf("item folder: %s", got)
 	}
 }

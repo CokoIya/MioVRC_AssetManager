@@ -14,7 +14,7 @@ Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth �
 - PSD 源文件：列出 PSD / CLIP / SAI 等文件和尺寸
 - 工程使用：分析 Unity 工程，标出素材在哪些工程里用到
 - 工程页：每个 Unity 工程一张卡片（Unity 版本、上次打开、用到的素材），用对应版本的 Unity 一键打开；可选的封面插件（`com.miovrc.projectcard`，只在编辑器里运行）在打开工程、保存场景时给模型拍正面照当封面。工程里的插件管理交给 VCC / ALCOM
-- 一键导入 Unity 工程：自动解压素材里的压缩包（PSD 包、分卷、嵌套、带密码），解压完压缩包移到回收站，再把 unitypackage 直接写进工程（按 GUID 就地更新已有资源，重名不覆盖；不同素体的包按工程的素体自动选）。rar、7z、分卷用电脑上默认的解压软件（7-Zip、Bandizip、WinRAR、好压、NanaZip、PeaZip）
+- 一键导入 Unity 工程：自动解压素材里的压缩包（PSD 包、分卷、嵌套、带密码），解压完压缩包移到回收站，再把 unitypackage 直接写进工程（按 GUID 就地更新已有资源，重名不覆盖，还没有 .meta 的文件也不覆盖；不同素体的包按工程的素体自动选）。一个素材里有多个包时：重复的只导一次，同一个包的多个版本只导最新版，PC 版和 Quest 版只导工程平台对应的那个（Android 工程导 Quest 版），会改写同一批文件的变体（左右手、带或不带某个功能）先列出来让你选；没导入的在结果里列出。导入素体到用着另一个素体的工程前会先确认；目标工程跟着流水线当前的工程走。分卷支持 7-Zip 式的 .001 编号和 ZIP 原生的 .z01 + .zip，缺卷时说出缺的是哪一卷；zip 和 unitypackage 的 .001 分卷软件自己合并。rar、7z 和其他分卷用电脑上默认的解压软件（7-Zip、Bandizip、WinRAR、好压、NanaZip、PeaZip）
 - 流水线页：工程 → 素材 → 装配 → 菜单 → 验收。工程 Assets 里导入过的素材自动列出（带素材库里的名字和类别），勾上要装的，按类别装到模型上（衣服互斥切换 + 部件开关 + 换色；头发单独互斥，素体自带的头发可切回；配饰开关默认显示；道具开关默认隐藏；素体在场景没有模型时放进新场景），再按玩家定的层级生成 Modular Avatar 菜单和图标。给工程装上流水线插件（`com.miovrc.pipeline`）和 [UnitySkills](https://github.com/Besty0728/Unity-Skills) 后，还能让 AI 接着做别的改模操作。AI 服务由玩家自己选：DeepSeek、通义千问、智谱 GLM、Kimi、ChatGPT 兼容（OpenAI 接口）、Claude 兼容（Anthropic 接口）；也可以不用 AI，按网格名字分组。AI 可以给头像拍照检查结果（穿模、错位、材质丢失），截图同时显示在验收记录里：模型能看图就直接把图发给它；看不了图的（DeepSeek）可以另设一个「看图模型」把画面描述给它；第一次用时自动测一次主模型能不能看图。「AI 用量与花费」按模型统计 tokens 和估算金额（DeepSeek 用官方价格，其他服务商自己填价格），DeepSeek、Kimi 的官方接口可以直接查余额。用 AI 时程序和 AI 分工：穿戴、插件、皮肤和菜单草案由程序完成，AI 只用一次请求整理衣服和头发的菜单（部件开关、名字、配色），程序校验它的方案后再生成（不合格让它改一次，还不行就用草案），最后请 AI 看一次截图和体检结果，一次运行 2～3 次请求；对话里 AI 原地打转（同一个失败操作第三次、连续 8 步失败、连续 4 次相同操作）时自己停下；看过的截图及时撤下、历史一次整理到位，让服务商的缓存多命中；一次运行默认最多 100 万 tokens，到了先问玩家要不要继续。评测：每次运行的菜单请求自动存成样本，可以用别的模型重新跑，比较通过率、用量和花费
 - 一键创建基础工程：Unity 2022.3.22f1 的 VRChat 头像工程（工程设置取自 VRChat 官方模板），从各插件的官方 VPM 仓库解析并下载最新稳定版（VRChat SDK、Modular Avatar、lilToon、Avatar Optimizer、Gesture Manager、VRCFury，可勾选；复用 ALCOM / VCC 的缓存；UnitySkills 默认勾选，本机 Git 能连上 GitHub 时按它的官方链接装，否则装随软件带的版本），可顺带导入素材库里的素体、装 Unity 插件并打开 Unity；新工程登记进 ALCOM / VCC 的工程列表。检测本机的 ALCOM、VCC、Unity Hub 和所需 Unity 版本
 - Booth 商品：按文件夹名里的编号、Booth 链接、已购记录或名称搜索关联，显示图片、标签和说明（可翻译）
@@ -56,7 +56,7 @@ Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth �
 
 主要文件：
 
-- `library.json`：素材库数据，包括备注、链接和翻译缓存
+- `library.json`：素材库数据，包括备注、链接和翻译缓存。`library.json.bak` 是它的滚动备份；读出来是坏的会另存为 `.broken-<时间>` 再用备份。暂时读不到（被别的程序占着、网盘离线占位、没有权限）的不算坏：用备份启动，但在第一次保存前先把它改名为 `.unread-<时间>` 留着，改不了名就不保存。`ai.json`、`ai-key.dat`、`wishlist.json`、`follows.json`、`transfer.json` 同样：读不到时不写，读出来是坏的先另存一份
 - `covers\`：封面缓存
 - `web-login\`：内置页面（Booth、Gumroad、Jinxxy、百度网盘）的登录和缓存，把它和 `web-session.dat` 一起删掉等于退出登录
 - `web-xianyu\`：闲鱼页面所用的独立内嵌浏览器的配置和缓存。软件不读写里面的内容，登录能保留多久由闲鱼自己决定；删掉它等于换了一个新的浏览器。以管理员身份运行软件时不使用它（WebView2 此时不接受启动参数，闲鱼改在默认浏览器中打开）
@@ -71,7 +71,7 @@ Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth �
 - `ai-usage.json`：AI 用量统计和自己填的价格（不随「迁移到另一台电脑」导出）
 - `ai-samples\`、`ai-eval.json`：评测样本（每次用 AI 运行流水线时发给 AI 的菜单请求，最多 60 个）和评测结果
 - `ai-key.dat`：各 AI 服务商和视觉模型的 API Key（用 DPAPI 加密，只有本机本用户能解开；不会回传给界面，界面只知道有没有保存和末四位）
-- `library.log`：运行日志
+- `library.log`：运行日志（包括每次流水线和 AI 对话的工程、模型、请求次数、tokens、用时和结果，不记录输入的内容）
 
 流水线放进 Unity 工程的东西（点「移除」会删掉）：`Packages/com.miovrc.pipeline`、`Packages/com.besty.unity-skills`（工程自己已经有 UnitySkills 时不放也不删；新建工程时按官方链接装的只是 `Packages/manifest.json` 里的一行，由 Unity 从 GitHub 下载）、`UserSettings/MioVRCA/bridge`（软件和 Unity 之间传话用的文件）、`UserSettings/MioVRCA/shots`（拍照时的临时图片，软件读走就删）。生成的菜单图标在工程的 `Assets/MioVRCA/<头像名>/Icons`。
 
@@ -132,14 +132,14 @@ third_party/      依赖库的副本
 | `internal/core/` | 所有包共用的底座：`library.json` 的数据和读写（`store.go`、`model.go`）、设置、后台任务（`tasks.go`）、日志、版本号（`version.go`）、各网站的地址（`sites.go`）、默认浏览器和其他系统相关功能（`sys_*.go`） |
 | `internal/naming/` | 从文件名、文件夹名里认东西：显示名、分类、「For_X」素体识别、Booth 编号 |
 | `internal/semver/` | 版本号和版本范围的比较 |
-| `internal/archive/` | 压缩包：解压 zip（含 Shift-JIS 文件名）、分卷识别、嵌套解压、优先调用电脑上默认的解压软件（7-Zip / Bandizip / WinRAR / 好压 / NanaZip / PeaZip），移到回收站 |
+| `internal/archive/` | 压缩包：解压 zip（含 Shift-JIS 文件名）、分卷识别和缺卷检查（`volumes.go`：7-Zip 式 .001、ZIP 的 .z01 + .zip、RAR；zip 和 unitypackage 的分卷自己合并）、嵌套解压、优先调用电脑上默认的解压软件（7-Zip / Bandizip / WinRAR / 好压 / NanaZip / PeaZip），移到回收站 |
 | `internal/update/` | 检查更新、下载替换、重启；更新公告 |
 | `internal/webpane/` | 内置页面：窗口里的第二个 WebView2（没有时用单独的 Edge / Chrome 窗口），经 127.0.0.1 上的 DevTools 端口控制；浏览器驱动（Chromium 用 CDP，Firefox 用 WebDriver BiDi）。闲鱼不走这个浏览器：`xyview.go`、`xyview_windows.go` 是它自己的 WebView2，没有 DevTools 端口，软件不往里放任何东西 |
 | `internal/translate/` | 中文翻译 |
 | `internal/netdisk/` | 百度网盘分享读取、合集拆分、分享内容分析、和上次相比的变化 |
 | `internal/booth/` | Booth 商品信息、搜索与匹配 |
 | `internal/library/` | 素材库本身：扫描素材（`scan.go`）、分析工程使用情况（`usage.go`）、封面（`thumbs.go`）、同款合并和衣服风格标签（`groups.go`）、PSD 统计、已购和网盘分享对上素材（`purchases.go`、`automatch.go`）、界面显示用的卡片数据（`views.go`）、Booth 页（`boothshop.go`：标签转成 Booth 分类和搜索词，标出已购、已有）、刷新流程（`refresh.go`：扫描 → 使用情况 → Booth）、定期检查变化（`sync.go`）、监视素材文件夹（`watch.go`） |
-| `internal/unity/` | Unity 工程：工程页（`projects.go`：Unity 版本、打开状态、找本机的 Unity 编辑器、工程封面插件）、一键导入（`unityimport.go`：读 unitypackage、按 GUID 写进工程、选素体版本）、自带的 VPM 解析器和一键创建基础工程（`vpm.go`、`projectnew.go`）、检测 ALCOM / VCC / Unity Hub（`toolchain_*.go`）、往工程里装 / 移除插件并和 Unity 传话（`unitybridge.go`） |
+| `internal/unity/` | Unity 工程：工程页（`projects.go`：Unity 版本、打开状态、找本机的 Unity 编辑器、工程封面插件）、一键导入（`unityimport.go`：读 unitypackage、按 GUID 写进工程、选素体版本；`pkgpick.go`：重复的包、版本、PC/Quest、会互相覆盖的变体）、自带的 VPM 解析器和一键创建基础工程（`vpm.go`、`projectnew.go`）、检测 ALCOM / VCC / Unity Hub（`toolchain_*.go`）、往工程里装 / 移除插件并和 Unity 传话（`unitybridge.go`） |
 | `internal/purchases/` | Booth 和 Gumroad 已购：在内置页面登录、同步已购（`purchases.go`、`boothpane.go`、`booth_scraper.js`）、下载（`boothdl.go`）；Gumroad 读的是它的 Inertia 页面数据，已购和 Booth 的放在一起，编号带 `gr_` 前缀（`gumroad.go`） |
 | `internal/pandl/` | 百度网盘登录（从内置页面取 Cookie）、转存到自己网盘（全部或勾选的部分）、断点续传下载 |
 | `internal/ai/` | 流水线：AI 服务（`ai.go`：DeepSeek / 通义千问 / 智谱 GLM / Kimi / OpenAI 兼容 / Anthropic 兼容的对话和工具调用，设置和 Key 的保存）、给 AI 看图（`aivision.go`）、对话循环和给 AI 的工具（`aiagent.go`）、不用 AI 时的流程（`pipeline.go`）、工程里的素材列表（`projassets.go`） |
@@ -201,7 +201,9 @@ Google Drive 的分享默认按网页的方式读取，不需要 API Key；构�
 
 流水线插件每两秒写一次 `UserSettings/MioVRCA/bridge/alive.json`（Unity 开着、在不在编译、UnitySkills 的端口）。软件要它做事时写一个 `req_<编号>.json`（`{"id", "cmd", "args"}`）；插件接手时把它改名成 `run_<编号>.json`，在编辑器主线程里执行，写回 `res_<编号>.json`。命令有 `inspect`、`inspect_object`、`prefabs`、`snapshot`（给头像拍照，图片写到 `UserSettings/MioVRCA/shots`，软件读走后删掉）、`refresh`、`dress`、`build_menu`、`icons`、`place_avatar`、`undo`、`select`。两分钟没人处理的请求会被丢弃，不会在以后打开 Unity 时突然执行。命令里的物体路径对不上时，能唯一对上一个物体的（大小写、空格不同，或少写了上层）直接用，对不上的在错误里列出名称相近的物体。这条通道不开网络端口，也不依赖 UnitySkills 的权限模式；UnitySkills 只用于玩家在对话里要求的其他操作。穿戴和生成菜单各是 Unity 撤销记录里的一步；计划执行到一半出错时整步收回。
 
-调用 UnitySkills 的操作前，软件按它自己给每个操作标的信息（`/skills?full=1` 里的 `readOnly`、`mutatesAssets`、`riskLevel`、`operation` 等）决定要不要先问玩家：只读的、只改场景且能撤销的低风险操作直接执行，会删除、改工程文件、执行命令、重新编译或进 Play 模式的先问。
+调用 UnitySkills 的操作前，软件按它自己给每个操作标的信息（`/skills?full=1` 里的 `readOnly`、`mutatesAssets`、`riskLevel`、`operation` 等）决定要不要先问玩家：只读的、只改场景且能撤销的低风险操作直接执行，会删除、改工程文件、执行命令、重新编译或进 Play 模式的先问。操作名按不分大小写查（UnitySkills 也不分），清单里没有的名字先重新读一次清单，名字看着危险的照样先问。「本次对话始终允许」只记这一个操作；删除、保存、写脚本、执行菜单或代码、切换场景、进 Play 模式的每次都问，不提供这个按钮。
+
+UnitySkills 的 HTTP 服务不认证、允许任何来源访问，所以只在软件用它时开：软件把一个截止时间（unix 秒）写进 `UserSettings/MioVRCA/bridge/want_skills`，AI 运行时每分钟往后推，结束后留两分钟；插件在截止时间前把服务启动起来，过了就把自己启动的那个永久停掉（`StopPermanent`，域重载后也不会自己回来）。玩家自己启动的服务插件不会关；Unity 崩溃后 UnitySkills 自己恢复的服务，插件按上次的记录认出来是自己启动的，照样会关。插件还把工程的目标平台写进同目录的 `target`（Unity 关了也留着），导入时按它选 PC 版或 Quest 版。
 
 ## 说明
 

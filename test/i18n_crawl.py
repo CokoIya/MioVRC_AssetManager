@@ -200,6 +200,17 @@ FAKE_JOBS = """(() => {
     {key: a.key, stage: 'choose', project: proj, choices: [{name: 'Kaguya', path: '/x/a', bases: ['Kaguya'], size: 1e6, pick: true}, {name: 'Plum', path: '/x/b', bases: ['Plum'], size: 2e6}]},
     {key: a.key, stage: 'done', project: proj, imported: ['a.unitypackage', 'b.unitypackage'], files: 312, tops: ['Assets/KDress', 'Assets/Miu', 'Assets/A', 'Assets/B', 'Assets/C'], kept: 4, keptPkgs: ['com.vrchat.avatars'], removed: 2, failed: ['c.rar：压缩包有密码']},
     {key: a.key, stage: 'failed', project: proj, err: '未找到 unitypackage（有压缩包解压失败：c.rar：本机未检测到解压软件（7-Zip、Bandizip、WinRAR 等），无法解压 rar、7z、分卷和带密码的压缩包）', failed: ['c.rar']},
+    // (1.7.13) packages that write the same files, put to the player with notes; what was left out; a missing volume
+    {key: a.key, stage: 'choose', why: 'overlap', project: proj, choices: [
+      {name: 'Tool_Left_2.2.4.unitypackage', path: '/x/l', size: 1e6, pick: true},
+      {name: 'Tool_Right_2.2.4.unitypackage', path: '/x/r', size: 1e6, why: 'alt', note: '与「Tool_Left_2.2.4.unitypackage」写入同一批文件，只导入一个'},
+      {name: 'Tool_Left_1.3.0.unitypackage', path: '/x/o', size: 9e5, why: 'old', note: '旧版本，已有 2.2.4'},
+      {name: 'Tool_Quest.unitypackage', path: '/x/q', size: 5e5, why: 'quest', note: 'Quest 版本，已有 PC 版本'},
+      {name: 'Tool_FT.unitypackage', path: '/x/f', size: 2e5, pick: true, why: 'addon', note: '会改写「Tool_Left_2.2.4.unitypackage」的 3 个文件，在它之后导入'}]},
+    {key: a.key, stage: 'done', project: proj, imported: ['Kipfel_1.2.0.unitypackage'], files: 181, tops: ['Assets/Kipfel'],
+      skipped: [{name: 'Kipfel_1.0.3.unitypackage', why: 'old'}, {name: 'Kipfel_1.2.0.unitypackage', why: 'dup'}, {name: 'Hair_Quest.unitypackage', why: 'quest'}]},
+    {key: a.key, stage: 'failed', project: proj, err: '未找到 unitypackage（有压缩包解压失败：Dress.zip.001：缺少分卷：Dress.zip.002（找到 2 卷），请把全部分卷下载到同一个文件夹后再解压）',
+      failed: ['Dress.zip.001：缺少分卷：Dress.zip.002（找到 2 卷），请把全部分卷下载到同一个文件夹后再解压', 'Coat.z01：缺少 Coat.zip：.z01、.z02 这样的分卷要和同名的 .zip 放在同一个文件夹，解压从 .zip 开始（.zip 是最后一卷）']},
   ];
   return a.key; })()"""
 
@@ -252,7 +263,7 @@ async def crawl(b, lang):
         await js(f"renderDrawer({json.dumps(k)})", f'asset {i}', wait=700)
         await js("document.querySelector('#drawer .dbody').scrollTop = 1e5", f'asset {i} end', shot=(i < 4), wait=150)
     first = await pg.evaluate(FAKE_JOBS)
-    for i in range(4):
+    for i in range(7):
         await js(f"S.data.importJob = window.__jobs[{i}]; renderDrawer({json.dumps(first)})", f'import job {i}')
     # ---- 合集包 (bundle.js): a card that holds a collection of products — its tag, the note in its details, a split
     # under way and one that failed, what the status bar and a netdisk job say of it, its entry in the settings ----

@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -51,9 +53,16 @@ type samplePlan struct {
 	Item map[string]any `json:"item"`
 }
 
-func (x evalSample) inputs() ([]wornInfo, []planned) {
+// inputs: the sample as the run had it. false: an outfit names a draft item the plan does not have (a file
+// edited by hand, or cut short).
+func (x evalSample) inputs() ([]wornInfo, []planned, bool) {
 	var worn []wornInfo
 	for _, w := range x.Worn {
+		for _, i := range w.Items {
+			if i < 0 || i >= len(x.Plan) {
+				return nil, nil, false
+			}
+		}
 		worn = append(worn, wornInfo{kind: w.Kind, label: w.Label, object: w.Object, meshes: w.Meshes, colours: w.Colours, base: w.Base, param: w.Param, first: w.First, items: w.Items})
 	}
 	var plan []planned
@@ -67,7 +76,7 @@ func (x evalSample) inputs() ([]wornInfo, []planned) {
 		}
 		plan = append(plan, planned{p.Root, it})
 	}
-	return worn, plan
+	return worn, plan, true
 }
 
 func (x evalSample) name() string {
@@ -187,7 +196,10 @@ func evalView() map[string]any {
 	runs := evalRunsLocked()
 	out := make([]evalRun, 0, len(runs))
 	for i := len(runs) - 1; i >= 0 && len(out) < 8; i-- { // newest first
-		out = append(out, *runs[i])
+		r := *runs[i]
+		// copies of what a running evaluation goes on adding to: the answer is written after evalMu is let go
+		r.Cost, r.Results = maps.Clone(r.Cost), slices.Clone(r.Results)
+		out = append(out, r)
 	}
 	return map[string]any{"samples": len(evalFiles()), "dir": evalDir(), "runs": out}
 }
@@ -214,12 +226,9 @@ func startEval(st *core.Store) error {
 	evalMu.Unlock()
 	go func() {
 		defer cancel()
-		for _, f := range files {
-			if ctx.Err() != nil {
-				break
-			}
-			r := evalOne(ctx, c, f)
+		add := func(r evalResult) { // one sample's result, counted into the run
 			evalMu.Lock()
+			defer evalMu.Unlock()
 			run.Results = append(run.Results, r)
 			run.Done++
 			switch r.Outcome {
@@ -240,13 +249,28 @@ func startEval(st *core.Store) error {
 				}
 				run.Cost[k] += v
 			}
-			evalMu.Unlock()
 		}
-		evalMu.Lock()
-		run.Running, run.Stopped = false, ctx.Err() != nil
-		saveEvalRunsLocked()
-		evalMu.Unlock()
-		core.Logf("AI 评测：%s %s，%d 个样本，首次通过 %d，修改后通过 %d，未通过 %d，出错 %d，%s tokens", run.Label, run.Model, run.Done, run.First, run.Fixed, run.Failed, run.Errors, tokText(run.Tokens))
+		file := "" // the sample being asked
+		defer func() {
+			x := recover() // a fault while a sample is asked ends the evaluation, not the program
+			if x != nil {
+				add(evalResult{File: file, Outcome: planError, Err: fmt.Sprint("程序内部错误：", x)})
+				core.Logf("AI 评测出错（样本 %s），已中止：%v", file, x)
+			}
+			// (only this goroutine changes the run, so it reads it without evalMu; logged before the run is seen to end)
+			core.Logf("AI 评测：%s %s，%d 个样本，首次通过 %d，修改后通过 %d，未通过 %d，出错 %d，%s tokens", run.Label, run.Model, run.Done, run.First, run.Fixed, run.Failed, run.Errors, tokText(run.Tokens))
+			evalMu.Lock()
+			run.Running, run.Stopped = false, ctx.Err() != nil
+			saveEvalRunsLocked()
+			evalMu.Unlock()
+		}()
+		for _, f := range files {
+			if ctx.Err() != nil {
+				break
+			}
+			file = f
+			add(evalOne(ctx, c, f))
+		}
 	}()
 	return nil
 }
@@ -267,12 +291,12 @@ func evalOne(ctx context.Context, c *aiClient, file string) evalResult {
 	if err == nil {
 		err = json.Unmarshal(b, &x)
 	}
-	if err != nil || len(x.Worn) == 0 {
+	worn, plan, ok := x.inputs()
+	if err != nil || len(x.Worn) == 0 || !ok {
 		r.Outcome, r.Err = planError, "样本无法读取"
 		return r
 	}
 	r.Name = x.name()
-	worn, plan := x.inputs()
 	var used usageSum
 	start := time.Now()
 	merged, n, how, errs := askMenuPlan(withUsageSink(ctx, &used), c, worn, plan, x.Hierarchy)

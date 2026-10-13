@@ -52,9 +52,10 @@ func TestCheckupFixTool(t *testing.T) {
 		t.Error("the tool is not offered to the AI")
 	}
 	s := aiSessionFor(proj)
-	// the call waits for the player's answer; what it asks names the fix and how it is taken back
-	question := ""
-	run := func(a map[string]any, allow bool) (string, string, bool) {
+	// the call waits for the player's answer; what it asks names the fix and how it is taken back. all: the
+	// answer is 「本次对话始终允许」; opts: the answers the question offered
+	question, opts := "", ""
+	answer := func(a map[string]any, allow, all bool) (string, string, bool) {
 		type res struct {
 			content, short string
 			ok             bool
@@ -64,15 +65,19 @@ func TestCheckupFixTool(t *testing.T) {
 		for i := 0; i < 300; i++ {
 			_, steps, _ := s.snapshot()
 			if n := len(steps); n > 0 && steps[n-1].Kind == "ask" && steps[n-1].Busy {
-				if question = steps[n-1].Text; !strings.Contains(question, "一键处理「") || !strings.Contains(question, "Ctrl+Z") && !strings.Contains(question, "点击「恢复」") {
+				if question, opts = steps[n-1].Text, steps[n-1].Opts; !strings.Contains(question, "一键处理「") || !strings.Contains(question, "Ctrl+Z") && !strings.Contains(question, "点击「恢复」") {
 					t.Errorf("question %q", question)
 				}
-				if !s.answer(allow, false) {
+				if !s.answer(allow, all) {
 					t.Error("nobody was waiting for the answer")
 				}
 				break
 			}
-			time.Sleep(10 * time.Millisecond)
+			select {
+			case r := <-ch: // done without a question
+				return r.content, r.short, r.ok
+			case <-time.After(10 * time.Millisecond):
+			}
 		}
 		select {
 		case r := <-ch:
@@ -82,6 +87,7 @@ func TestCheckupFixTool(t *testing.T) {
 		}
 		return "", "", false
 	}
+	run := func(a map[string]any, allow bool) (string, string, bool) { return answer(a, allow, false) }
 	if content, short, ok := run(map[string]any{"kind": "lights"}, false); ok || short != "未获允许，未执行" || !strings.Contains(content, "没有同意") || len(kinds) != 0 {
 		t.Errorf("refused: %v %q %q %v", ok, short, content, kinds)
 	}
@@ -109,26 +115,41 @@ func TestCheckupFixTool(t *testing.T) {
 	if _, _, ok = run(map[string]any{"kind": "textures"}, true); !ok || !strings.Contains(question, "将把模型「Kaguya」用到的 3 张 4096 像素贴图的 Max Size 改为 2048 并重新导入。") {
 		t.Errorf("textures, all: %v %q", ok, question)
 	}
-	// missing scripts: the question says that a plugin that is not installed looks the same, what is lost, and
-	// it is asked every time, 「本次对话始终允许」 or not
-	s.mu.Lock()
-	s.allowAll = true
-	s.mu.Unlock()
+	// 「本次对话始终允许」 covers the one fix it was given to: the lights are not asked about again, the textures are
 	question = ""
-	if _, _, ok = run(map[string]any{"kind": "missing"}, false); ok || kinds[len(kinds)-1] == "missing" {
-		t.Errorf("missing scripts were removed without the player's yes: %v", kinds)
+	if _, _, ok = answer(map[string]any{"kind": "lights"}, true, true); !ok || question == "" || opts != "" {
+		t.Errorf("lights, 「本次对话始终允许」 offered: %v, asked %q (answers %q)", ok, question, opts)
+	}
+	question = ""
+	if _, _, ok = run(map[string]any{"kind": "lights"}, false); !ok || question != "" {
+		t.Errorf("lights with 「本次对话始终允许」: %v, asked %q", ok, question)
+	}
+	question = ""
+	if _, _, ok = run(map[string]any{"kind": "textures"}, false); ok || question == "" {
+		t.Errorf("textures after 「本次对话始终允许」 to the lights: %v, asked %q", ok, question)
+	}
+	// missing scripts: the question says that a plugin that is not installed looks the same, what is lost, and
+	// it is asked every time: 「本次对话始终允许」 is not offered, nor taken when it is sent all the same
+	question = ""
+	if _, _, ok = run(map[string]any{"kind": "missing"}, false); ok || kinds[len(kinds)-1] == "missing" || opts != "once" {
+		t.Errorf("missing scripts were removed without the player's yes (%v), or the answers offered were %q", kinds, opts)
 	}
 	for _, want := range []string{"Modular Avatar、VRCFury", "没有安装或编译出错", "应先安装或修复该插件", "在场景保存后无法找回", "保存场景前可用 Ctrl+Z 撤销"} {
 		if !strings.Contains(question, want) {
 			t.Errorf("the question lacks %q: %q", want, question)
 		}
 	}
+	if _, _, ok = answer(map[string]any{"kind": "missing"}, true, true); !ok || kinds[len(kinds)-1] != "missing" {
+		t.Errorf("missing scripts, allowed this time: %v %v", ok, kinds)
+	}
 	question = ""
-	if _, _, ok = run(map[string]any{"kind": "lights"}, true); !ok || question != "" {
-		t.Errorf("lights with 「本次对话始终允许」: %v, asked %q", ok, question)
+	if _, _, ok = run(map[string]any{"kind": "missing"}, false); ok || question == "" {
+		t.Errorf("missing scripts after 「本次对话始终允许」 was sent for them: %v, asked %q", ok, question)
 	}
 	s.mu.Lock()
-	s.allowAll = false
+	if len(s.allowOps) != 1 || !s.allowOps["fix:lights"] {
+		t.Errorf("allowed for the conversation: %v", s.allowOps)
+	}
 	s.mu.Unlock()
 	if _, short, ok := s.runTool(context.Background(), "checkup_fix", map[string]any{"kind": "bounds"}); ok || !strings.Contains(short, "没有这项一键处理") {
 		t.Errorf("bounds: %v %q", ok, short)

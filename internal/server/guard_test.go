@@ -82,6 +82,43 @@ func TestForeignHostRefused(t *testing.T) {
 	}
 }
 
+// No answer of the program may be shown inside a frame of another site's page — the page with the token above all
+// (a site could lay it under its own and have the player click it) — whatever the route, and also when refused.
+func TestNoAnswerInAFrame(t *testing.T) {
+	apiToken = "t0ken"
+	_, srv := guarded(t)
+	port := srv.URL[strings.LastIndex(srv.URL, ":")+1:]
+	ask := func(method, path, host string, header ...string) (int, string) {
+		t.Helper()
+		req, _ := http.NewRequest(method, srv.URL+path, strings.NewReader("{}"))
+		req.Host = host
+		for i := 0; i+1 < len(header); i += 2 {
+			req.Header.Set(header[i], header[i+1])
+		}
+		resp, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		if xfo, csp := resp.Header.Get("X-Frame-Options"), resp.Header.Values("Content-Security-Policy"); xfo != "DENY" || !core.ContainsStr(csp, "frame-ancestors 'none'") {
+			t.Errorf("%s %s (Host %s): X-Frame-Options %q, Content-Security-Policy %q", method, path, host, xfo, csp)
+		}
+		return resp.StatusCode, string(b)
+	}
+	own := "127.0.0.1:" + port
+	// as a frame of another site would ask for it
+	if code, body := ask("GET", "/", own, "Sec-Fetch-Dest", "iframe", "Sec-Fetch-Site", "cross-site"); code != 200 || !strings.Contains(body, apiToken) {
+		t.Errorf("the page: %d", code)
+	}
+	for _, path := range []string{"/index.html", "/app.js", "/app.css", "/api/state", "/api/ping", "/thumb?p=x.png", "/rthumb?u=x", "/shot?f=x.jpg", "/no/such/route"} {
+		ask("GET", path, own)
+	}
+	ask("POST", "/api/feedback/info", own, "X-Token", apiToken)
+	ask("POST", "/api/feedback/info", own) // (refused: no token)
+	ask("GET", "/", "evil.example:"+port)  // (refused: another site's name)
+}
+
 // /api/state while the overrides and the cards are being changed: the answer is written out while the store
 // is held (run with -race; before, the map was read after the lock was let go, which can stop the program).
 func TestStateWhileStoreChanges(t *testing.T) {

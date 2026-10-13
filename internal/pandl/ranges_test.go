@@ -3,6 +3,7 @@ package pandl
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -208,6 +209,44 @@ func TestPCSDownloadRangesResume(t *testing.T) {
 	}
 }
 
+// A state kept for a part that is not there any more (removed with the file it was of, or by the player), or that
+// is not the file's size: it tells of a part there is no more, so the file comes from the start — whole, never
+// with zeros where the state said its bytes were — and nothing of it is left behind.
+func TestPCSDownloadRangesStateWithoutItsPart(t *testing.T) {
+	s, b, f := newRangeRig(t, 1<<20+12345)
+	half := f.Size / 2
+	stale := &rangeState{Size: f.Size, Path: f.Path, Pending: [][2]int64{{half, f.Size}}} // the first half on the disk
+	for _, c := range []struct {
+		name    string
+		part    []byte // nil: none
+		workers int
+	}{
+		{"no part, in pieces", nil, rangeWorkers},
+		{"no part, over one connection", nil, 1},
+		{"a part of another size", bytes.Repeat([]byte("x"), int(half)), rangeWorkers},
+	} {
+		out := filepath.Join(t.TempDir(), "Big.zip")
+		if c.part != nil {
+			_ = os.WriteFile(out+".part", c.part, 0644)
+		}
+		if err := writeRangeState(out+".part", stale); err != nil {
+			t.Fatal(err)
+		}
+		if readRangeState(out+".part", f) != nil {
+			t.Errorf("%s: the state is taken", c.name)
+		}
+		if err := b.download(f, out, c.workers, func(int64) {}); err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if got, _ := os.ReadFile(out); !bytes.Equal(got, s.data) {
+			t.Errorf("%s: the file is not the netdisk's (%d of %d bytes)", c.name, len(got), len(s.data))
+		}
+		if core.FileExists(out+".part") || core.FileExists(out+".part.json") {
+			t.Errorf("%s: left behind: the part or its state", c.name)
+		}
+	}
+}
+
 // Baidu turns several connections away: the download goes on over one, as it always did.
 func TestPCSDownloadRangesRefused(t *testing.T) {
 	s, b, f := newRangeRig(t, 600<<10)
@@ -240,5 +279,29 @@ func TestPCSDownloadRangesRefused(t *testing.T) {
 	_ = s2
 	if !strings.Contains(fmt.Sprint(s.uas), "pan.baidu.com") {
 		t.Errorf("user agents %v", s.uas)
+	}
+}
+
+// A part that cannot be removed keeps its state, which then has all of the file still to come: it is fetched
+// anew over the part, and the part never passes for a whole download.
+func TestPartThatStaysIsFetchedAnew(t *testing.T) {
+	dropWait = time.Millisecond
+	t.Cleanup(func() { dropWait = 200 * time.Millisecond })
+	dir := t.TempDir()
+	part := filepath.Join(dir, "a.bin.part")
+	if err := writeRangeState(part, &rangeState{Size: 100, Path: "/a.bin", Pending: [][2]int64{{60, 100}}}); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.MkdirAll(filepath.Join(part, "x"), 0755) // (a folder with something in it: it cannot be removed)
+	dropPart(part)
+	b, err := os.ReadFile(rangeStateFile(part))
+	var st rangeState
+	if err != nil || json.Unmarshal(b, &st) != nil || st.Size != 100 || len(st.Pending) != 1 || st.Pending[0] != [2]int64{0, 100} {
+		t.Fatalf("state: %s (%v)", b, err)
+	}
+	_ = os.RemoveAll(part)
+	dropPart(part) // removed now: the state goes with it
+	if core.StatOK(rangeStateFile(part)) {
+		t.Error("the state stayed")
 	}
 }

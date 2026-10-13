@@ -1017,3 +1017,88 @@ func TestImportHoldsDataFiles(t *testing.T) {
 		t.Errorf("updates.json after the import and the save: %s", b)
 	}
 }
+
+// transfer.json is there but cannot be read (held by another program, no access): nothing is written over it —
+// no waiting folder is dropped or mapped, no import begins, the undo says why — and it is read as it is once
+// it can be.
+func TestTransferUnreadable(t *testing.T) {
+	st := testkit.NewStore(t)
+	st.Settings.NoWatch, st.Settings.HideZh = true, true
+	t.Cleanup(waitIdle)
+	mine := `{"pending":[{"root":"D:\\Old","assets":[{"key":"name:x","name":"X"}],"at":1}]}`
+	p := transferFile()
+	writeBytes(t, p, []byte(mine))
+	giveBack := testkit.Unreadable(t, p)
+	if err := DropPending(`D:\Old`); err == nil || !strings.Contains(err.Error(), "无法读取导入记录文件 transfer.json") {
+		t.Errorf("drop: %v", err)
+	}
+	if _, err := MapPending(st, `D:\Old`, t.TempDir()); err == nil || !strings.Contains(err.Error(), "transfer.json") {
+		t.Errorf("map: %v", err)
+	}
+	if err := UndoImport(st); err == nil || !strings.Contains(err.Error(), "transfer.json") {
+		t.Errorf("undo: %v", err)
+	}
+	good := ExportManifest{App: core.AppName, Kind: kindExport, Format: exportFormat, Version: core.AppVersion}
+	zp := craftZip(t, good, `{"version":1,"settings":{"roots":[]},"user":{"booth:1":{"notes":"theirs"}}}`, nil)
+	if _, err := ImportLibrary(st, ImportOptions{Path: zp, Mode: "replace"}); err == nil || !strings.Contains(err.Error(), "transfer.json") {
+		t.Errorf("import: %v", err)
+	}
+	if len(st.User) != 0 || len(TransferState().Pending) != 0 || TransferStatus().Running {
+		t.Errorf("taken in: %v", st.User)
+	}
+	giveBack()
+	if b, _ := os.ReadFile(p); string(b) != mine {
+		t.Fatalf("written over: %s", b)
+	}
+	if left, _ := filepath.Glob(p + ".*"); len(left) != 0 {
+		t.Errorf("files: %v", left)
+	}
+	if backups := TransferState().Backups; len(backups) != 0 {
+		t.Errorf("the backup of an import that did not begin is left: %v", backups)
+	}
+	if tv := TransferState(); len(tv.Pending) != 1 || tv.Pending[0].Root != `D:\Old` || tv.Pending[0].Assets != 1 {
+		t.Fatalf("read again: %+v", tv)
+	}
+	if err := DropPending(`D:\Old`); err != nil || len(TransferState().Pending) != 0 {
+		t.Errorf("drop once it can be read: %v", err)
+	}
+}
+
+// A transfer.json that cannot be parsed is moved out of the way before anything is written in its place.
+func TestTransferDamaged(t *testing.T) {
+	testkit.NewStore(t)
+	p := transferFile()
+	junk := `{"pending":[{"root":`
+	writeBytes(t, p, []byte(junk))
+	if tv := TransferState(); len(tv.Pending) != 0 || tv.Undo != nil {
+		t.Fatalf("%+v", tv)
+	}
+	kept, _ := filepath.Glob(p + ".broken-*")
+	if len(kept) != 1 {
+		t.Fatalf("kept: %v", kept)
+	}
+	if err := DropPending(`D:\Old`); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(p); !json.Valid(b) {
+		t.Errorf("transfer.json: %s", b)
+	}
+	if b, _ := os.ReadFile(kept[0]); string(b) != junk {
+		t.Errorf("the copy: %s", b)
+	}
+}
+
+// The backup an import takes first holds every data file: one that is there and cannot be read stops it (the
+// import would write over the file with no copy to take it back from). An export leaves it out.
+func TestBackupNeedsEveryDataFile(t *testing.T) {
+	st := testkit.NewStore(t)
+	p := filepath.Join(core.DataDir, "wishlist.json")
+	writeBytes(t, p, []byte(`{"ver":1,"items":[]}`))
+	testkit.Unreadable(t, p)
+	if _, _, err := writeZip(st, filepath.Join(t.TempDir(), "b.zip"), kindBackup, []string{"wishlist.json"}, nil, nil); err == nil {
+		t.Error("the backup went on without the wish list")
+	}
+	if _, _, err := writeZip(st, filepath.Join(t.TempDir(), "e.zip"), kindExport, []string{"wishlist.json"}, nil, nil); err != nil {
+		t.Errorf("export: %v", err)
+	}
+}

@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"vrclib/internal/core"
+	"vrclib/internal/testkit"
 )
 
 // fakeBing answers like Bing's web translator: every line comes back with "译" in front.
@@ -62,5 +64,48 @@ func TestTranslateBumpsRarely(t *testing.T) {
 	RunTranslate(st, &core.Task{}, names)
 	if n := core.CurRev() - rev; n != 4 {
 		t.Errorf("%d reloads between 5 batches", n)
+	}
+}
+
+// A name that comes in just as a run of the translator ends (a purchase list read then, say) is not left for a
+// later run: from the moment the run has found no more requests, a request starts a run of its own.
+func TestTranslateRequestAtTheEnd(t *testing.T) {
+	fakeBing(t)
+	pause := transPause
+	transPause = time.Millisecond
+	defer func() { transPause = pause }()
+	waitIdle()
+	st := testkit.NewStore(t)
+	st.Assets = []*core.Asset{{Key: "name:summer dress", Name: "Summer Dress"}}
+	var once sync.Once
+	asked := make(chan struct{})
+	transMu.Lock()
+	transEnded = func() {
+		once.Do(func() {
+			st.Mu.Lock()
+			st.Assets = append(st.Assets, &core.Asset{Key: "name:winter coat", Name: "Winter Coat"})
+			st.Mu.Unlock()
+			KickTranslate(st)
+			close(asked)
+		})
+	}
+	transMu.Unlock()
+	t.Cleanup(func() {
+		waitIdle()
+		transMu.Lock()
+		transEnded = nil
+		transMu.Unlock()
+	})
+	KickTranslate(st)
+	select {
+	case <-asked:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the run does not end")
+	}
+	waitIdle()
+	st.Mu.RLock()
+	defer st.Mu.RUnlock()
+	if st.Trans["Summer Dress"] != "译Summer Dress" || st.Trans["Winter Coat"] != "译Winter Coat" {
+		t.Errorf("translated: %v", st.Trans)
 	}
 }

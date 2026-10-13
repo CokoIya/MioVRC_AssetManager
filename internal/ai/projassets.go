@@ -136,6 +136,7 @@ func projectAssets(st *core.Store, project string) []ProjAsset {
 		folder                 string // as the library wrote it
 	}
 	byFolder := map[string]known{}
+	imported := loadAIConfig().Imported[core.PathKey(project)] // (it takes aiMu: before st.Mu, see aiMu)
 	st.Mu.RLock()
 	pname := filepath.Base(project)
 	// the category and the base bodies as the library shows them (what the player set by hand counts)
@@ -152,7 +153,6 @@ func projectAssets(st *core.Store, project string) []ProjAsset {
 			}
 		}
 	}
-	imported := loadAIConfig().Imported[core.PathKey(project)]
 	for folder, key := range imported {
 		for _, a := range st.Assets {
 			if a.Key == key || a.AltKey == key {

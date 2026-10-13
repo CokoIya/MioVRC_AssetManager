@@ -39,8 +39,42 @@ type rangeState struct {
 
 func rangeStateFile(part string) string { return part + ".json" }
 
-// readRangeState: the state kept for part, nil when there is none, or none for this file.
+// dropPart removes a .part and the state kept next to it: the state tells what is in that part, and nothing
+// without it. A part that cannot be removed (a virus scanner holding it past the tries) keeps its state, which
+// says from then on that all of it is still to come: what it holds is fetched anew over it, never finished as
+// it is — without a state, a part of the file's size would pass for a whole download.
+func dropPart(part string) {
+	err := os.Remove(part)
+	for i := 0; i < 5 && err != nil && !os.IsNotExist(err); i++ {
+		time.Sleep(dropWait)
+		err = os.Remove(part)
+	}
+	if err == nil || os.IsNotExist(err) {
+		_ = os.Remove(rangeStateFile(part))
+		return
+	}
+	core.Logf("无法删除未完成的下载 %s：%v", filepath.Base(part), err)
+	var st rangeState
+	if b, e := os.ReadFile(rangeStateFile(part)); e == nil && json.Unmarshal(b, &st) == nil && st.Size > 0 {
+		st.Pending = nil
+		for from := int64(0); from < st.Size; from += rangePiece {
+			st.Pending = append(st.Pending, [2]int64{from, min(from+rangePiece, st.Size)})
+		}
+		_ = writeRangeState(part, &st)
+	}
+}
+
+// dropWait: the pause before a part that could not be removed is tried again (tests wait less).
+var dropWait = 200 * time.Millisecond
+
+// readRangeState: the state kept for part, nil when there is none, or none for this file — or none for the part
+// that is there. downloadRanges makes the part the file's size from the start: one that is gone (removed with an
+// earlier version of the file, or by the player) or of another size would be finished with zeros where the
+// state says the file's bytes are.
 func readRangeState(part string, f bdFile) *rangeState {
+	if fi, err := os.Stat(part); err != nil || fi.Size() != f.Size {
+		return nil
+	}
 	b, err := os.ReadFile(rangeStateFile(part))
 	if err != nil {
 		return nil
@@ -80,7 +114,7 @@ func (b *bdClient) downloadRanges(f bdFile, local, part string, workers int, pro
 		if fi, err := os.Stat(part); err == nil && fi.Size() <= f.Size {
 			have = fi.Size()
 		} else if err == nil {
-			_ = os.Remove(part)
+			dropPart(part)
 		}
 		st = &rangeState{Size: f.Size, Path: f.Path}
 		for from := have; from < f.Size; from += rangePiece {

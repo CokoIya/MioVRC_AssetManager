@@ -432,8 +432,10 @@ func (s *aiSession) refineMenu(ctx context.Context, c *aiClient, worn []wornInfo
 	switch {
 	case how == planFirst:
 		s.finishStep(true, fmt.Sprintf("已采用 AI 的方案（%d 项）", n))
+		core.Logf("AI 菜单方案：直接采用（%d 项）", n)
 	case how == planFixed:
 		s.finishStep(true, fmt.Sprintf("已采用 AI 修改后的方案（%d 项）", n))
+		core.Logf("AI 菜单方案：修改一次后采用（%d 项）", n)
 	case ctx.Err() != nil:
 		s.finishStep(false, "已停止")
 	case how == planError:

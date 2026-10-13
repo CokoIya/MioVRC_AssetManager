@@ -31,8 +31,13 @@ func OpenInExplorer(p string, isDir bool) error {
 	return cmd.Start()
 }
 
-// OpenURL hands the link to Windows, which opens it in the user's default browser.
+// OpenURL hands the link to Windows, which opens it in the user's default browser — only in a form that cannot
+// end it on the command line it is put into (shellAddress).
 func OpenURL(u string) error {
+	u, err := shellAddress(u)
+	if err != nil {
+		return err
+	}
 	if err := shellOpen(u); err == nil {
 		return nil
 	}

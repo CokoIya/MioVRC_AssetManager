@@ -1091,9 +1091,8 @@ func (b *bdClient) download(f bdFile, local string, workers int, prog func(n int
 		return nil
 	}
 	part := local + ".part"
-	if core.FileExists(rangeStateFile(part)) && readRangeState(part, f) == nil { // begun in pieces, for another version of the file
-		_ = os.Remove(part)
-		_ = os.Remove(rangeStateFile(part))
+	if core.FileExists(rangeStateFile(part)) && readRangeState(part, f) == nil {
+		dropPart(part) // begun in pieces, for another version of the file or a part not there as it was: from the start
 	}
 	if (workers > 1 && f.Size >= rangeMinSize) || readRangeState(part, f) != nil {
 		return b.downloadRanges(f, local, part, workers, prog)
@@ -1101,7 +1100,7 @@ func (b *bdClient) download(f bdFile, local string, workers int, prog func(n int
 	var had int64
 	if fi, err := os.Stat(part); err == nil {
 		if fi.Size() > f.Size {
-			_ = os.Remove(part)
+			dropPart(part)
 		} else {
 			had = fi.Size()
 			prog(had)
@@ -1725,7 +1724,7 @@ func runPanJob(ctx context.Context, st *core.Store, j *PanJob) error {
 		for _, p := range replaced {
 			old := localOf(strings.TrimPrefix(p, dest+"/"))
 			_ = os.Remove(old)
-			_ = os.Remove(old + ".part")
+			dropPart(old + ".part") // (and the state of a download of it in pieces)
 		}
 		if err != nil {
 			return err

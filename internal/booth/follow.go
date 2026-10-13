@@ -90,7 +90,8 @@ func init() {
 var (
 	followMu      sync.Mutex
 	followData    followFile
-	followFrom    string // the file followData was read from
+	followFrom    string // the file followData was read from; "" while it cannot be
+	followBad     string // why it could not be read, as logged (once)
 	followRunMu   sync.Mutex
 	followRunning bool
 	followBrokeAt string // the shop the last round was turned away at
@@ -98,23 +99,35 @@ var (
 
 func followPath() string { return filepath.Join(core.DataDir, "follows.json") }
 
-// followLoad reads the file once. Caller holds followMu.
-func followLoad() {
+// followLoad reads the file once. Caller holds followMu. A file that is there but cannot be read (held by
+// another program, no access) is not an empty list: the list is not taken as read, nothing is written over the
+// file, and the next use tries again.
+func followLoad() error {
 	p := followPath()
 	if followFrom == p {
-		return
+		return nil
 	}
-	followFrom, followData = p, followFile{Ver: 1}
-	b, err := os.ReadFile(p)
-	if err != nil {
-		return
+	followFrom, followData = "", followFile{Ver: 1}
+	b, err := core.ReadDataFileAgain(p, followBad != "")
+	switch {
+	case os.IsNotExist(err):
+		followFrom, followBad = p, ""
+		return nil
+	case err != nil:
+		return followUnread(err, nil)
 	}
 	var f followFile
 	if err := json.Unmarshal(b, &f); err != nil {
-		// not thrown away: the next save would write an empty list over it
-		_ = os.Rename(p, p+".broken")
-		core.Logf("follows.json 无法读取，已另存为 follows.json.broken: %v", err)
-		return
+		// not thrown away: out of the way before the next save writes an empty list in its place
+		kept, kerr := core.KeepBroken(p, b)
+		if kerr != nil {
+			return followUnread(kerr, err)
+		}
+		if kept != "" {
+			core.Logf("follows.json 无法读取，已另存为 %s: %v", filepath.Base(kept), err)
+		}
+		followFrom, followBad = p, ""
+		return nil
 	}
 	f.Ver = 1
 	keep := f.Shops[:0]
@@ -140,11 +153,30 @@ func followLoad() {
 		}
 	}
 	f.Shops = keep
-	followData = f
+	followFrom, followBad, followData = p, "", f
+	return nil
+}
+
+// followUnread: follows.json is there but could not be read (err), or was read damaged (bad) and could not be
+// kept either. Logged once; the error is what the window is told.
+func followUnread(err, bad error) error {
+	if why := core.TrimErr(err); followBad != why {
+		followBad = why
+		if bad != nil {
+			core.Logf("follows.json 已损坏（%v），也未能另存，暂不使用也不覆盖: %v", bad, err)
+		} else {
+			core.Logf("follows.json 无法读取，暂不使用也不覆盖: %v", err)
+		}
+	}
+	return errors.New("无法读取关注店铺文件 follows.json：" + core.TrimErr(err))
 }
 
 // followSave writes the file whole: to a temporary file that then takes its place. Caller holds followMu.
+// Never over a file that was not read.
 func followSave() {
+	if followFrom != followPath() {
+		return
+	}
 	b, err := json.MarshalIndent(&followData, "", " ")
 	if err != nil {
 		return
@@ -431,7 +463,10 @@ func FollowAdd(st *core.Store, seed FollowSeed) (*FollowShop, error) {
 		return nil, errors.New("请输入 Booth 店铺链接（如 https://example.booth.pm/）或商品链接")
 	}
 	followMu.Lock()
-	followLoad()
+	if err := followLoad(); err != nil {
+		followMu.Unlock()
+		return nil, err
+	}
 	if s := followFind(sub); s != nil {
 		c := *s
 		followMu.Unlock()
@@ -472,8 +507,8 @@ func followFirstLook(st *core.Store, sub string) {
 		return
 	}
 	followMu.Lock()
-	followLoad() // (the file may have been replaced meanwhile: FollowReload)
-	if s := followFind(sub); s != nil && s.Checked == 0 {
+	read := followLoad() == nil // (the file may have been replaced meanwhile: FollowReload)
+	if s := followFind(sub); read && s != nil && s.Checked == 0 {
 		s.Tried = now
 		switch {
 		case gone:
@@ -493,7 +528,9 @@ func followFirstLook(st *core.Store, sub string) {
 func FollowRemove(sub string) bool {
 	followMu.Lock()
 	defer followMu.Unlock()
-	followLoad()
+	if followLoad() != nil {
+		return false
+	}
 	for i, s := range followData.Shops {
 		if s.Sub == sub {
 			followData.Shops = append(followData.Shops[:i], followData.Shops[i+1:]...)
@@ -505,31 +542,37 @@ func FollowRemove(sub string) bool {
 	return false
 }
 
-func FollowNote(sub, note string) bool {
+var errFollowGone = errors.New("已取消关注该店铺")
+
+func FollowNote(sub, note string) error {
 	note = strings.TrimSpace(note)
 	if r := []rune(note); len(r) > followNoteMax {
 		note = string(r[:followNoteMax])
 	}
 	followMu.Lock()
 	defer followMu.Unlock()
-	followLoad()
+	if err := followLoad(); err != nil {
+		return err
+	}
 	s := followFind(sub)
 	if s == nil {
-		return false
+		return errFollowGone
 	}
 	if s.Note != note {
 		s.Note = note
 		followSave()
 		core.BumpRev()
 	}
-	return true
+	return nil
 }
 
 // FollowSeen: the player has the list of shops open: the dot on its entry goes.
 func FollowSeen() {
 	followMu.Lock()
 	defer followMu.Unlock()
-	followLoad()
+	if followLoad() != nil {
+		return
+	}
 	n := 0
 	for _, s := range followData.Shops {
 		for _, x := range s.News {
@@ -549,7 +592,9 @@ func FollowSeen() {
 func FollowRead(sub string) bool {
 	followMu.Lock()
 	defer followMu.Unlock()
-	followLoad()
+	if followLoad() != nil {
+		return false
+	}
 	n, found := 0, sub == ""
 	for _, s := range followData.Shops {
 		if sub != "" && s.Sub != sub {
@@ -578,7 +623,9 @@ func FollowTold(keys []string) {
 	}
 	followMu.Lock()
 	defer followMu.Unlock()
-	followLoad()
+	if followLoad() != nil {
+		return
+	}
 	n := 0
 	for _, s := range followData.Shops {
 		for _, x := range s.News {
@@ -597,7 +644,9 @@ func FollowTold(keys []string) {
 func FollowSetWatch(sub string, on bool) bool {
 	followMu.Lock()
 	defer followMu.Unlock()
-	followLoad()
+	if followLoad() != nil {
+		return false
+	}
 	if sub == "" {
 		if followData.NoWatch == on {
 			followData.NoWatch = !on
@@ -680,7 +729,7 @@ func FollowSnapshot() FollowState {
 	followRunMu.Unlock()
 	followMu.Lock()
 	defer followMu.Unlock()
-	followLoad()
+	_ = followLoad() // (one that cannot be read shows as empty, and is not written over)
 	st := FollowState{Shops: make([]FollowShopView, 0, len(followData.Shops)), Watch: !followData.NoWatch, Paused: boothPaused(), Busy: busy}
 	for _, s := range followData.Shops {
 		for _, x := range s.News {
@@ -762,7 +811,10 @@ func FollowRound(st *core.Store, byHand bool) (int, error) {
 		return 0, errors.New("Booth 暂时限制了访问，请稍后重试")
 	}
 	followMu.Lock()
-	followLoad()
+	if err := followLoad(); err != nil {
+		followMu.Unlock()
+		return 0, err
+	}
 	if followData.NoWatch && !byHand {
 		followMu.Unlock()
 		return 0, nil
@@ -792,9 +844,11 @@ func FollowRound(st *core.Store, byHand bool) (int, error) {
 		}
 		// turned off meanwhile (for every shop, or for this one): the round stops at its next step
 		followMu.Lock()
-		followLoad() // the file may have been replaced since the round began (a library import): never the old list over it
+		// the file may have been replaced since the round began (a library import): never the old list over it,
+		// and nothing over one that cannot be read (the rest waits for the next round)
+		read := followLoad() == nil
 		s := followFind(sub)
-		off, allOff := s == nil || (!byHand && s.NoWatch), !byHand && followData.NoWatch
+		off, allOff := s == nil || (!byHand && s.NoWatch), !read || (!byHand && followData.NoWatch)
 		followMu.Unlock()
 		if allOff {
 			break
@@ -817,7 +871,10 @@ func FollowRound(st *core.Store, byHand bool) (int, error) {
 			}
 		}
 		followMu.Lock()
-		followLoad()
+		if followLoad() != nil {
+			followMu.Unlock()
+			break
+		}
 		if s = followFind(sub); s == nil { // unfollowed meanwhile
 			followMu.Unlock()
 			continue
@@ -863,7 +920,10 @@ func FollowStartRound(st *core.Store) (int, error) {
 		return 0, errors.New("Booth 暂时限制了访问，请稍后重试")
 	}
 	followMu.Lock()
-	followLoad()
+	if err := followLoad(); err != nil {
+		followMu.Unlock()
+		return 0, err
+	}
 	n := len(followDue(time.Now(), true))
 	followMu.Unlock()
 	if n > 0 {

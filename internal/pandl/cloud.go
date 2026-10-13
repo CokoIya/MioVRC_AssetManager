@@ -496,7 +496,7 @@ func setCloudPart(part string, t *cloudTag) {
 
 func dropCloudPart(part string) {
 	setCloudPart(part, nil)
-	_ = os.Remove(part)
+	dropPart(part) // (a state a netdisk download in pieces left for the same file goes with it)
 }
 
 func partSize(p string) int64 {

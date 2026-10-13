@@ -14,6 +14,7 @@ var (
 	boothAgain bool
 	scanAgain  bool
 	usageAgain bool
+	pipeEnded  func() // tests: called once a run has let go of the pipeline
 )
 
 // StartPipeline runs scan → usage → booth in the background (only one at a time).
@@ -31,20 +32,23 @@ func StartPipeline(st *core.Store, doScan, doUsage, doBooth bool, forceBooth boo
 	pipeBusy = true
 	pipeMu.Unlock()
 	go func() {
-		defer func() {
-			pipeMu.Lock()
-			pipeBusy = false
-			pipeMu.Unlock()
-		}()
 		RunPipeline(st, doScan, doUsage, doBooth, forceBooth, boothOnly)
 		for {
 			pipeMu.Lock()
 			again, scan, usage := boothAgain, scanAgain, usageAgain
 			boothAgain, scanAgain, usageAgain = false, false, false
-			pipeMu.Unlock()
 			if (!again && !scan && !usage) || core.Quitting.Load() {
-				break
+				// let go in the same look that found nothing more to do: a call from here on starts a run of its
+				// own, instead of leaving its rescan to this one, which is over
+				pipeBusy = false
+				ended := pipeEnded
+				pipeMu.Unlock()
+				if ended != nil {
+					ended()
+				}
+				return
 			}
+			pipeMu.Unlock()
 			RunPipeline(st, scan, usage || scan, again, false, nil)
 		}
 	}()

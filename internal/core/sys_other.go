@@ -13,7 +13,6 @@ import (
 var ErrPickCancelled = errors.New("cancelled")
 
 func OpenInExplorer(p string, isDir bool) error { Logf("open %s (dir=%v)", p, isDir); return nil }
-func OpenURL(u string) error                    { Logf("open url %s", u); return nil }
 func FindEdge() string                          { return os.Getenv("VRCLIB_BROWSER") }
 func DefaultBrowserExe() string                 { return os.Getenv("VRCLIB_DEFAULT_BROWSER") }
 func AppWindow(browser, url, profile string) *exec.Cmd {
@@ -36,6 +35,16 @@ func PickFolder(title, initial string) (string, error) {
 func CreateDesktopShortcut() (string, error) { return "", errors.New("仅支持 Windows") }
 
 func Hidden(cmd *exec.Cmd) *exec.Cmd { return cmd }
+
+// OpenURL: nothing is opened outside Windows. What Windows would be given is logged, after the same check
+// (shellAddress).
+func OpenURL(u string) error {
+	u, err := shellAddress(u)
+	if err == nil {
+		Logf("open url %s", u)
+	}
+	return err
+}
 
 // RecycleFiles: outside Windows there is no Recycle Bin to use; the files are removed.
 func RecycleFiles(paths []string) error {

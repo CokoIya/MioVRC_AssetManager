@@ -408,9 +408,16 @@ func aiSaveVision(v AIVision, key *string) error {
 	}
 	aiMu.Lock()
 	defer aiMu.Unlock()
-	c := loadAIConfigLocked()
-	keys := loadAIKeysLocked()
-	if key == nil && keys[visionKeyID] != "" && v.BaseURL != "" && !sameService(c.Vision.BaseURL, v.BaseURL) {
+	c, err := readAIConfigLocked()
+	if err != nil {
+		return err
+	}
+	moved := v.BaseURL != "" && !sameService(c.Vision.BaseURL, v.BaseURL)
+	keys, err := readAIKeysLocked()
+	if err != nil && (key != nil || moved) {
+		return err // (nor is it known then whether a key is saved for the old address)
+	}
+	if key == nil && keys[visionKeyID] != "" && moved {
 		return errors.New("视觉模型的接口地址已更改：已保存的 Key 仅用于原地址，请重新填写新地址的 Key")
 	}
 	if key != nil {

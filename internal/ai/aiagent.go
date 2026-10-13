@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -29,7 +30,7 @@ type AIStep struct {
 	Out  string   `json:"out,omitempty"`  // what came back, in short
 	Busy bool     `json:"busy,omitempty"` // the tool is still running
 	Imgs []string `json:"imgs,omitempty"` // pictures taken in this step (names for /shot)
-	Opts string   `json:"opts,omitempty"` // an ask: which answers it offers ("": allow / allow all / deny; "budget": go on / stop)
+	Opts string   `json:"opts,omitempty"` // an ask: which answers it offers ("": allow / allow all / deny; "once": allow / deny; "budget": go on / stop)
 	At   int64    `json:"at"`
 }
 
@@ -45,7 +46,10 @@ type aiSession struct {
 	done     runDone   // what the run in progress has put on the avatar so far
 	soft     int       // the service refused a conversation of this size as too long: older answers give way earlier (0 = not yet)
 	askCh    chan bool // the player's answer to the question that is open
-	allowAll bool      // the player said yes to every risky operation of this conversation
+	askAllow string    // …and the operation a 「本次对话始终允许」 to it covers ("" = not offered)
+	// what the player said 「本次对话始终允许」 to: a UnitySkills operation by its name in lower case, a one-click
+	// fix of the check-up as "fix:"+kind
+	allowOps map[string]bool
 	client   *aiClient // the service of the run in progress (nil when the pipeline runs without an AI)
 	st       *core.Store
 	outImgs  []aiImage // pictures the tool call in progress hands to the AI
@@ -96,19 +100,29 @@ func (s *aiSession) finishStep(ok bool, out string) {
 	for i := len(s.steps) - 1; i >= 0; i-- {
 		if s.steps[i].Kind == "tool" && s.steps[i].Busy {
 			s.steps[i].Busy, s.steps[i].OK, s.steps[i].Out = false, ok, out
+			if !ok { // (what a step was and how it ended — the player's own words are never logged)
+				core.Logf("流水线步骤未完成（%s）：%s：%s", filepath.Base(s.project), s.steps[i].Text, core.Truncate(strings.ReplaceAll(out, "\n", " "), 200))
+			}
 			return
 		}
 	}
 }
 
-// confirm puts a question to the player ("the AI wants to delete …") and waits for the answer.
-func (s *aiSession) confirm(ctx context.Context, text string) bool { return s.ask(ctx, text, "") }
+// confirm puts a question to the player ("the AI wants to delete …") and waits for the answer. op is the
+// operation a 「本次对话始终允许」 covers from then on; "" for one that is asked about every time (only
+// 「仅本次允许」 and 「拒绝」 are offered).
+func (s *aiSession) confirm(ctx context.Context, text, op string) bool {
+	if op == "" {
+		return s.ask(ctx, text, "once", "")
+	}
+	return s.ask(ctx, text, "", op)
+}
 
-// ask: confirm with the answers opts names (see AIStep.Opts).
-func (s *aiSession) ask(ctx context.Context, text, opts string) bool {
+// ask: confirm with the answers opts names (see AIStep.Opts); op as for confirm.
+func (s *aiSession) ask(ctx context.Context, text, opts, op string) bool {
 	ch := make(chan bool, 1)
 	s.mu.Lock()
-	s.askCh = ch
+	s.askCh, s.askAllow = ch, op
 	s.mu.Unlock()
 	s.add(AIStep{Kind: "ask", Text: text, Busy: true, Opts: opts})
 	ok := false
@@ -119,7 +133,7 @@ func (s *aiSession) ask(ctx context.Context, text, opts string) bool {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.askCh = nil
+	s.askCh, s.askAllow = nil, ""
 	for i := len(s.steps) - 1; i >= 0; i-- {
 		if s.steps[i].Kind == "ask" && s.steps[i].Busy {
 			s.steps[i].Busy, s.steps[i].OK = false, ok
@@ -133,14 +147,19 @@ func (s *aiSession) ask(ctx context.Context, text, opts string) bool {
 	return ok
 }
 
+// answer: the player's answer to the open question. all (「本次对话始终允许」) holds for the one operation the
+// question is about, and only where the question offered it.
 func (s *aiSession) answer(ok, all bool) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.askCh == nil {
 		return false
 	}
-	if ok && all {
-		s.allowAll = true
+	if ok && all && s.askAllow != "" {
+		if s.allowOps == nil {
+			s.allowOps = map[string]bool{}
+		}
+		s.allowOps[s.askAllow] = true
 	}
 	select {
 	case s.askCh <- ok:
@@ -163,14 +182,15 @@ type skillInfo struct {
 
 var (
 	skillsMu    sync.Mutex
-	skillsCache = map[string]map[string]skillInfo{} // project and port → skills by name
+	skillsCache = map[string]map[string]skillInfo{} // project and port → skills by name in lower case
 )
 
-// skillsManifest: every skill of the project's UnitySkills with its risk notes, read once per server.
+// skillsManifest: every skill of the project's UnitySkills with its risk notes, by its name in lower case
+// (UnitySkills takes a name in any case). Read once per server.
 func skillsManifest(ctx context.Context, p string) map[string]skillInfo {
-	key := fmt.Sprint(core.PathKey(p), "|", unity.SkillsPort(p))
+	port := unity.SkillsPort(p)
 	skillsMu.Lock()
-	m, ok := skillsCache[key]
+	m, ok := skillsCache[fmt.Sprint(core.PathKey(p), "|", port)]
 	skillsMu.Unlock()
 	if ok {
 		return m
@@ -184,12 +204,36 @@ func skillsManifest(ctx context.Context, p string) map[string]skillInfo {
 	}
 	m = map[string]skillInfo{}
 	for _, k := range r.Skills {
-		m[k.Name] = k
+		m[strings.ToLower(k.Name)] = k
 	}
-	skillsMu.Lock()
-	skillsCache[key] = m
-	skillsMu.Unlock()
+	if port == 0 { // the server was started for this request
+		port = unity.SkillsPort(p)
+	}
+	if port > 0 {
+		skillsMu.Lock()
+		skillsCache[fmt.Sprint(core.PathKey(p), "|", port)] = m
+		skillsMu.Unlock()
+	}
 	return m
+}
+
+// skillFor: the manifest, and what it says of the skill named (in any case). A name it does not have is looked
+// up once more in the manifest read anew: an update of UnitySkills may have added that skill since.
+func skillFor(ctx context.Context, p, name string) (map[string]skillInfo, skillInfo, bool) {
+	m := skillsManifest(ctx, p)
+	k, ok := m[strings.ToLower(name)]
+	if m != nil && !ok {
+		skillsMu.Lock()
+		for key := range skillsCache {
+			if strings.HasPrefix(key, core.PathKey(p)+"|") {
+				delete(skillsCache, key)
+			}
+		}
+		skillsMu.Unlock()
+		m = skillsManifest(ctx, p)
+		k, ok = m[strings.ToLower(name)]
+	}
+	return m, k, ok
 }
 
 // consentReason: why the player is asked before a UnitySkills operation runs ("" = it just runs). What only
@@ -200,9 +244,14 @@ func consentReason(m map[string]skillInfo, name string) string {
 	if m == nil {
 		return "无法读取 UnitySkills 的操作清单，不能判断该操作是否安全"
 	}
-	k, ok := m[name]
+	k, ok := m[strings.ToLower(name)]
 	if !ok {
-		return "" // not a skill: UnitySkills will say so
+		// not a skill of the manifest (skillFor read it anew): UnitySkills has none under that name in any case —
+		// near names it only suggests — and says so. A name that looks risky is asked about all the same.
+		if riskySkill(name) {
+			return "UnitySkills 的操作清单中没有该操作；从名称判断，可能删除、保存或覆盖内容"
+		}
+		return ""
 	}
 	if k.ReadOnly {
 		return ""
@@ -252,6 +301,28 @@ func riskySkill(name string) bool {
 	return false
 }
 
+// askedEveryTime: operations a 「本次对话始终允许」 does not cover, so that one yes is one call: what UnitySkills
+// says deletes, runs commands, may enter Play mode or reloads scripts, and by the name what deletes, saves, writes
+// scripts or code, runs menu items or code, loads, creates or unloads a scene, or enters Play mode.
+func askedEveryTime(k skillInfo, name string) bool {
+	for _, op := range k.Operation {
+		if op == "Delete" || op == "Execute" {
+			return true
+		}
+	}
+	if k.MayPlay || k.MayReload {
+		return true
+	}
+	n := strings.ToLower(name)
+	for _, w := range []string{"delete", "remove", "destroy", "save", "script_", "_script", "_code", "code_", "csharp", "execute", "invoke", "menu",
+		"scene_load", "scene_open", "scene_new", "scene_create", "scene_unload", "editor_play", "playmode", "play_mode"} {
+		if strings.Contains(n, w) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *aiSession) snapshot() (bool, []AIStep, int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -264,7 +335,7 @@ func (s *aiSession) reset() {
 	if s.busy {
 		return
 	}
-	s.steps, s.turns, s.changes, s.fixes, s.allowAll, s.soft = nil, nil, nil, 0, false, 0
+	s.steps, s.turns, s.changes, s.fixes, s.allowOps, s.soft = nil, nil, nil, 0, nil, 0
 	s.rec = runRecord{}
 	s.used.reset()
 }
@@ -586,16 +657,18 @@ func (s *aiSession) runTool(ctx context.Context, name string, a map[string]any) 
 		if !known {
 			return fail(errors.New("没有这项一键处理：" + kind))
 		}
+		// the same gate as a risky UnitySkills operation: the player says yes first, and 「本次对话始终允许」 covers
+		// this fix only. Removing components whose script is missing is asked every time: what it removes cannot
+		// be told from a plugin that is only not installed, and is lost for good once the scene is saved
+		op := "fix:" + kind
+		if kind == "missing" {
+			op = ""
+		}
 		s.mu.Lock()
-		allowed := s.allowAll
+		allowed := op != "" && s.allowOps[op]
 		s.mu.Unlock()
-		// the same gate as a risky UnitySkills operation: the player says yes first. Removing components whose
-		// script is missing is asked every time, 「本次对话始终允许」 or not: what it removes cannot be told from
-		// a plugin that is only not installed, and is lost for good once the scene is saved
-		if !allowed || kind == "missing" {
-			if !s.confirm(ctx, "AI 请求执行体检的一键处理「"+label+"」\n"+fixAsk(p, kind, a)) {
-				return "玩家没有同意执行这个操作。不要换别的办法去做同一件事；先问玩家想怎么办。", "未获允许，未执行", false
-			}
+		if !allowed && !s.confirm(ctx, "AI 请求执行体检的一键处理「"+label+"」\n"+fixAsk(p, kind, a), op) {
+			return "玩家没有同意执行这个操作。不要换别的办法去做同一件事；先问玩家想怎么办。", "未获允许，未执行", false
 		}
 		args := map[string]any{"avatar": argStr(a, "avatar")}
 		if ps := argStrs(a, "paths"); len(ps) > 0 {
@@ -808,25 +881,35 @@ func (s *aiSession) runTool(ctx context.Context, name string, a map[string]any) 
 	case "unity_skill":
 		args, _ := a["args"].(map[string]any)
 		skill := argStr(a, "name")
-		shot := screenshotSkills[skill] // only looks; its picture goes to Assets/Screenshots
+		man, k, known := skillFor(ctx, p, skill)
+		if known { // UnitySkills runs a name in any case: what is sent is what the gate looked at, in its own spelling
+			skill = k.Name
+		}
+		shot := screenshotSkills[strings.ToLower(skill)] // only looks; its picture goes to Assets/Screenshots
 		if shot {
+			skill = strings.ToLower(skill)
 			args = screenshotArgs(skill, args)
 		}
-		s.mu.Lock()
-		allowed := s.allowAll
-		s.mu.Unlock()
-		man := skillsManifest(ctx, p)
-		if why := consentReason(man, skill); why != "" && !allowed && !shot {
-			j, _ := json.Marshal(args)
-			if r := []rune(string(j)); len(r) > 300 {
-				j = []byte(string(r[:300]) + "…")
+		if why := consentReason(man, skill); why != "" && !shot {
+			op := strings.ToLower(skill) // what a 「本次对话始终允许」 covers: this operation, unless it is asked every time
+			if !known || askedEveryTime(k, skill) {
+				op = ""
 			}
-			q := "AI 请求在 Unity 中执行「" + skill + "」"
-			if len(args) > 0 {
-				q += "：" + string(j)
-			}
-			if !s.confirm(ctx, q+"\n"+why+"。") {
-				return "玩家没有同意执行这个操作。不要换别的办法去做同一件事；先问玩家想怎么办。", "未获允许，未执行", false
+			s.mu.Lock()
+			allowed := op != "" && s.allowOps[op]
+			s.mu.Unlock()
+			if !allowed {
+				j, _ := json.Marshal(args)
+				if r := []rune(string(j)); len(r) > 300 {
+					j = []byte(string(r[:300]) + "…")
+				}
+				q := "AI 请求在 Unity 中执行「" + skill + "」"
+				if len(args) > 0 {
+					q += "：" + string(j)
+				}
+				if !s.confirm(ctx, q+"\n"+why+"。", op) {
+					return "玩家没有同意执行这个操作。不要换别的办法去做同一件事；先问玩家想怎么办。", "未获允许，未执行", false
+				}
 			}
 		}
 		raw, good, err := unity.SkillsCallRaw(ctx, p, skill, args)
@@ -856,7 +939,7 @@ func (s *aiSession) runTool(ctx context.Context, name string, a map[string]any) 
 			return out + "\n（没有拿到截图的图片数据。）", "未获取到截图", true
 		}
 		// only what Ctrl+Z takes back is counted: not a look, not a change to the project's files alone
-		if k, known := man[skill]; !known || (!k.ReadOnly && (k.MutatesScene || !k.MutatesAssets)) {
+		if !known || (!k.ReadOnly && (k.MutatesScene || !k.MutatesAssets)) {
 			s.changed(true)
 			s.did(func(d *runDone) { d.skills++ })
 		}
@@ -1185,6 +1268,34 @@ func pipelineTask(assets []aiAsset, hierarchy, extra string) string {
 	return b.String()
 }
 
+// How long UnitySkills' server is wanted at a time while a run goes on (renewed every third of that), and how
+// long at most it stays up after the run: the next message soon after finds it running.
+var skillsLease, skillsGrace = unity.SkillsLease, 2 * time.Minute
+
+// keepSkills keeps the project's UnitySkills server wanted while ctx lasts. What it returns is called once ctx is
+// done: it waits for the renewals to end and leaves the server up for skillsGrace more.
+func keepSkills(ctx context.Context, p string) (leave func()) {
+	unity.WantSkills(p, skillsLease)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		t := time.NewTicker(skillsLease / 3)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				unity.WantSkills(p, skillsLease)
+			}
+		}
+	}()
+	return func() {
+		<-done
+		unity.SkillsDone(p, skillsGrace)
+	}
+}
+
 func startAIRun(st *core.Store, req aiRunReq) error {
 	s := aiSessionFor(req.Project)
 	s.mu.Lock()
@@ -1231,17 +1342,51 @@ func startAIRun(st *core.Store, req aiRunReq) error {
 		_ = aiSave("", "", "", nil, &h)
 	}
 	s.add(AIStep{Kind: "user", Text: text})
+	// the log: one line as a run begins and one as it ends — what it was, not what was said in it
+	what, how, began := "AI 对话", "不使用 AI", time.Now()
+	if req.Mode == "dress" {
+		what = fmt.Sprintf("流水线（%d 个素材）", len(req.Assets))
+	}
+	if client != nil {
+		how = client.info.Label + " " + client.model
+	}
+	core.Logf("%s开始：工程 %s，%s", what, filepath.Base(req.Project), how)
+	before := s.used.view()
+	// UnitySkills is among the AI's tools in a conversation (in the line's, for what the player added): its server
+	// is asked for as the run begins, and starts while the AI thinks
+	skills := client != nil && (req.Mode != "dress" || strings.TrimSpace(req.Text) != "") && unity.HasSkills(req.Project)
 	go func() {
+		var err error
+		leave := func() {} // (keepSkills)
 		defer func() {
 			if r := recover(); r != nil {
 				s.add(AIStep{Kind: "error", Text: fmt.Sprint("程序内部错误：", r)})
+				err = fmt.Errorf("程序内部错误：%v", r)
 			}
+			stopped := ctx.Err() != nil // (the player's 「停止」, before the run's own end cancels it below)
 			cancel()
+			leave()
+			end := fmt.Sprintf("用时 %s", (time.Since(began) / time.Second * time.Second).String())
+			if client != nil {
+				d := s.used.view().minus(before)
+				end += fmt.Sprintf("，AI 请求 %d 次，%s tokens", d.Calls, tokText(d.Tokens))
+			}
+			switch {
+			case err == nil:
+				core.Logf("%s完成：工程 %s，%s", what, filepath.Base(req.Project), end)
+			case stopped:
+				core.Logf("%s已停止：工程 %s，%s", what, filepath.Base(req.Project), end)
+			default:
+				core.Logf("%s中断：工程 %s，%s：%s", what, filepath.Base(req.Project), end, core.Truncate(strings.ReplaceAll(err.Error(), "\n", " "), 300))
+			}
+			// last: whoever waits for the run to end finds all of it done, its line in the log too
 			s.mu.Lock()
 			s.busy, s.cancel = false, nil
 			s.mu.Unlock()
 		}()
-		var err error
+		if skills {
+			leave = keepSkills(ctx, req.Project)
+		}
 		if req.Mode == "dress" { // what was just imported is on disk; Unity reads it in now
 			s.add(AIStep{Kind: "tool", Tool: "refresh", Text: "刷新 Unity 资源以加载新导入的文件", Busy: true})
 			if _, err = unity.BridgeCall(ctx, s.project, "refresh", map[string]any{}, 10*time.Minute); err == nil {
@@ -1253,7 +1398,6 @@ func startAIRun(st *core.Store, req aiRunReq) error {
 		case client == nil:
 			err = quickPipeline(ctx, st, s, req.Assets, hierarchy, nil, text)
 		default:
-			before := s.used.view()
 			if req.Mode == "dress" { // the program does the line, the AI what takes judgement (menuplan.go)
 				err = quickPipeline(ctx, st, s, req.Assets, hierarchy, client, text)
 				if err != nil && ctx.Err() == nil { // the conversation knows where it stopped
@@ -1387,12 +1531,14 @@ func (s *aiSession) converse(ctx context.Context, c *aiClient, text, hierarchy s
 			if m := moneyText(used.Cost); m != "" {
 				q = fmt.Sprintf("本次运行已用 %s tokens（约 %s），达到单次运行的上限 %s。继续运行吗？", tokText(used.Tokens), m, tokText(limit))
 			}
-			if !s.ask(ctx, q, "budget") {
+			core.Logf("AI 用量到达单次运行上限（%s tokens），询问玩家是否继续", tokText(limit))
+			if !s.ask(ctx, q, "budget", "") {
 				if ctx.Err() != nil {
 					return errors.New("已停止")
 				}
 				return fmt.Errorf("已按单次运行的用量上限停止（已用 %s tokens）。可在「用量」明细中调整上限；发送消息可让 AI 接着做", tokText(used.Tokens))
 			}
+			core.Logf("玩家选择继续运行")
 			limit += budget
 		}
 		s.agePictures()

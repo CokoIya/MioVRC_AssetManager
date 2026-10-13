@@ -63,7 +63,6 @@ var (
 	mu      sync.Mutex
 	jobs    []*Job
 	running bool
-	lastID  int64
 
 	// what the work is made of (tests put their own in)
 	queueBooth  = purchases.QueueDownloads
@@ -223,17 +222,13 @@ func enqueue(st *core.Store, j *Job) (*Job, error) {
 		}
 		i++
 	}
-	j.ID = time.Now().UnixNano()
-	if j.ID <= lastID {
-		j.ID = lastID + 1
-	}
-	lastID = j.ID
-	j.Stage, j.Msg, j.Started = "queued", "排队中", time.Now().Unix()
+	j.ID, j.Stage, j.Msg, j.Started = time.Now().UnixNano(), "queued", "排队中", time.Now().Unix()
 	j.ctx, j.cancel = context.WithCancel(context.Background())
 	jobs = append(jobs, j)
 	start := !running
 	running = true
 	c := *j
+	c.Projects = append([]ProjectRun(nil), j.Projects...) // (the worker writes the job's own while the window encodes this)
 	mu.Unlock()
 	core.BumpRev()
 	if start {
@@ -594,7 +589,7 @@ func payloads(places []string) map[string]fileMark {
 				return nil
 			}
 			if d.IsDir() {
-				if strings.HasSuffix(d.Name(), ".extracting") {
+				if strings.HasSuffix(d.Name(), ".extracting") || strings.HasSuffix(d.Name(), ".joining") { // (an unpack under way works in it)
 					return filepath.SkipDir
 				}
 				return nil
@@ -622,7 +617,7 @@ func freshPayloads(before map[string]fileMark, places []string) []string {
 				return nil
 			}
 			if d.IsDir() {
-				if strings.HasSuffix(d.Name(), ".extracting") {
+				if strings.HasSuffix(d.Name(), ".extracting") || strings.HasSuffix(d.Name(), ".joining") { // (an unpack under way works in it)
 					return filepath.SkipDir
 				}
 				return nil

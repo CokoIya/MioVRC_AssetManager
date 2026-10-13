@@ -248,7 +248,7 @@ func TestArcToolArgs(t *testing.T) {
 	_ = os.WriteFile(zp, legacyZip(t, "a.txt", "b.txt", "a.txt"), 0644)
 	out := filepath.Join(dir, "out")
 	_ = os.MkdirAll(out, 0755)
-	if err := runArcTool(arcTool{Kind: "7z", exe: p, Name: "7-Zip"}, zp, out, "", 0); err != nil {
+	if err := runArcTool(arcTool{Kind: "7z", exe: p, Name: "7-Zip"}, archiveSet{Main: zp, Parts: []string{zp}, Name: "twice"}, out, "", 0); err != nil {
 		t.Fatal(err)
 	}
 	if got := testkit.ListTree(out); len(got) != 3 {

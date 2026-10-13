@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -98,7 +99,7 @@ func (d *cdpDriver) Reconnect() error {
 			}
 		}
 		if pick != nil {
-			if c, err := cdpDial(pick.WSURL, 6*time.Second); err == nil {
+			if c, err := cdpDial(pick.WSURL, d.port, 6*time.Second); err == nil {
 				d.c = c
 				return nil
 			}
@@ -236,7 +237,12 @@ func StartFirefoxDriver(exe, profile, startURL string, extra []string) (*bidiDri
 		}
 		return nil, errors.New("Firefox 未开启远程接口（可能已有使用相同配置的 Firefox 窗口正在运行）")
 	}
-	c, err := cdpDial(strings.TrimRight(ws, "/")+"/session", 10*time.Second)
+	// the port it says it listens on: the connection goes there on this computer, nowhere else (devToolsAddr)
+	port := 0
+	if u, err := url.Parse(ws); err == nil {
+		port, _ = strconv.Atoi(u.Port())
+	}
+	c, err := cdpDial(strings.TrimRight(ws, "/")+"/session", port, 10*time.Second)
 	if err != nil {
 		_ = cmd.Process.Kill() // nobody else will end the browser that was started for this
 		return nil, err

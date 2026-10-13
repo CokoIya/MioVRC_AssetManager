@@ -653,7 +653,7 @@ func downloadJob(ctx context.Context, st *core.Store, j *DLJob) error {
 	}
 	PinDownloadDir(st, dir)
 	setJob(j, func(j *DLJob) { j.Name = name })
-	dst := freePlace(j, folder, name)
+	dst := freePlace(j, folder, name, earlierFiles(st, j))
 	err = fetchFile(ctx, st, cdn, dst, j)
 	if errors.Is(err, errStaleURL) && ctx.Err() == nil {
 		// the file's address is only good for a while: ask for it again and go on from what is here
@@ -682,8 +682,9 @@ func downloadJob(ctx context.Context, st *core.Store, j *DLJob) error {
 	// (PSD packs in the main zip …). Only the files these downloads brought are unpacked and, unless they are
 	// kept, removed: the folder may hold what the player keeps there — an earlier version, still packed
 	if !moreOfItem(j) {
-		var arcs []string
-		for _, f := range itemFiles(j, dst) { // (this round of the item's downloads is over, unpacked or not)
+		files := itemFiles(j, dst) // (this round of the item's downloads is over, unpacked or not)
+		var arcs, unpacked, from []string
+		for _, f := range files {
 			if extract && archive.IsArchiveFile(f) {
 				arcs = append(arcs, f)
 			}
@@ -695,17 +696,19 @@ func downloadJob(ctx context.Context, st *core.Store, j *DLJob) error {
 			if !keep {
 				remove = archive.RemoveFiles
 			}
-			res := archive.UnpackFiles(arcs, "", remove, nil)
+			res := archive.UnpackFiles(withEarlierVolumes(st, j, arcs), "", remove, nil)
 			for a, e := range res.Failed {
 				core.Logf("解压失败 %s: %s", a, e)
 			}
+			unpacked, from = res.Done, res.From
 		}
+		keepForImport(j, broughtPaths(files, unpacked, from))
 	}
 	st.Mu.Lock()
 	if st.Downloaded == nil {
 		st.Downloaded = map[string]*core.DLRecord{}
 	}
-	st.Downloaded[j.ID] = &core.DLRecord{Item: j.Item, Path: final, At: time.Now().Unix()}
+	st.Downloaded[j.ID] = &core.DLRecord{Item: j.Item, Path: final, File: dst, At: time.Now().Unix()}
 	st.Mu.Unlock()
 	_ = st.Save()
 	setJob(j, func(j *DLJob) { j.Status, j.Path, j.Err = "done", final, "" })
@@ -720,9 +723,14 @@ func downloadJob(ctx context.Context, st *core.Store, j *DLJob) error {
 // earlier version, a download kept packed, the player's own — is never replaced: the new one goes next to it
 // under a name of its own ("Dress (2).zip"). The number goes before what makes a file a volume, and is the
 // same for every volume of a set ("Dress (2).part1.rar", "Dress (2).part2.rar"), so the set still opens; the
-// item's own files of this round of downloads are not in the way of each other.
-func freePlace(j *DLJob, folder, name string) string {
+// item's own files of this round of downloads are not in the way of each other, nor are earlier (the files
+// that earlier downloads of the item brought of what it offers now: a volume fetched again after it failed
+// joins the volumes that came before it).
+func freePlace(j *DLJob, folder, name string, earlier map[string]bool) string {
 	mine := map[string]bool{}
+	for k := range earlier {
+		mine[k] = true
+	}
 	dlMu.Lock()
 	for _, o := range dlJobs {
 		if o.file != "" && sameItem(j, o) {
@@ -794,13 +802,126 @@ func moreOfItem(j *DLJob) bool {
 
 var (
 	pendMu      sync.Mutex
-	pendImports = map[string]unity.ImportReq{} // Booth item id → where to import it
+	pendImports = map[string]unity.ImportReq{} // Booth item id → where to import it (Paths: what its downloads brought so far)
+	startImport = unity.StartImportWhenFree    // (tests put their own here)
 )
 
 func SetPendingImport(item string, req unity.ImportReq) {
 	pendMu.Lock()
 	pendImports[item] = req
 	pendMu.Unlock()
+}
+
+// broughtPaths: what a round of an item's downloads brought, as the import that waits for it takes it — the
+// folders its archives were unpacked to (the outermost: what was unpacked inside one is in it), and its files
+// that are not in one of those: a file that is no archive, an archive kept packed or one that did not unpack
+// (the import unpacks it). An archive that was unpacked and kept is left out with its volumes: its folder
+// stands for it.
+func broughtPaths(files, unpacked, from []string) []string {
+	made := map[string]bool{}
+	for _, f := range from {
+		made[core.PathKey(f)] = true
+	}
+	inFolder := map[string]bool{}
+	for _, s := range archive.Sets(files) {
+		if made[core.PathKey(s.Main)] {
+			for _, p := range s.Parts {
+				inFolder[core.PathKey(p)] = true
+			}
+		}
+	}
+	var out []string
+	for _, d := range unpacked {
+		inside := false
+		for _, o := range out {
+			inside = inside || core.UnderDir(d, o)
+		}
+		if !inside && core.IsDir(d) {
+			out = append(out, d)
+		}
+	}
+	for _, f := range files {
+		if !inFolder[core.PathKey(f)] && core.StatOK(f) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// earlierFiles: the files earlier downloads of j's item brought that are still there, of what the item offers
+// now (by PathKey). A file the seller has since replaced is not among them: it is an earlier version's.
+func earlierFiles(st *core.Store, j *DLJob) map[string]bool {
+	out := map[string]bool{}
+	if j.Item == "" {
+		return out
+	}
+	st.Mu.RLock()
+	defer st.Mu.RUnlock()
+	offered := map[string]bool{}
+	if p := st.Purchases[j.Item]; p != nil {
+		for _, d := range p.Downloads {
+			offered[d] = true
+		}
+	}
+	for id, r := range st.Downloaded {
+		if r != nil && id != j.ID && r.Item == j.Item && r.File != "" && offered[id] && core.StatOK(r.File) {
+			out[core.PathKey(r.File)] = true
+		}
+	}
+	return out
+}
+
+// withEarlierVolumes: arcs, with the volumes of their sets that earlier downloads of the item brought and that are
+// still there — the first part of a set fetched in a round of its own, before the player fetched the rest (「缺少后面的
+// 分卷」). Those are this program's downloads too: unpacked with the set, and removed with it.
+func withEarlierVolumes(st *core.Store, j *DLJob, arcs []string) []string {
+	var earlier []string
+	st.Mu.RLock()
+	for id, r := range st.Downloaded {
+		if r != nil && id != j.ID && r.Item == j.Item && r.File != "" && archive.IsArchiveFile(r.File) {
+			earlier = append(earlier, r.File)
+		}
+	}
+	st.Mu.RUnlock()
+	have, dirs := map[string]bool{}, map[string]bool{}
+	for _, a := range arcs {
+		have[core.PathKey(a)], dirs[core.PathKey(filepath.Dir(a))] = true, true
+	}
+	var more []string
+	for _, f := range earlier {
+		if !have[core.PathKey(f)] && dirs[core.PathKey(filepath.Dir(f))] && core.StatOK(f) {
+			more = append(more, f)
+		}
+	}
+	if len(more) == 0 {
+		return arcs
+	}
+	out := append([]string(nil), arcs...)
+	for _, s := range archive.Sets(append(append([]string(nil), arcs...), more...)) {
+		ours := false // a set of this round's: an earlier archive of its own stays as it is
+		for _, p := range s.Parts {
+			ours = ours || have[core.PathKey(p)]
+		}
+		for _, p := range s.Parts {
+			if ours && !have[core.PathKey(p)] {
+				have[core.PathKey(p)] = true
+				out = append(out, p)
+			}
+		}
+	}
+	return out
+}
+
+// keepForImport keeps what a round of the item's downloads brought for the import that waits for the item; none
+// waiting, nothing is kept. (Another file of the item queued while this round was unpacked puts the import off
+// until that one is here: the rounds' paths add up.)
+func keepForImport(j *DLJob, paths []string) {
+	pendMu.Lock()
+	defer pendMu.Unlock()
+	if req, ok := pendImports[j.Item]; ok && j.Item != "" {
+		req.Paths = append(req.Paths, paths...)
+		pendImports[j.Item] = req
+	}
 }
 
 func importAfterDownload(st *core.Store, j *DLJob, folder string) {
@@ -811,8 +932,20 @@ func importAfterDownload(st *core.Store, j *DLJob, folder string) {
 	if !ok || j.Item == "" {
 		return
 	}
-	req.Key, req.Paths = "purchase:"+j.Item, []string{folder}
-	unity.StartImportWhenFree(st, req)
+	// only what the downloads brought: the item's folder may hold what the player keeps packed there — an
+	// earlier version, a download kept packed with 「不自动解压」 — which the import would unpack and put in the
+	// Recycle Bin
+	var paths []string
+	for _, p := range req.Paths {
+		if core.StatOK(p) {
+			paths = append(paths, p)
+		}
+	}
+	if len(paths) == 0 {
+		paths = []string{folder} // nothing of theirs to go by: the item's folder, as before
+	}
+	req.Key, req.Paths, req.Within = "purchase:"+j.Item, core.UniqStrings(paths), folder
+	startImport(st, req)
 }
 
 // dropPendingImport: the download failed, so the import it was waiting for is off.

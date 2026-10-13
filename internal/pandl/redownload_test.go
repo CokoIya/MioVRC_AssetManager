@@ -49,6 +49,7 @@ type fakeBaidu struct {
 	renamed  map[string]string      // a folder made under this path comes out under that one
 	lost     map[string]bool        // a folder made under this path is not there afterwards
 	refuse   func(name string) bool // a folder name refused (errno -7) besides those with characters outside the basic plane
+	deny     bool                   // files are not handed out: the login has run out
 }
 
 func (f *fakeBaidu) kids(m map[string]*bdNode, dir string) []map[string]any {
@@ -183,6 +184,11 @@ func (f *fakeBaidu) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		reply(map[string]any{"errno": 0, "status": "success"})
 	case "/rest/2.0/pcs/file":
 		n := f.disk[r.Form.Get("path")]
+		if f.deny {
+			w.WriteHeader(403)
+			fmt.Fprint(w, `{"error_code":31045,"error_msg":"user not exists"}`)
+			return
+		}
 		if n == nil {
 			w.WriteHeader(404)
 			return
@@ -329,6 +335,53 @@ func TestRedownloadPickedFile(t *testing.T) {
 	}
 	if a, _ := os.ReadFile(filepath.Join(j.Dir, "a.zip")); !bytes.Equal(a, bigger) {
 		t.Errorf("a.zip on this disk: %d bytes", len(a))
+	}
+}
+
+// A file the seller replaced goes from this disk at once, with all an earlier download of it left: its part and
+// the state of a download in pieces. That state, left alone, was of the same size and the same place in the
+// netdisk as the new file, and had it finished from a part made anew — zeros where it said the bytes were.
+func TestRedownloadDropsTheReplacedFilesState(t *testing.T) {
+	f, st := newFakeBaidu(t)
+	quickRetries(t)
+	old, changed := bytes.Repeat([]byte("A"), 100), bytes.Repeat([]byte("B"), 100)
+	f.share["/sh/Root"] = &bdNode{fsid: 1, dir: true, mtime: 10}
+	f.share["/sh/Root/a.zip"] = &bdNode{fsid: 2, data: old, mtime: 10}
+	run := func(id int64) (*PanJob, error) {
+		j := &PanJob{ID: id, Key: "pan:1Share", Title: "网盘分享 1Share", Stage: "save"}
+		return j, runPanJob(context.Background(), st, j)
+	}
+	j, err := run(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	local := filepath.Join(j.Dir, "a.zip")
+	part := local + ".part"
+	_ = os.WriteFile(part, old, 0644) // what a download of it in pieces that stopped left, half of it to come
+	if err := writeRangeState(part, &rangeState{Size: 100, Path: "/MioVRCA/Root/Root/a.zip", Pending: [][2]int64{{50, 100}}}); err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	f.clock += 100
+	f.share["/sh/Root/a.zip"] = &bdNode{fsid: 7, data: changed, mtime: f.clock}
+	f.deny = true // (the job stops at its download: what the replacement left is to be seen)
+	f.mu.Unlock()
+	if _, err := run(2); err == nil {
+		t.Fatal("the download was not refused")
+	}
+	for _, p := range []string{local, part, rangeStateFile(part)} {
+		if core.StatOK(p) {
+			t.Errorf("left of the replaced file: %s", filepath.Base(p))
+		}
+	}
+	f.mu.Lock()
+	f.deny = false
+	f.mu.Unlock()
+	if _, err := run(3); err != nil {
+		t.Fatal(err)
+	}
+	if a, _ := os.ReadFile(local); !bytes.Equal(a, changed) {
+		t.Errorf("a.zip on this disk: %q", a)
 	}
 }
 

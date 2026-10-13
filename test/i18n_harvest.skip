@@ -34,6 +34,10 @@ text internal/ai/pipeline.go \n注意：
 text internal/ai/aiagent.go （流水线在中途停止 # where a run stopped, for the conversation
 text internal/ai/aiagent.go 请按补充要求 # what the player added, to the AI
 text internal/pandl/pandl.go ，大文件分 # the speed in the log
+text internal/ai/aiagent.go AI 对话 # what a run was, in the log (1.7.13)
+func internal/unity/pkgpick.go skipText # what an import left out, in the log
+func internal/unity/pkgpick.go init # words looked for in names
+text internal/unity/pkgpick.go 対応
 text internal/ai/aiagent.go 错误： # the tool result as the model gets it; the player reads err.Error()
 text internal/ai/aiagent.go 玩家没有同意执行这个操作
 text internal/ai/aiagent.go 玩家停止了这次操作

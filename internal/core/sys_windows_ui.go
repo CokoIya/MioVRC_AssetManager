@@ -112,9 +112,13 @@ var (
 	iidIShellItem       = comGUID{0x43826d1e, 0xe718, 0x42ee, [8]byte{0xbc, 0x55, 0xa1, 0xe2, 0x61, 0xc3, 0x7b, 0xfe}}
 )
 
+// (The addresses below are of Windows' memory — a COM object, a string it allocated — not Go's: they are read
+// through the variable that holds them, the way go vet accepts.)
+
 func comCall(obj uintptr, idx int, args ...uintptr) uintptr {
-	vtbl := *(*uintptr)(unsafe.Pointer(obj))
-	fn := *(*uintptr)(unsafe.Pointer(vtbl + uintptr(idx)*unsafe.Sizeof(uintptr(0))))
+	vtbl := **(**uintptr)(unsafe.Pointer(&obj))
+	at := vtbl + uintptr(idx)*unsafe.Sizeof(uintptr(0))
+	fn := **(**uintptr)(unsafe.Pointer(&at))
 	r, _, _ := syscall.SyscallN(fn, append([]uintptr{obj}, args...)...)
 	return r
 }
@@ -122,7 +126,8 @@ func comCall(obj uintptr, idx int, args ...uintptr) uintptr {
 func utf16PtrString(p uintptr) string {
 	var buf []uint16
 	for i := uintptr(0); i < 32768; i++ {
-		c := *(*uint16)(unsafe.Pointer(p + i*2))
+		at := p + i*2
+		c := **(**uint16)(unsafe.Pointer(&at))
 		if c == 0 {
 			break
 		}
@@ -184,8 +189,6 @@ func pickFolderCOM(title, initial string) (string, error) {
 	defer procCoTaskMemFree.Call(psz)
 	return utf16PtrString(psz), nil
 }
-
-func psQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
 
 func powershell(script string) ([]byte, error) {
 	u := utf16.Encode([]rune(script))

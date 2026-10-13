@@ -3,10 +3,12 @@ package booth
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -337,7 +339,7 @@ func TestWishRoundOnceADay(t *testing.T) {
 		t.Fatal("by hand again within the hour")
 	}
 	// note and removal
-	if !WishNote("booth:103", "  wait for the sale  ") || WishNote("booth:999", "x") || WishSnapshot(st).Items[2].Note != "wait for the sale" {
+	if WishNote("booth:103", "  wait for the sale  ") != nil || WishNote("booth:999", "x") != errWishGone || WishSnapshot(st).Items[2].Note != "wait for the sale" {
 		t.Fatal("note")
 	}
 	if !WishRemove("booth:103") || WishRemove("booth:103") || len(WishSnapshot(st).Items) != 2 {
@@ -536,4 +538,95 @@ func TestWishImportWhileAsking(t *testing.T) {
 	wishLookMu.Lock() // the first look is over
 	wishLookMu.Unlock()
 	check("after the first look")
+}
+
+// wishlist.json is there but cannot be read (held by another program, no access): the list is not taken for
+// an empty one, nothing is written over the file, the window is told why where it can be (the log once), and
+// the file is read as it is once it can be.
+func TestWishListUnreadable(t *testing.T) {
+	st := testkit.NewStore(t)
+	WishReload()
+	t.Cleanup(WishReload)
+	mine := `{"ver":1,"items":[{"site":"booth","id":"101","title":"Mine","currency":"JPY","price":500,"added":1,"first":500,"low":500}]}`
+	p := wishPath()
+	if err := os.WriteFile(p, []byte(mine), 0644); err != nil {
+		t.Fatal(err)
+	}
+	var logged strings.Builder
+	old := core.Logger
+	core.Logger = log.New(&logged, "", 0)
+	defer func() { core.Logger = old }()
+	giveBack := testkit.Unreadable(t, p)
+	if _, err := WishAdd(st, WishSeed{ID: "102", Title: "Another"}); err == nil || !strings.Contains(err.Error(), "无法读取愿望单文件 wishlist.json") {
+		t.Errorf("added: %v", err)
+	}
+	if err := WishNote("booth:101", "x"); err == nil || !strings.Contains(err.Error(), "wishlist.json") {
+		t.Errorf("note: %v", err)
+	}
+	if _, err := WishStartRound(st); err == nil || !strings.Contains(err.Error(), "wishlist.json") {
+		t.Errorf("a round: %v", err)
+	}
+	if WishRemove("booth:101") || len(WishSnapshot(st).Items) != 0 {
+		t.Error("removed from a list that was not read")
+	}
+	WishSeen()
+	WishSetWatch(false)
+	WishTold(map[string]int64{"booth:101": 1})
+	giveBack()
+	if b, _ := os.ReadFile(p); string(b) != mine {
+		t.Fatalf("written over: %s", b)
+	}
+	if left, _ := filepath.Glob(p + ".*"); len(left) != 0 {
+		t.Errorf("files: %v", left)
+	}
+	if n := strings.Count(logged.String(), "wishlist.json 无法读取"); n != 1 {
+		t.Errorf("logged %d times:\n%s", n, logged.String())
+	}
+	// once it can be read: the list as it was, and changes are saved again
+	if s := WishSnapshot(st); len(s.Items) != 1 || s.Items[0].Title != "Mine" || !s.Watch {
+		t.Fatalf("read again: %+v", s)
+	}
+	if err := WishNote("booth:101", "mine"); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(p); !strings.Contains(string(b), `"note": "mine"`) {
+		t.Errorf("not saved: %s", b)
+	}
+}
+
+// A wishlist.json that cannot be parsed is moved out of the way before anything is written in its place —
+// and never onto one kept before.
+func TestWishListDamaged(t *testing.T) {
+	st := testkit.NewStore(t)
+	t.Cleanup(WishReload)
+	p := wishPath()
+	junk := []string{`{"ver":1,"items":[{"site":"booth","id":`, "\x00\x00\x00"}
+	for i, j := range junk {
+		if err := os.WriteFile(p, []byte(j), 0644); err != nil {
+			t.Fatal(err)
+		}
+		WishReload() // (as at a start)
+		if s := WishSnapshot(st); len(s.Items) != 0 || !s.Watch {
+			t.Fatalf("%d: %+v", i, s)
+		}
+		WishSetWatch(false) // something to save
+		if b, _ := os.ReadFile(p); !strings.Contains(string(b), `"noWatch": true`) {
+			t.Fatalf("%d: not saved: %s", i, b)
+		}
+	}
+	kept, _ := filepath.Glob(p + ".broken-*")
+	if len(kept) != len(junk) {
+		t.Fatalf("kept: %v", kept)
+	}
+	var got []string
+	for _, k := range kept {
+		b, _ := os.ReadFile(k)
+		got = append(got, string(b))
+	}
+	want := append([]string{}, junk...)
+	sort.Strings(got)
+	sort.Strings(want)
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("kept %q", got)
+	}
 }
