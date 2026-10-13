@@ -1,6 +1,6 @@
 """Mock of accounts.booth.pm library/orders pages for end-to-end tests (structure modelled on
 the current Booth markup used by BoothDownloader / booth-library-manager)."""
-import http.server, socketserver, urllib.parse, io, sys
+import http.server, socketserver, urllib.parse, io, json, os, sys
 from PIL import Image
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 47990
@@ -22,6 +22,27 @@ ORDERS = [  # id, date, items (None = list page does not show items)
     ("51000003", "2025/03/08", ["9000004", "9000005"]),
 ]
 ORDER_DETAIL = {"51000002": ["7770415", "9000003"]}
+
+# The items marked スキ！, as the list page (/wish_lists) reads them: /wish_list_name_items.json?page=N, 24 a page
+# (the shape recorded from a live session on 2026-07-22 by the BoothEnhanser extension, MIT). The first two are
+# in the library already (a netdisk share linked to 9100001) and bought (9000003). /mock/likes?n=…&fail=… sets
+# how many there are and how the list fails: 500, html (not JSON), shape (other JSON).
+WEB = os.environ.get("VRCLIB_BOOTH_WEB", f"http://127.0.0.1:{PORT + 1}")  # the stand-in for booth.pm, which has their pictures
+LIKES = {"n": 30, "fail": ""}
+LIKE_LOG = []
+
+
+def like_items():
+    named = [("9100001", "【8アバター対応】Moon Dress", "Luna Works", "lunaworks", 1500), ("9000003", "【8アバター対応】Moon Dress", "Luna Works", "lunaworks", 1500),
+             ("9100010", "ネル ヘア cloth set【Plum対応】", "neru shop", "neru", 800)]
+    made = [(str(9200001 + k), f"スキ商品 No.{k + 1}", "Like Shop", "likeshop", 500 + k * 100) for k in range(max(0, LIKES["n"] - len(named)))]
+    out = []
+    for iid, name, shop, sub, price in (named + made)[:LIKES["n"]]:
+        out.append({"id": int(iid), "name": name, "price": f"¥ {price:,}" + ("~" if iid == "9200002" else ""), "is_adult": False,
+                    "category": {"name": {"ja": "3D衣装", "en": "3D Clothing"}}, "shop": {"name": shop, "url": f"https://{sub}.booth.pm/"},
+                    "url": f"https://booth.pm/ja/items/{iid}", "thumbnail_image_urls": [f"{WEB}/thumb/{iid}.jpg"],
+                    "tracking_data": {"product_id": int(iid), "product_price": price, "product_brand": sub, "product_category": 209}})
+    return out
 
 
 def card(iid, it, n0):
@@ -122,6 +143,13 @@ class H(http.server.BaseHTTPRequestHandler):
                     self.wfile.write(b[i:i + (256 << 10)]); self.wfile.flush(); _t.sleep(0.25)
                 return
             return self.send(200, make_file(name), "application/octet-stream")
+        if u.path == "/mock/likes":
+            q = urllib.parse.parse_qs(u.query, keep_blank_values=True)  # (fail= : no failure)
+            if "n" in q:
+                LIKES["n"] = int(q["n"][0])
+            if "fail" in q:
+                LIKES["fail"] = q["fail"][0]
+            return self.send(200, json.dumps({"likes": LIKES, "asked": LIKE_LOG}), "application/json")
         if u.path == "/mock/autologin":  # off: the sign-in page waits for the player
             AUTO[0] = q.get("on", ["1"])[0] == "1"
             return self.send(200, "ok")
@@ -146,6 +174,18 @@ class H(http.server.BaseHTTPRequestHandler):
             nav = '<nav class="pager">' + "".join(f'<a class="nav-item" href="/library?page={p}">{p}</a>' for p in range(1, len(PAGES) + 1)) + \
                   f'<a class="nav-item last-page" href="/library?page={len(PAGES)}">»</a></nav>'
             return self.send(200, page_shell(body, nav))
+        if u.path == "/wish_list_name_items.json":
+            LIKE_LOG.append(page)
+            if LIKES["fail"] == "500":
+                return self.send(500, "{}", "application/json")
+            if LIKES["fail"] == "html":
+                return self.send(200, page_shell("<p>メンテナンス中</p>"))
+            if LIKES["fail"] == "shape":
+                return self.send(200, json.dumps({"item_ids": [], "wishlists_counts": {}}), "application/json")
+            items, per = like_items(), 24
+            pages = max(1, (len(items) + per - 1) // per)
+            return self.send(200, json.dumps({"items": items[(page - 1) * per:page * per], "pagination": {"current_page": page, "prev_page": page - 1 or None,
+                "next_page": page + 1 if page < pages else None, "limit_value": per, "total_pages": pages, "total_count": len(items)}}, ensure_ascii=False), "application/json; charset=utf-8")
         if u.path == "/library/gifts":
             body = "".join(card(i, it, int(i) * 10) for i, it in GIFTS.items()) if page == 1 else ""
             return self.send(200, page_shell(body))

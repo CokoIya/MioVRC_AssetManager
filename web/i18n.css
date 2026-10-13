@@ -80,3 +80,16 @@ html[lang=ja] .upnotes::before, html[lang=ja] ul.wn:first-of-type::before { cont
   html[lang=ja] .views button { padding: 0 4px; }
   html[lang=ja] .top select { width: 56px; }
 }
+
+/* Japanese in a Japanese font: the Chinese ones first in --font would draw kanji in their Chinese forms */
+html[lang=ja] { --font: "Yu Gothic UI", "Meiryo UI", "Meiryo", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans CJK JP", "Noto Sans JP", system-ui, sans-serif; }
+
+/* a card's 已购 badge is a longer word here (購入済み, Purchased): 使用中 beside it is shortened, not laid over it */
+.badge-bought ~ .badge-used { max-width: calc(100% - 100px); }
+html[lang=en] .badge-bought ~ .badge-used { max-width: calc(100% - 114px); }
+/* …and so is the chip of a cover that is only a preview out of a unitypackage (プレビュー, Preview) */
+.badge-prev ~ .badge-used { max-width: calc(100% - 92px); }
+html[lang=en] .badge-prev ~ .badge-used { max-width: calc(100% - 82px); }
+/* with 已购 too, the chip is under it: 使用中 keeps to 已购's width */
+.badge-bought ~ .badge-prev ~ .badge-used { max-width: calc(100% - 100px); }
+html[lang=en] .badge-bought ~ .badge-prev ~ .badge-used { max-width: calc(100% - 114px); }

@@ -1,6 +1,6 @@
 """Mock of Baidu share pages, Booth search/item JSON and Bing translator for end-to-end tests.
 Request/response shapes copied from the live services (checked 2026-10-01)."""
-import http.server, socketserver, urllib.parse, json, io, sys, html, os, hashlib, zipfile, tarfile, gzip, threading, time
+import http.server, socketserver, urllib.parse, json, io, sys, html, os, re, hashlib, zipfile, tarfile, gzip, threading, time
 from PIL import Image
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 47991
@@ -563,7 +563,8 @@ class H(http.server.BaseHTTPRequestHandler):
                 return self.send(429, "Too Many Requests", "text/plain")
             if pr.get("state") == "gone":
                 return self.send(404, "{}")
-            for v in list(HITS.values()) + [[x] for x in SYN.values()]:
+            liked = [(id_, f"スキ商品 No.{int(id_) - 9200000}", "likeshop", "Like Shop", "3D衣装", 500 + (int(id_) - 9200001) * 100)] if re.fullmatch(r"92\d{5}", id_) else []  # mockbooth's スキ
+            for v in list(HITS.values()) + [[x] for x in SYN.values()] + [liked]:
                 for h in v:
                     if h[0] != id_:
                         continue

@@ -23,11 +23,13 @@ function hitRate(u) {
   const all = (u.in || 0) + (u.hit || 0) + (u.write || 0);
   return all > 0 && u.hit > 0 ? Math.round(u.hit / all * 100) + "%" : "";
 }
-// a usage in short: the tokens, and about what they cost (or that a model has no price to count them at)
+// a usage in short: the tokens, and about what they cost (or that a model has no price to count them at, or that
+// they are on the player's ChatGPT plan)
 function usageShort(u) {
   u = u || {};
   const m = fmtMoney(u.cost), hr = hitRate(u);
-  return `<b>${fmtTok(u.tokens)}</b> tokens${m ? ` <span class="muted">≈ ${m}</span>` : ""}${u.unpriced && u.tokens ? ` <span class="muted small">${m ? "（部分模型未设置价格）" : "（未设置价格）"}</span>` : ""}${hr ? ` <span class="muted small"><span>缓存命中</span> ${hr}</span>` : ""}`;
+  const plan = u.plan ? ` <span class="muted small">${u.plan >= u.tokens ? "ChatGPT 套餐" : `<span>其中 ChatGPT 套餐</span> ${fmtTok(u.plan)}`}</span>` : "";
+  return `<b>${fmtTok(u.tokens)}</b> tokens${m ? ` <span class="muted">≈ ${m}</span>` : ""}${plan}${u.unpriced && u.tokens ? ` <span class="muted small">${m || u.plan ? "（部分模型未设置价格）" : "（未设置价格）"}</span>` : ""}${hr ? ` <span class="muted small"><span>缓存命中</span> ${hr}</span>` : ""}`;
 }
 // the pipeline's status line
 function aiUsageRow(row) {
@@ -102,7 +104,7 @@ function aiUsageOpenNow() { const m = $("#modal"); return m.classList.contains("
 function aiUsageCell(u) {
   if (!u || !u.tokens) return `<span class="muted">—</span>`;
   const m = fmtMoney(u.cost), hr = hitRate(u);
-  return `<b>${fmtTok(u.tokens)}</b><div class="sub">${m ? "≈ " + m : `<span>未设置价格</span>`}</div>${hr ? `<div class="sub"><span>缓存命中</span> ${hr}</div>` : ""}`;
+  return `<b>${fmtTok(u.tokens)}</b><div class="sub">${m ? "≈ " + m : u.plan && !u.unpriced ? `<span>ChatGPT 套餐</span>` : `<span>未设置价格</span>`}</div>${hr ? `<div class="sub"><span>缓存命中</span> ${hr}</div>` : ""}`;
 }
 function aiPriceHTML(p) {
   if (!p) return `<span class="muted">未设置价格</span>`;
@@ -113,7 +115,9 @@ function aiUsageDraw() {
   if (!aiUsageOpenNow() || !AIU.r) return;
   const r = AIU.r, ms = r.models || [];
   let bal = "";
-  if (r.balance) {
+  if (r.provider === "chatgpt") { // the plan's own usage and limits are ChatGPT's to show
+    bal = `<div class="aibal"><span class="k">ChatGPT 套餐</span><span class="muted small">套餐的用量和上限以 ChatGPT 中的显示为准</span><button class="linkbtn" data-link="gptusage">管理用量</button></div>`;
+  } else if (r.balance) {
     const b = AIU.bal;
     bal = `<div class="aibal"><span class="k">账户余额</span>${AIU.balBusy ? `<span class="muted">正在查询…</span>`
       : b ? `<b>${fmtMoney1(b.currency, b.total)}</b><span class="muted small"><span>${r.provider === "kimi" ? "其中代金券" : "其中赠送"}</span> ${fmtMoney1(b.currency, b.granted)}<span>${r.provider === "kimi" ? "，现金" : "，充值"}</span> ${fmtMoney1(b.currency, b.paid)}</span>${b.usable ? "" : `<span class="err small">余额不足，无法调用</span>`}`
@@ -123,7 +127,8 @@ function aiUsageDraw() {
   const rows = ms.map((m, i) => `<tr${m.provider === r.provider && m.model === r.model ? ` class="cur"` : ""}>
     <td><div data-i18n="off">${esc(m.model)}</div><div class="sub">${esc(m.label)}${m.provider === r.provider && m.model === r.model ? `<span>（当前使用）</span>` : ""}</div></td>
     <td class="r">${aiUsageCell(m.today)}</td><td class="r">${aiUsageCell(m.month)}</td><td class="r">${aiUsageCell(m.all)}</td>
-    <td class="prices">${aiPriceHTML(m.price)}<div class="sub">${m.price ? (m.builtin ? `<span>官方价格</span>` : `<span>自定义价格</span>`) : ""}<button class="linkbtn" data-aiu="edit" data-i="${i}">${m.price ? "修改" : "设置价格"}</button></div></td></tr>`).join("");
+    <td class="prices">${m.plan ? `<span class="muted">ChatGPT 套餐额度</span><div class="sub"><button class="linkbtn" data-link="gptusage">管理用量</button></div>`
+      : `${aiPriceHTML(m.price)}<div class="sub">${m.price ? (m.builtin ? `<span>官方价格</span>` : `<span>自定义价格</span>`) : ""}<button class="linkbtn" data-aiu="edit" data-i="${i}">${m.price ? "修改" : "设置价格"}</button></div>`}</td></tr>`).join("");
   const since = r.since ? new Date(r.since * 1000).toLocaleDateString() : "";
   $("#modal").innerHTML = `<div class="mhead">AI 用量与花费</div><div class="mbody aiuse">
     ${bal}
@@ -134,6 +139,7 @@ function aiUsageDraw() {
       <button class="btn small" data-aiu="budget">保存</button><span class="hint2"><span>一次运行用到上限时先暂停，询问是否继续；0 表示不限。</span></span></div>
     ${aiEvalHTML()}
     <p class="hint">金额按上表价格估算，仅供参考，以服务商的账单为准。DeepSeek 在北京时间工作日 9:00–12:00、14:00–18:00 为高峰时段，价格为其余时段的 2 倍，法定节假日也按高峰估算。其他服务商的价格请按其官网填写。</p>
+    ${ms.some(m => m.plan) ? `<p class="hint">「ChatGPT 账号」的用量计入你的 ChatGPT 套餐，不另外计费；此处的 tokens 仅为本软件的统计。</p>` : ""}
     ${r.pricesNote ? `<p class="hint">${esc(r.pricesNote)}</p>` : ""}
     ${since ? `<p class="hint"><span>统计开始于</span> ${esc(since)}</p>` : ""}
   </div><div class="mfoot">${ms.length ? `<button class="btn ghost" data-aiu="clear">清零统计</button>` : ""}<span class="spacer"></span><button class="btn" data-m="close">关闭</button></div>`;

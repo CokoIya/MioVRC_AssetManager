@@ -44,8 +44,11 @@ function ckNext(it) {
   if (i <= 0 || !it.tiers || it.tiers[i - 1] === undefined) return "";
   return `<span class="cknext"><span>下一档</span>${ckRank(RANKS[i - 1])}<span>≤ ${esc(ckNum(it.tiers[i - 1]))}</span></span>`;
 }
+// what a detail line names is an object, a texture or a menu of the avatar (left as it is), or one of these words of
+// the plugin's (said in the player's language)
+const CK_T = new Set(["参数资产中已有", "Modular Avatar 在构建时生成（估算）", "VRCFury 在构建时生成"]);
 function ckLine(l) {
-  return `<li${l.w ? ` class="w"` : ""}><span class="t" data-i18n="off">${esc(l.t)}</span>${l.m ? `<span class="m" data-i18n="off">${esc(l.m)}</span>` : ""}${l.n ? `<span class="n">${esc(l.n)}</span>` : ""}${
+  return `<li${l.w ? ` class="w"` : ""}><span class="t"${CK_T.has(l.t) ? "" : ` data-i18n="off"`}>${esc(l.t)}</span>${l.m ? `<span class="m" data-i18n="off">${esc(l.m)}</span>` : ""}${l.n ? `<span class="n">${esc(l.n)}</span>` : ""}${
     l.v !== undefined ? `<span class="n"><b>${esc(ckNum(l.v))}</b>${l.u ? `<span>${esc(l.u)}</span>` : ""}</span>` : ""}${l.f ? `<span class="f"><span>可能是</span><b data-i18n="off">${esc(l.f)}</b></span>` : ""}</li>`;
 }
 // one item with everything it has to say: the figure, the advice, the details to unfold

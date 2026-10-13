@@ -32,6 +32,7 @@ type ProjectCard struct {
 	CoverAt int64  `json:"coverAt,omitempty"`
 	Helper  bool   `json:"helper,omitempty"` // the cover package is in the project
 	Editor  bool   `json:"editor"`           // its Unity version is installed on this computer
+	Hidden  bool   `json:"hidden,omitempty"` // the player hid it (Settings.HiddenProjects)
 
 	Checkup *CheckupBrief `json:"checkup,omitempty"` // its last check-up, in short
 }
@@ -39,6 +40,10 @@ type ProjectCard struct {
 func ProjectCards(st *core.Store) []ProjectCard {
 	st.Mu.RLock()
 	ps := append([]core.ProjectInfo{}, st.Projects...)
+	hidden := map[string]bool{}
+	for _, h := range st.Settings.HiddenProjects {
+		hidden[core.PathKey(h)] = true
+	}
 	st.Mu.RUnlock()
 	eds := unityEditors()
 	out := make([]ProjectCard, 0, len(ps))
@@ -48,6 +53,7 @@ func ProjectCards(st *core.Store) []ProjectCard {
 		c.Helper = core.StatOK(filepath.Join(p.Path, "Packages", coverPkg, "package.json"))
 		c.Editor = c.Unity != "" && eds[c.Unity] != ""
 		c.Checkup = lastCheckupBrief(p.Path)
+		c.Hidden = hidden[core.PathKey(p.Path)]
 		out = append(out, c)
 	}
 	return out

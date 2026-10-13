@@ -39,6 +39,8 @@ type Settings struct {
 	XyExternal bool `json:"xyExternal"` // open them in the default browser, not in the window
 	XyNoticed  bool `json:"xyNoticed"`  // the note about how they open now has been read
 	NoXyClip   bool `json:"noXyClip"`   // do not offer the 闲鱼, Booth and netdisk links the player copies (named when it was the 闲鱼 tab's alone)
+	// projects the player hid on the 工程 page and in the pipeline (backups, copies hardly used): their paths
+	HiddenProjects []string `json:"hiddenProjects,omitempty"`
 }
 
 type Location struct {
@@ -163,6 +165,19 @@ type ProjectInfo struct {
 	Path   string `json:"path"`
 	Guids  int    `json:"guids"`
 	Assets int    `json:"assets"`
+}
+
+// UsageName: the name the usage records (Usage.Project) give the project at path — the one the last usage scan
+// gave it (a project in a folder of its own is named by its path below the project folder, "Manuka/v2"), its
+// folder's name for one that scan did not see. Caller holds st.Mu.
+func (st *Store) UsageName(path string) string {
+	k := PathKey(path)
+	for _, p := range st.Projects {
+		if PathKey(p.Path) == k && p.Name != "" {
+			return p.Name
+		}
+	}
+	return filepath.Base(path)
 }
 
 type Store struct {

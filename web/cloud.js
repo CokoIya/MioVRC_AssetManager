@@ -79,7 +79,7 @@ function cloudAddHook() {
     if (pwdRow) pwdRow.hidden = !!svc;
     if (bdNote) bdNote.hidden = !!svc;
     if (dl) {
-      if (svc && dl.disabled) { dl.disabled = false; dl.checked = true; }
+      if (svc && dl.disabled) { dl.disabled = false; dl.checked = panAddDl(); } // (as the player left it the last time)
       else if (!svc && !S.data.paneMode) { dl.disabled = true; dl.checked = false; }
     }
     if (note) note.textContent = svc ? `已识别 ${cloudName(svc)} 链接，下载无需登录` + (svc === "gd" ? "（中国大陆用户需在「设置」中填写代理）" : "") : "";

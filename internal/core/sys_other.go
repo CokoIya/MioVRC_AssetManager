@@ -4,6 +4,7 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 )
@@ -37,11 +38,18 @@ func CreateDesktopShortcut() (string, error) { return "", errors.New("仅支持 
 func Hidden(cmd *exec.Cmd) *exec.Cmd { return cmd }
 
 // OpenURL: nothing is opened outside Windows. What Windows would be given is logged, after the same check
-// (shellAddress).
+// (shellAddress) — and, for the tests that play the browser, written whole to VRCLIB_OPEN_FILE (the log masks a
+// link's query).
 func OpenURL(u string) error {
 	u, err := shellAddress(u)
 	if err == nil {
 		Logf("open url %s", u)
+		if f := os.Getenv("VRCLIB_OPEN_FILE"); f != "" {
+			if fh, e := os.OpenFile(f, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600); e == nil {
+				fmt.Fprintln(fh, u)
+				fh.Close()
+			}
+		}
 	}
 	return err
 }

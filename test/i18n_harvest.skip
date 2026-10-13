@@ -45,6 +45,8 @@ text internal/ai/aiagent.go \n（没有拿到截图的图片数据
 text internal/ai/ai.go 只回复两个字 # the test message sent to the model
 text internal/ai/ai.go （上面工具结果里说的截图
 text internal/ai/ai.go （没有内容）
+text internal/ai/chatgpt.go （上面工具结果里说的截图 # the same note on the ChatGPT plan's wire
+func internal/ai/chatgpt.go gptDonePage # the page the browser is left on after signing in to ChatGPT: in the three languages itself, never the program's window
 func internal/ai/aivision.go describePrompt
 func internal/ai/aivision.go aiSeesTest
 func internal/ai/aivision.go probeImage
