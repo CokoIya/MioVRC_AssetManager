@@ -226,6 +226,28 @@ func TestCoverBatch(t *testing.T) {
 	}
 }
 
+// An asset that shows only the preview out of its unitypackage (Unity's thumbnail of 128 px at most) is drawn by
+// the batch too, as one that shows nothing: the render replaces it. One with a picture of its own is left alone.
+func TestCoverBatchTakesPackagePreviews(t *testing.T) {
+	st, proj, _, _ := coverProject(t)
+	var img bytes.Buffer
+	_ = png.Encode(&img, image.NewRGBA(image.Rect(0, 0, 128, 128)))
+	dir := filepath.Join(core.DataDir, "covers", "unitypackage")
+	_ = os.MkdirAll(dir, 0755)
+	_ = os.WriteFile(filepath.Join(dir, "sailor.png"), img.Bytes(), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "bat.png"), img.Bytes(), 0644)
+	_ = os.WriteFile(filepath.Join(core.DataDir, "pkgcovers.json"), []byte(`{"version": 1, "covers": {
+		"name:sailor": {"file": "sailor.png", "package": "Sailor.unitypackage", "entry": "Assets/Shop/Sailor/Sailor_White.prefab"},
+		"name:bat": {"file": "bat.png", "package": "Bat.unitypackage", "entry": "Assets/Shop/Bat/Bat.prefab"}}}`), 0644)
+	if v := library.BuildView(st, st.Assets[0]); !v.CoverPkg {
+		t.Fatalf("the sailor does not show the preview: %q", v.Cover)
+	}
+	keys, _ := coverless(st, proj)
+	if !reflect.DeepEqual(keys, []string{"name:sailor"}) {
+		t.Errorf("assets drawn: %v (the sailor shows a preview, the bat a picture of its own)", keys)
+	}
+}
+
 // the AI's check-up tool: the answer in words, the count for the player, and no scene change counted
 func TestCheckupTool(t *testing.T) {
 	testkit.NewStore(t)

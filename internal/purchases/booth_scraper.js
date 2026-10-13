@@ -1,6 +1,6 @@
 // Runs inside the user's own logged-in accounts.booth.pm page (same origin), reads their
-// library / gifts / orders pages and leaves the result in window.__vrclibResult.
-// Parsing is structural (links + text) rather than tied to Booth's generated CSS classes.
+// library / gifts / orders pages (and, when asked, the items they marked スキ！) and leaves the result in
+// window.__vrclibResult. Parsing is structural (links + text) rather than tied to Booth's generated CSS classes.
 (() => {
   const P = window.__vrclib = window.__vrclib || {};
   const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -28,6 +28,22 @@
       if (!r.ok) throw new Error("HTTP " + r.status + " " + path);
       const html = await r.text();
       return new DOMParser().parseFromString(html, "text/html");
+    }
+    throw new Error("网络不稳定，页面加载失败：" + path);
+  }
+  // the same for a list Booth's own pages read as JSON
+  async function getJSON(path) {
+    for (let i = 0; i < 4; i++) {
+      let r;
+      try { r = await fetch(path, { credentials: "include", cache: "no-store", headers: { Accept: "application/json" } }); }
+      catch (e) { await sleep(1500 * (i + 1)); continue; }
+      try { if (/sign_in|\/login/.test(new URL(r.url).pathname)) throw new Error("LOGIN"); } catch (e) { if (e.message === "LOGIN") throw e; }
+      if (r.status === 404) return null;
+      // (the pages before it were read in this same login: a refusal here is not taken for a lost login)
+      if (r.status === 401 || r.status === 403) throw new Error("Booth 拒绝读取スキ列表（HTTP " + r.status + "）");
+      if (r.status === 429 || r.status >= 500) { await sleep(3000 * (i + 1)); continue; }
+      if (!r.ok) throw new Error("HTTP " + r.status + " " + path);
+      try { return await r.json(); } catch (e) { throw new Error("返回的不是 JSON：" + path); }
     }
     throw new Error("网络不稳定，页面加载失败：" + path);
   }
@@ -190,8 +206,35 @@
     return [...orders.values()];
   }
 
-  window.__vrclibRun = async () => {
-    Object.assign(P, { stage: "start", page: 0, items: 0, orders: 0, ordersTotal: 0, orderDone: 0, done: false, error: "", orderError: "" });
+  // The items the player marked スキ！, across all their スキリスト: the list Booth's own page of them
+  // (/wish_lists) reads, a page at a time — {items: [{id, name, price: "¥ 3,000~", url, shop: {name, url},
+  // thumbnail_image_urls: [...], ...}], pagination: {current_page, next_page, total_pages, total_count}}.
+  async function scrapeLikes() {
+    const items = new Map();
+    let total = 0;
+    for (let page = 1; page <= 250; page++) {
+      P.stage = "likes"; P.page = page;
+      const j = await getJSON("/wish_list_name_items.json?page=" + page);
+      if (!j && page === 1) throw new Error("未找到スキ列表");
+      if (!j) break;
+      if (!Array.isArray(j.items) || !j.pagination || typeof j.pagination !== "object") throw new Error("スキ列表的格式无法识别");
+      for (const x of j.items) {
+        const id = String((x && x.id) || "");
+        if (!/^\d{1,12}$/.test(id) || items.has(id)) continue;
+        const shop = x.shop || {}, thumbs = Array.isArray(x.thumbnail_image_urls) ? x.thumbnail_image_urls : [];
+        items.set(id, { id, name: norm(x.name), price: norm(x.price), shop: norm(shop.name), shopUrl: String(shop.url || ""), thumb: String(thumbs[0] || "") });
+      }
+      total = Math.max(total, +j.pagination.total_count || 0);
+      P.likes = items.size;
+      if (!j.pagination.next_page || items.size >= 5000) break;
+      await sleep(400);
+    }
+    return { likes: [...items.values()], likesTotal: Math.max(total, items.size) };
+  }
+
+  window.__vrclibRun = async opts => {
+    opts = opts || {};
+    Object.assign(P, { stage: "start", page: 0, items: 0, orders: 0, ordersTotal: 0, orderDone: 0, likes: 0, done: false, error: "", orderError: "" });
     window.__vrclibResult = null;
     gaps.length = 0;
     try {
@@ -203,7 +246,13 @@
         try { orders = await scrapeOrders(known); }
         catch (e) { if (e.message === "LOGIN") throw e; P.orderError = String(e.message || e); }
       }
-      window.__vrclibResult = JSON.stringify({ library, gifts, orders, orderError: P.orderError, incomplete: gaps.join("；"), debug: known.size ? "" : firstHTML });
+      // a list that cannot be read does not cost the purchases read above
+      let likes = { likesRead: false };
+      if (opts.likes) {
+        try { likes = Object.assign({ likesRead: true }, await scrapeLikes()); }
+        catch (e) { likes = { likesRead: false, likesError: String((e && e.message) || e) === "LOGIN" ? "未登录" : String((e && e.message) || e) }; }
+      }
+      window.__vrclibResult = JSON.stringify(Object.assign({ library, gifts, orders, orderError: P.orderError, incomplete: gaps.join("；"), debug: known.size ? "" : firstHTML }, likes));
       P.stage = "done";
     } catch (e) {
       P.error = String((e && e.message) || e);

@@ -1352,7 +1352,7 @@ func StartRecipeRun(st *core.Store, project, id string) error {
 		}()
 		if err := applyRecipe(ctx, st, s, r); err != nil {
 			s.finishStep(false, "已中断")
-			s.add(AIStep{Kind: "error", Text: s.abortText(err)})
+			s.add(AIStep{Kind: "error", Text: s.abortText(err), Code: aiErrCode(err)})
 		}
 	}()
 	return nil

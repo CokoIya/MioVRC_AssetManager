@@ -46,7 +46,7 @@ func TestNormBase(t *testing.T) {
 func TestAIConfigAndKeys(t *testing.T) {
 	core.DataDir = t.TempDir()
 	v := aiView()
-	if v.Ready || v.Provider != "" || v.Hierarchy != defaultHierarchy || len(v.Providers) != 6 {
+	if v.Ready || v.Provider != "" || v.Hierarchy != defaultHierarchy || len(v.Providers) != 7 {
 		t.Fatalf("fresh view %+v", v)
 	}
 	if v.Profiles["deepseek"].BaseURL != "https://api.deepseek.com" || v.Profiles["deepseek"].Model != "deepseek-flash" {
@@ -661,7 +661,7 @@ func TestQuickDress(t *testing.T) {
 	proj := t.TempDir()
 	u := &sceneUnity{}
 	unitytest.FakeUnity(t, proj, u.answer)
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	if err := startAIRun(st, aiRunReq{Project: proj, Mode: "dress", NoAI: true, Folders: []string{"Assets/Shop/SailorSet"}, Hierarchy: "主菜单 > 换装 > {衣服} > {开关}"}); err != nil {
 		t.Fatal(err)
 	}
@@ -726,7 +726,7 @@ func TestQuickPipelineKinds(t *testing.T) {
 		{Path: "Assets/_配饰/Glasses/glasses.prefab", Name: "glasses", Renderers: 1, MeshNames: []string{"Glasses"}},
 	}}
 	unitytest.FakeUnity(t, proj, u.answer)
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	req := aiRunReq{Project: proj, Mode: "dress", NoAI: true, Assets: []aiAsset{
 		{Folder: "Assets/_道具/Bat", Kind: "道具", Name: "球棒"},
 		{Folder: "Assets/IKUSIA/kaguya", Kind: "素体", Name: "辉夜"},
@@ -800,7 +800,7 @@ func TestQuickPipelineBaseSkipped(t *testing.T) {
 	proj := t.TempDir()
 	u := &sceneUnity{extra: []prefabInfo{{Path: "Assets/IKUSIA/kaguya/kaguya.prefab", Name: "kaguya", WholeAvatar: true, Renderers: 12}}}
 	unitytest.FakeUnity(t, proj, u.answer)
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	req := aiRunReq{Project: proj, Mode: "dress", NoAI: true, Hierarchy: "主菜单 > 衣服 > {衣服} > {开关}", Assets: []aiAsset{
 		{Folder: "Assets/IKUSIA/kaguya", Kind: "素体", Name: "辉夜"}, {Folder: "Assets/Shop/SailorSet", Kind: "衣服"}}}
 	if err := startAIRun(st, req); err != nil {
@@ -1019,7 +1019,7 @@ func testAIRun(t *testing.T, provider string) {
 	proj := t.TempDir()
 	u := &sceneUnity{}
 	unitytest.FakeUnity(t, proj, u.answer)
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	llm := &mockLLM{wire: aiProvider(provider).Wire, script: dressScript()}
 	srv := httptest.NewServer(llm)
 	defer srv.Close()
@@ -1152,7 +1152,7 @@ func TestAIRunPlanFallsBack(t *testing.T) {
 	proj := t.TempDir()
 	u := &sceneUnity{}
 	unitytest.FakeUnity(t, proj, u.answer)
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	llm := &mockLLM{wire: "openai", script: []mockTurn{{text: "我觉得应该这样分……"}, {text: planItems(true)}, {text: "好。"}, {text: "已把外套设为默认隐藏。"}}}
 	srv := httptest.NewServer(llm)
 	defer srv.Close()
@@ -1204,7 +1204,7 @@ func TestAIRunClaude(t *testing.T)   { testAIRun(t, "claude") }
 func TestAIServiceErrors(t *testing.T) {
 	st := testkit.NewStore(t)
 	proj := t.TempDir()
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	// nothing set up
 	if err := startAIRun(st, aiRunReq{Project: proj, Mode: "chat", Text: "hi"}); err == nil || !strings.Contains(err.Error(), "AI 服务") {
 		t.Errorf("no service: %v", err)
@@ -1276,7 +1276,7 @@ func TestAIRiskyConfirm(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	var mu sync.Mutex
 	var ran []string
 	skills := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1407,7 +1407,7 @@ func TestQuickDressUnknownBase(t *testing.T) {
 	proj := t.TempDir()
 	u := &sceneUnity{}
 	unitytest.FakeUnity(t, proj, u.answer)
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	if err := startAIRun(st, aiRunReq{Project: proj, Mode: "dress", NoAI: true, Folders: []string{"Assets/Shop/SailorSet"}, Hierarchy: "主菜单 > 换装 > {衣服} > {开关}"}); err != nil {
 		t.Fatal(err)
 	}
@@ -1484,7 +1484,7 @@ func TestQuickPipelineQuestProject(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(unity.BridgeDir(proj), "target"), []byte("quest"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	req := aiRunReq{Project: proj, Mode: "dress", NoAI: true, Assets: []aiAsset{{Folder: "Assets/IKUSIA/kaguya", Kind: "素体", Name: "辉夜"}}}
 	if err := startAIRun(st, req); err != nil {
 		t.Fatal(err)

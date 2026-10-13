@@ -138,7 +138,7 @@ func projectAssets(st *core.Store, project string) []ProjAsset {
 	byFolder := map[string]known{}
 	imported := loadAIConfig().Imported[core.PathKey(project)] // (it takes aiMu: before st.Mu, see aiMu)
 	st.Mu.RLock()
-	pname := filepath.Base(project)
+	pname := st.UsageName(project)
 	// the category and the base bodies as the library shows them (what the player set by hand counts)
 	record := func(a *core.Asset, source, folder string) known {
 		v := library.BuildView(st, a)

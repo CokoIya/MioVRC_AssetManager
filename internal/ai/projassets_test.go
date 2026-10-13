@@ -132,3 +132,48 @@ func TestProjectAssetsBesideAIView(t *testing.T) {
 		}
 	}
 }
+
+// A project in a folder of its own is named by its path below the project folder ("Manuka/v2"), and so are the
+// usage records of what it uses: the pipeline's list, the covers drawn in it and the drawer's Unity line find them
+// by that name — and a project of the same folder name elsewhere ("Manuka/v1" beside a top-level "v1") is not taken
+// for it.
+func TestNestedProjectName(t *testing.T) {
+	st := testkit.NewStore(t)
+	root := t.TempDir()
+	proj, other := filepath.Join(root, "Manuka", "v2"), filepath.Join(root, "v2")
+	for _, f := range []string{"Manuka/v2/Assets/Shop/Sailor/Sailor_White.prefab", "Manuka/v2/ProjectSettings/ProjectVersion.txt",
+		"v2/Assets/Shop/Hat/Hat.prefab", "v2/ProjectSettings/ProjectVersion.txt"} {
+		p := filepath.Join(root, filepath.FromSlash(f))
+		_ = os.MkdirAll(filepath.Dir(p), 0755)
+		_ = os.WriteFile(p, []byte("x"), 0644)
+	}
+	st.Projects = []core.ProjectInfo{{Name: "Manuka/v2", Path: proj}, {Name: "v2", Path: other}}
+	st.Assets = []*core.Asset{
+		{Key: "name:sailor", Name: "Sailor", Category: "衣服", Usage: []core.Usage{{Project: "Manuka/v2", Status: "used", Folder: "Assets/Shop/Sailor"}}},
+		{Key: "name:hat", Name: "Hat", Category: "配饰", Usage: []core.Usage{{Project: "v2", Status: "used", Folder: "Assets/Shop/Hat"}}},
+	}
+	got := map[string]string{}
+	for _, pa := range projectAssets(st, proj) {
+		got[pa.Folder] = pa.Key
+	}
+	if got["Assets/Shop/Sailor"] != "name:sailor" {
+		t.Errorf("the pipeline's list of the nested project: %v", got)
+	}
+	if keys, _ := coverless(st, proj); len(keys) != 1 || keys[0] != "name:sailor" {
+		t.Errorf("covers to draw in it: %v", keys)
+	}
+	if _, _, folders, _ := coverFolders(st, "name:sailor"); len(folders) != 1 || folders[0].project != proj {
+		t.Errorf("where the sailor is: %+v", folders)
+	}
+	if _, _, folders, _ := coverFolders(st, "name:hat"); len(folders) != 1 || folders[0].project != other {
+		t.Errorf("where the hat is: %+v", folders)
+	}
+	st.Mu.RLock()
+	defer st.Mu.RUnlock()
+	if n := st.UsageName(proj); n != "Manuka/v2" {
+		t.Errorf("name %q", n)
+	}
+	if n := st.UsageName(filepath.Join(root, "New")); n != "New" {
+		t.Errorf("a project no scan has seen: %q", n)
+	}
+}

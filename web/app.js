@@ -38,7 +38,7 @@ const linkBtns = cls => `<button class="${cls}" data-link="group" title="加入 
 
 const S = {
   data: null, rev: 0,
-  q: "", cat: "全部", style: "", recent: "", bases: new Set(), usage: "all", share: "all", root: "all", purchase: "all", showHidden: false, sort: "recent",
+  q: "", cat: "全部", style: "", recent: "", bases: new Set(), usage: "all", share: "all", root: "all", purchase: "all", link: "all", showHidden: false, sort: "recent",
   openKey: null, setup: null, bs: null, desc: {}, dirty: new Set(), coverPick: null, stylePick: null, groups: new Map(), panOpen: new Set(), panClosed: new Set(), panSel: new Set(),
   view: "lib", shopOpen: null, projs: null, pq: "",
   scrollAt: {}, // where each list was scrolled to (listKey)
@@ -179,7 +179,7 @@ function announceChanges(prev, list) {
   if (!nf && !nc) return;
   const show = what => () => { // only those, whatever else was filtered
     if (S.view !== "lib") setView("lib");
-    S.q = ""; $("#q").value = ""; S.cat = "全部"; S.style = ""; S.bases.clear(); S.usage = S.share = S.root = "all"; S.purchase = "all";
+    S.q = ""; $("#q").value = ""; S.cat = "全部"; S.style = ""; S.bases.clear(); S.usage = S.share = S.root = S.link = "all"; S.purchase = "all";
     S.recent = what; renderSide(); renderGrid(); $(".main").scrollTop = 0;
   };
   if (nf) {
@@ -197,6 +197,12 @@ function panNames(a) {
   walk(a.pan.files); return (a._panNames = out.join(" "));
 }
 function isLocal(a) { return !a.virtual && !a.panOnly; }
+// whose product page an asset is tied to: "linked" (Booth or Gumroad), "auto" (matched by its name, not confirmed
+// yet), "none" (the player said it is not from Booth) or "unlinked"
+function linkState(a) {
+  if (a.boothId) return a.boothSrc === "auto" ? "auto" : "linked";
+  return a.user && a.user.noBooth ? "none" : "unlinked";
+}
 function usedStatus(a) { return (a.usage || []).some(u => u.status === "used") ? "used" : (a.usage || []).length ? "partial" : ""; }
 function hasNews(a) { return !!(a.panNews || a.boothNews || a.newerOnBooth || a.shareErr); }
 function matches(a, skip = "") {
@@ -230,6 +236,7 @@ function matches(a, skip = "") {
     if (S.share === "panonly" && !a.panOnly) return false;
   }
   if (skip !== "root" && S.root !== "all" && !(a.locations || []).some(l => l.root === S.root)) return false;
+  if (skip !== "link" && S.link !== "all" && linkState(a) !== S.link) return false;
   return !S.q || qHit(a);
 }
 // The text a search looks through is put together once per asset (assets are new objects after every load), and
@@ -361,13 +368,21 @@ function renderSide() {
       navItem("非已购", other, S.purchase === "other", `data-purchase="other"`, "#6c7088");
   }
 
+  // which have a product page: the ones still to link, the matches to confirm, the ones that are not from Booth
+  const lb = all.filter(a => matches(a, "link")), lc = tally(lb, a => [linkState(a)]);
+  h += `<h3>Booth 关联</h3>` + navItem("全部", countUnits(lb), S.link === "all", `data-blink="all"`) +
+    navItem("已关联", lc.linked || 0, S.link === "linked", `data-blink="linked" title="已关联 Booth 或 Gumroad 商品页"`, "#3fd0a6") +
+    (lc.auto || S.link === "auto" ? navItem("待确认", lc.auto || 0, S.link === "auto", `data-blink="auto" title="按名称自动匹配，待确认"`, "#ffb547") : "") +
+    navItem("未关联", lc.unlinked || 0, S.link === "unlinked", `data-blink="unlinked"`, "#ff5a6a") +
+    (lc.none || S.link === "none" ? navItem("非 Booth 商品", lc.none || 0, S.link === "none", `data-blink="none"`, "#6c7088") : "");
+
   const ub = all.filter(a => matches(a, "usage"));
   const pc = tally(ub, a => (a.usage || []).map(u => u.project));
   const usedN = countUnits(ub.filter(a => usedStatus(a))), unusedN = countUnits(ub.filter(a => !usedStatus(a)));
   h += `<h3>使用情况</h3>` + navItem("全部", countUnits(ub), S.usage === "all", `data-usage="all"`) +
     navItem("使用中", usedN, S.usage === "used", `data-usage="used"`, "#3fd0a6") +
     navItem("未使用", unusedN, S.usage === "unused", `data-usage="unused"`, "#6c7088");
-  for (const p of (d.projects || [])) if (pc[p.name]) h += navItem(p.name, pc[p.name], S.usage === "p:" + p.name, `data-usage="p:${esc(p.name)}" data-i18n="off" title="${esc(p.name)}"`);
+  for (const p of (d.projects || [])) if (pc[p.name] && (!projHidden(p) || S.usage === "p:" + p.name)) h += navItem(p.name, pc[p.name], S.usage === "p:" + p.name, `data-usage="p:${esc(p.name)}" data-i18n="off" title="${esc(p.name)}"`);
 
   const sb = all.filter(a => matches(a, "share"));
   h += `<h3>网盘</h3>` + navItem("全部", countUnits(sb), S.share === "all", `data-share="all"`) +
@@ -389,7 +404,16 @@ function renderSide() {
 function coverHTML(a, big) {
   const src = big ? a.coverBig : a.cover;
   const ph = `<div class="ph" style="background:linear-gradient(135deg, ${CAT_COLOR[a.category] || "#8b8fa6"}22, transparent 70%)">${esc(a.name.slice(0, 18))}</div>`;
-  return src ? `<img loading="lazy" decoding="async" src="${esc(src)}" alt="" onerror="this.replaceWith(document.createRange().createContextualFragment(this.dataset.ph))" data-ph="${esc(ph)}">` : ph;
+  if (!src) return ph;
+  const img = cls => `<img${cls} loading="lazy" decoding="async" src="${esc(src)}" alt="" onerror="this.replaceWith(document.createRange().createContextualFragment(this.dataset.ph))" data-ph="${esc(ph)}">`;
+  if (!a.coverPkg) return img("");
+  // the preview out of a unitypackage — Unity's thumbnail, 128 px at most — at about its own size on a blurred
+  // copy of itself, not blown up to the card
+  return `<div class="pkprev"><img class="pkbg" loading="lazy" decoding="async" src="${esc(src)}" alt="" aria-hidden="true" onerror="this.remove()">${img(` class="pkfg"`)}</div>`;
+}
+// on a card whose cover is such a preview: what it is, and the way to a sharp one (封面 in its details)
+function pkChip(a) {
+  return a.coverPkg ? `<button class="badge-prev" data-act="cover" title="封面是 unitypackage 中由 Unity 生成的预览图，最大只有 128 像素。点击查看如何换成清晰的封面">预览图</button>` : "";
 }
 
 function usedBadge(a) {
@@ -424,7 +448,7 @@ function groupCardHTML(u) {
   const labels = ms.map(m => m.psd ? "PSD" : (m.variant || m.name));
   const zh = !S.data.settings.hideZh && a.nameZh ? `<div class="zh" title="${esc(a.nameZh)}">${esc(a.nameZh)}</div>` : "";
   return `<article class="card group" data-key="${esc(a.key)}" data-group="${esc(a.group)}" tabindex="0" title="${ms.length} 个版本">
-    <div class="cover">${coverHTML(a)}${bought ? boughtBadge(bought) : ""}${used.length ? usedBadge({ usage: used }) : ""}
+    <div class="cover">${coverHTML(a)}${bought ? boughtBadge(bought) : ""}${pkChip(a)}${used.length ? usedBadge({ usage: used }) : ""}
       <div class="where"><div class="path" title="${esc(labels.join("\n"))}">${esc(labels.join("、"))}</div>
         <div class="acts">
           <button class="act booth${a.boothId ? "" : " nobooth"}" data-act="booth" title="${isGum(a) ? "打开 Gumroad 商品页" : a.boothId ? "打开 Booth 商品页" : "在 Booth 搜索"}">${a.boothId ? ICON.bag : ICON.search}</button>
@@ -450,7 +474,7 @@ function cardHTML(a) {
   const tip = a.virtual ? "查看并下载" : a.panOnly ? "查看内容并下载" : "打开文件夹";
   const zh = !S.data.settings.hideZh && a.nameZh ? `<div class="zh" title="${esc(a.nameZh)}">${esc(a.nameZh)}</div>` : "";
   return `<article class="card${a.hidden ? " hiddenasset" : ""}${a.virtual ? " virtual" : ""}${a.panOnly ? " panonly" : ""}" data-key="${esc(a.key)}" tabindex="0" title="${tip}">
-    <div class="cover">${coverHTML(a)}${boughtBadge(a)}${a.panOnly ? `<span class="badge-pan">${esc(cloudText(a, "网盘"))}</span>` : ""}${usedBadge(a)}${a.virtual ? dlBar(a.boothId) : a.panOnly ? panBar(a.key) : ""}
+    <div class="cover">${coverHTML(a)}${boughtBadge(a)}${a.panOnly ? `<span class="badge-pan">${esc(cloudText(a, "网盘"))}</span>` : ""}${pkChip(a)}${usedBadge(a)}${a.virtual ? dlBar(a.boothId) : a.panOnly ? panBar(a.key) : ""}
       <div class="where"><div class="path" title="${esc(loc ? loc.path : where)}">${esc(where)}</div>
         <div class="acts">
           ${a.virtual ? `<button class="act buy" data-act="dl" title="下载到素材文件夹">${ICON.download}<span>下载</span></button>`
@@ -476,7 +500,7 @@ function renderGrid() {
   const d = S.data; if (!d) return;
   const list = sorted(unitsOf((d.assets || []).filter(a => matches(a))));
   const total = countUnits((d.assets || []).filter(a => (S.showHidden || !a.hidden) && !a.virtual));
-  const filtered = S.q || S.cat !== "全部" || S.style || S.recent || S.bases.size || S.usage !== "all" || S.share !== "all" || S.root !== "all" || S.purchase !== "all";
+  const filtered = S.q || S.cat !== "全部" || S.style || S.recent || S.bases.size || S.usage !== "all" || S.share !== "all" || S.root !== "all" || S.purchase !== "all" || S.link !== "all";
   let rb = `<b>${list.length}</b><span>个${S.purchase === "missing" || S.purchase === "bought" ? "商品" : "素材"}${filtered ? `（共 ${total} 个）` : ""}</span>`;
   if (filtered) rb += `<button class="clear" id="clearFilters">清除筛选</button>`;
   if (S.purchase === "missing" && list.length) rb += `<button class="btn small" id="btnDLMissing">${ICON.download}<span>全部下载</span></button>`;
@@ -534,6 +558,7 @@ function bulkBarHTML(list) {
     <select id="bulkCat"${dis} title="将所选素材移至该分类"><option value="">移至分类…</option>${S.data.categories.map(c => `<option>${esc(c)}</option>`).join("")}<option value="__auto">恢复自动分类</option></select>
     <button class="btn small" data-bulk="hide"${dis}>隐藏</button><button class="btn small" data-bulk="show"${dis}>取消隐藏</button>
     <button class="btn small" data-bulk="ignore"${dis} title="扫描时跳过所选素材的文件夹，可在设置中恢复">排除</button>
+    ${S.link === "unlinked" || S.link === "auto" ? `<button class="btn small" data-bulk="nobooth"${dis} title="所选素材不再按名称自动匹配 Booth 商品">标记为非 Booth 商品</button>` : ""}
     <button class="btn small primary" id="bulkDone">完成</button></span>
     <span class="muted small">单击卡片选择，按住 Shift 单击可连续选择</span>`;
 }
@@ -1072,6 +1097,19 @@ for (const ev of ["copy", "cut"]) document.addEventListener(ev, e => {
   if (s) CLIP.own = s;
 });
 // ---------- 工程 ----------
+// Projects the player hid (backups, copies hardly used) stay out of the 工程 page, unless 「显示已隐藏的工程」 is ticked,
+// and out of the pipeline's lists and the import's (the one in use stays where it is).
+function projHidden(p) {
+  if (!p) return false;
+  if (p.hidden !== undefined) return !!p.hidden;
+  const k = (p.path || "").toLowerCase();
+  return ((S.data && S.data.settings.hiddenProjects) || []).some(h => h.toLowerCase() === k);
+}
+// the projects to choose from in the pipeline: the one open in Unity first, then the newest; none hidden but cur
+function projsToPick(cur) {
+  return (S.projs || (S.data || {}).projects || []).filter(p => !projHidden(p) || p.path === cur)
+    .sort((a, b) => ((b.running || 0) - (a.running || 0)) || (b.opened || 0) - (a.opened || 0) || a.name.localeCompare(b.name));
+}
 async function loadProjects() {
   let r;
   try { r = await api("/api/projects", {}); } catch (e) { return; }
@@ -1088,6 +1126,7 @@ function renderProjSide() {
     <div class="sidelinks"><button class="navitem" id="btnProjAdd"><span>添加工程…</span></button>
       <button class="navitem" id="btnProjUsage"${busy ? " disabled" : ""}><span>${busy ? "正在统计使用情况…" : "重新统计使用情况"}</span></button></div>
     <p class="sidenote">${ps.length ? `共 ${ps.length} 个工程。` : ""}工程列表来自设置中的「Unity 工程文件夹」；工程内的插件请使用 VCC 或 ALCOM 管理。</p>
+    ${ps.some(projHidden) ? `<label class="check"><input type="checkbox" id="showHiddenProj"${S.showHiddenProj ? " checked" : ""}> 显示已隐藏的工程（${ps.filter(projHidden).length}）</label>` : ""}
     <h3>流水线</h3>
     <p class="sidenote">点击卡片上的「流水线」，可将已导入的衣服、头发、配饰和道具装配到模型，按设定的层级生成菜单开关和图标，并可继续通过 AI 执行其他改模操作。</p>
     <p class="sidenote">尚无工程时，可在「流水线」页新建基础工程。</p>
@@ -1106,7 +1145,8 @@ function projCardHTML(p) {
     : `<div class="pph">${ICON.cube}<span>${p.helper ? "打开工程或保存场景后，将在此显示模型正面截图" : "开启封面后，将自动截取模型正面图作为封面"}</span></div>`;
   const ver = p.unity ? `<span class="uver${p.editor ? "" : " missing"}" title="${p.editor ? "" : esc(`本机未检测到 Unity ${p.unity}`)}">Unity ${esc(p.unity)}</span>` : "";
   const opened = p.running ? `<span class="okline">已在 Unity 中打开</span>` : p.opened ? `<span>上次打开：${relDay(p.opened)}</span>` : "";
-  return `<article class="pcard" data-proj="${esc(p.path)}">
+  const hid = projHidden(p);
+  return `<article class="pcard${hid ? " hiddenproj" : ""}" data-proj="${esc(p.path)}">
     <div class="pcover${p.cover ? "" : " empty"}">${cover}${p.running ? `<span class="badge-run">已打开</span>` : ""}</div>
     <div class="pbody">
       <div class="title" data-i18n="off" title="${esc(p.name)}">${esc(p.name)}</div>
@@ -1117,6 +1157,7 @@ function projCardHTML(p) {
         <button class="btn small" data-pa="folder">${ICON.folder}<span>文件夹</span></button>
         <button class="btn small" data-pa="ai" title="前往流水线：为该工程的模型装配素材并生成菜单">${ICON.belt}<span>流水线</span></button>
         <button class="btn small ghost" data-pa="cover" title="${p.helper ? "移除封面插件和已生成的截图" : "在该工程的 Packages 中安装封面插件（包名 com.miovrc.projectcard）"}">${p.helper ? "关闭封面" : "开启封面"}</button>
+        <button class="btn small ghost" data-pa="hide" title="${hid ? "在工程页和流水线中重新显示该工程" : "不在工程页和流水线中显示该工程（不会删除任何文件）"}">${hid ? "取消隐藏" : "隐藏"}</button>
       </div>
       ${p.assets ? `<button class="puse" data-pa="assets">使用了素材库中的 ${esc(p.assets)} 个素材</button>` : `<div class="puse none">未使用素材库中的素材</div>`}
     </div></article>`;
@@ -1124,11 +1165,12 @@ function projCardHTML(p) {
 function renderProjGrid() {
   const all = S.projs, q = S.pq.toLowerCase();
   if (!all) { put($("#resultbar"), ""); gridPut(`<div class="empty"><h2>正在加载工程…</h2></div>`); return; }
-  const list = all.filter(p => !q || (p.name + " " + p.path).toLowerCase().includes(q))
+  const nHid = all.filter(projHidden).length;
+  const list = all.filter(p => (S.showHiddenProj || !projHidden(p)) && (!q || (p.name + " " + p.path).toLowerCase().includes(q)))
     .sort((a, b) => (b.running - a.running) || (b.opened || 0) - (a.opened || 0) || a.name.localeCompare(b.name));
-  put($("#resultbar"), `<b>${list.length}</b><span>个工程${q ? `（共 ${all.length} 个）` : ""}</span><span class="muted small">按最近打开排序</span>`);
+  put($("#resultbar"), `<b>${list.length}</b><span>个工程${q ? `（共 ${all.length} 个）` : ""}</span>${nHid && !S.showHiddenProj ? `<button class="clear" id="showHidProj">已隐藏 ${nHid} 个</button>` : ""}<span class="muted small">按最近打开排序</span>`);
   gridPut(list.length ? list.map(projCardHTML).join("")
-    : `<div class="empty">${all.length ? `<h2>未找到符合条件的工程</h2>` : `<h2>暂无 Unity 工程</h2><p>可在设置中添加工程所在的文件夹，或直接添加单个工程。</p><button class="btn primary" id="btnProjAdd">添加工程…</button>`}</div>`);
+    : `<div class="empty">${all.length ? `<h2>${q || !nHid ? "未找到符合条件的工程" : "工程都已隐藏"}</h2>` : `<h2>暂无 Unity 工程</h2><p>可在设置中添加工程所在的文件夹，或直接添加单个工程。</p><button class="btn primary" id="btnProjAdd">添加工程…</button>`}</div>`);
 }
 async function addProject() {
   const p = await pickInto("选择 Unity 工程文件夹（包含 Assets）");
@@ -1142,6 +1184,15 @@ async function projAction(what, path, btn) {
   if (what === "folder") return openPath(p.path);
   if (what === "ai") return openAI(p.path);
   if (what === "assets") { S.usage = "p:" + p.name; setView("lib"); renderSide(); renderGrid(); return; }
+  if (what === "hide") {
+    const hide = !projHidden(p);
+    let r; try { r = await api("/api/project/hide", { path: p.path, hidden: hide }); } catch (e) { r = { ok: false }; }
+    if (!r.ok) { toast(r.err || "操作失败", 4000); return; }
+    S.data.settings.hiddenProjects = r.hidden || [];
+    for (const x of S.projs || []) if (x.path === p.path) x.hidden = hide;
+    toast(hide ? `已隐藏「${p.name}」，可在左侧勾选「显示已隐藏的工程」找回` : `已取消隐藏「${p.name}」`, hide ? 5000 : 2500);
+    renderProjSide(); renderProjGrid(); return;
+  }
   if (what === "unity") {
     btn.disabled = true; let r;
     try { r = await api("/api/project/open", { path: p.path }); } finally { if (!r || !r.ok) btn.disabled = false; }
@@ -1288,6 +1339,8 @@ async function openPan(a) {
   } else if (u.panPath) openLink(panPathURL(u.panPath));
 }
 function boothItemURL(id) { return ((S.data && S.data.boothWeb) || "https://booth.pm") + "/ja/items/" + id; }
+// a link kept with an asset: the product's own address, whichever site the pages are opened from
+function boothLinkURL(id) { return "https://booth.pm/ja/items/" + id; }
 function boothSearchURL(q) { return "https://booth.pm/ja/search/" + encodeURIComponent((q || "").trim()); }
 function boothURL(a) {
   if (!a.boothId) return boothSearchURL(a.boothQuery || a.name);
@@ -1549,6 +1602,25 @@ function styleField(a) {
       ${auto || u.stylesSet || S.stylePick ? `<div class="hint">${auto ? "自动识别" : `<button class="linkbtn" data-d="stauto">恢复自动识别</button>`}</div>` : ""}
     </div></div>`;
 }
+// Linking one after another (the library filtered to 未关联 or 待确认): the Booth part comes first in the details, with
+// how many are left and the way to the next one. The order is the list's as it was when the details opened, so the
+// one linked a moment ago (gone from the list now) still knows which came after it.
+function linkMode(a) { return S.view === "lib" && (S.link === "unlinked" || S.link === "auto") && !!a && !a.virtual && !isGum(a); }
+function linkList() { return sorted(unitsOf((S.data.assets || []).filter(x => matches(x)))); }
+function linkBar(a) {
+  const cur = unitKey(a), rest = linkList().filter(u => u.key !== cur).length, done = linkState(a) !== S.link, auto = S.link === "auto";
+  const left = rest ? (auto ? `待确认：还剩 ${rest} 个` : `未关联：还剩 ${rest} 个`)
+    : done ? (auto ? "待确认的匹配都处理完了" : "未关联的素材都处理完了") : (auto ? "这是最后一个待确认的匹配" : "这是最后一个未关联的素材");
+  return `<div class="linkbar${done ? " done" : ""}"><span>${left}</span>${rest ? `<button class="btn small${done ? " primary" : ""}" data-d="linknext">下一个 ›</button>` : ""}</div>`;
+}
+function linkNext(a) {
+  const now = linkList(), cur = unitKey(a), live = new Map(now.map(u => [u.key, u]));
+  const seq = (S.linkSeq || []).includes(cur) ? S.linkSeq : now.map(u => u.key), i = seq.indexOf(cur);
+  for (const k of seq.slice(i + 1).concat(seq.slice(0, Math.max(i, 0)))) if (k !== cur && live.has(k)) return renderDrawer(live.get(k).primary.key);
+  const fresh = now.find(u => u.key !== cur); // came into the list since the details opened
+  if (fresh) return renderDrawer(fresh.primary.key);
+  toast(S.link === "auto" ? "待确认的匹配都处理完了" : "未关联的素材都处理完了");
+}
 function boothSec(a) {
   const b = a.booth, src = a.boothSrc;
   if (isGum(a)) return `<div class="sec"><h4>Gumroad 商品</h4><div class="bitem">
@@ -1556,7 +1628,7 @@ function boothSec(a) {
       <div class="muted small">${esc((b && b.shop) || "")}</div>
       <div class="hint bsrc">来自 Gumroad 已购记录</div>
       <div class="btnrow">${gumPageURL(a) ? `<button class="btn small" data-d="booth">打开商品页</button>` : ""}</div></div></div>`;
-  let h = `<div class="sec"><h4>Booth 商品</h4>`;
+  let h = `<div class="sec" id="boothsec"><h4>Booth 商品</h4>`;
   if (a.boothId) {
     const imgs = (b && b.images || []).slice(0, 6);
     h += `<div class="bitem">
@@ -1628,7 +1700,7 @@ async function runBoothSearch(a, q) {
   if (S.openKey === a.key) renderDrawer(a.key, true);
   try {
     const r = await api("/api/boothsearch", { q, name: a.autoName || a.name, cat: a.category });
-    S.bs = { key: a.key, q, hits: r.ok ? r.hits : null, err: r.ok ? "" : r.err };
+    S.bs = { key: a.key, q, hits: r.ok ? r.hits || [] : null, err: r.ok ? "" : r.err || "搜索失败" }; // (nothing found: 「无搜索结果」)
   } catch (e) { S.bs = { key: a.key, q, err: "搜索失败" }; }
   if (S.openKey === a.key) renderDrawer(a.key, true);
 }
@@ -1660,7 +1732,7 @@ function lastProject() {
 function setProject(p) { S.impProj = p; try { localStorage.setItem("vrclib.project", p); } catch (e) {} }
 // the netdisk section has its own (a folder card shows the import section too)
 function projSelect(id) {
-  const ps = S.data.projects || [], cur = lastProject();
+  const cur = lastProject(), ps = (S.data.projects || []).filter(p => !projHidden(p) || p.path === cur);
   const has = ps.some(p => p.path === cur);
   return `<select id="${id || "imp_proj"}" class="projsel" title="${esc(cur)}">${!cur ? `<option value="" selected>选择 Unity 工程…</option>` : ""}
     ${ps.map(p => `<option value="${esc(p.path)}"${p.path === cur ? " selected" : ""}>${esc(p.name)}</option>`).join("")}
@@ -2031,7 +2103,8 @@ function renderDrawer(key, keepScroll) {
   if (!a) { closeDrawer(); return; }
   // the file list's picks and open folders stay while the card is left for the login page
   if (S.panSelKey !== key) { S.panSel = new Set(); S.panOpen = new Set(); S.panClosed = new Set(); S.panSelKey = key; }
-  if (S.openKey !== key) { S.dirty = new Set(); S.coverPick = null; S.stylePick = null; }
+  const linking = linkMode(a);
+  if (S.openKey !== key) { S.dirty = new Set(); S.coverPick = null; S.stylePick = null; if (linking) S.linkSeq = linkList().map(x => x.key); }
   const u = a.user; const d = S.data;
   const dr = $("#drawer"); const scroll = keepScroll ? ($(".dbody", dr) || {}).scrollTop : 0;
   const same = !!keepScroll && S.openKey === key && dr.dataset.kind !== "shop"; // a refresh of what is shown
@@ -2057,6 +2130,7 @@ function renderDrawer(key, keepScroll) {
     </div>
   </div>
   <div class="dbody">
+    ${linking ? linkBar(a) + boothSec(a) : ""}
     ${ltUpdSec(a)}${newsSec(a)}
     ${importSec(a)}${dlImportSec(a)}${panDLSec(a)}${panDoneSec(a)}
     ${variantSec(a)}
@@ -2069,7 +2143,7 @@ function renderDrawer(key, keepScroll) {
     ${psdSec(a)}
     ${a.purchase ? purchaseSec(a) : ""}
     ${panSec(a)}
-    ${boothSec(a)}
+    ${linking ? "" : boothSec(a)}
     <div class="sec"><h4>素材信息</h4>
       <div class="field"><label>显示名称</label><input id="f_name" value="${esc(u.name || "")}" placeholder="${esc(a.autoName)}"></div>
       <div class="field"><label>中文译名</label><input id="f_nameZh" value="${esc(u.nameZh || "")}" placeholder="${esc(a.nameZh || "自动翻译")}"></div>
@@ -2138,7 +2212,11 @@ function coverField(a) {
   const u = a.user, locals = a.localCovers || [];
   const own = u.cover && !locals.includes(u.cover) ? [u.cover] : [];
   const pics = own.concat(locals);
-  return `<div class="field"><label>封面</label><div class="ownc">
+  // a preview out of a unitypackage: why it is not sharp, and what gives a sharp one
+  const booth = !a.boothId && !u.noBooth;
+  const note = a.coverPkg ? `<div class="covnote"><span>当前封面是 unitypackage 中由 Unity 生成的预览图，最大只有 128 像素，因此不够清晰。${booth ? "关联 Booth 商品后将改用商品图片；也可以选择图片，或从 Unity 生成封面。" : "可以选择图片，或从 Unity 生成封面。"}</span>${
+    booth ? `<button class="btn small" data-d="gobooth">去关联 Booth 商品</button>` : ""}</div>` : "";
+  return `<div class="field" id="covfield"><label>封面</label><div class="ownc">${note}
     ${pics.length > 1 || u.cover ? `<div class="covers">${pics.map(c => `<img src="/thumb?w=160&p=${encodeURIComponent(c)}" data-cover="${esc(c)}" class="${u.cover === c ? "on" : ""}" title="${own.includes(c) ? "选择的图片" : esc(c)}">`).join("")}</div>` : ""}
     <div class="btnrow"><button class="btn small" data-d="coverfile">选择图片…</button>${u.cover ? `<button class="btn small ghost" data-d="coverreset">恢复默认封面</button>` : ""}</div></div></div>`;
 }
@@ -2169,6 +2247,16 @@ async function saveUser(a, u, msg) {
   await load();
 }
 
+// a product page is the product's: the card's other downloads that have none of their own (or only a match by name)
+// follow the one the player linked, confirmed or marked as not from Booth — one link, and the card is linked
+async function saveLink(a, u, msg, follows) {
+  const others = groupAll(a).filter(m => m.key !== a.key && !m.virtual && (follows ? follows(m) : !m.boothId || m.boothSrc === "auto"));
+  await api("/api/user", { key: a.key, user: u });
+  for (const m of others) await api("/api/user", { key: m.key, user: Object.assign({}, m.user, { boothUrl: u.boothUrl || "", noBooth: !!u.noBooth }) });
+  S.dirty = new Set(); S.coverPick = null; S.stylePick = null; $("#drawer")._h = null;
+  toast(msg + (others.length ? `，已同步到其余 ${others.length} 个版本` : ""));
+  await load();
+}
 // saving one download of a product: its category and style tags go to the other downloads too
 async function saveGroup(a, u, msg) {
   const others = groupAll(a).filter(m => m.key !== a.key);
@@ -2435,18 +2523,22 @@ async function sendFeedback() {
 }
 
 // ---------- netdisk-only asset ----------
+// 「添加后立即下载到素材库」 as the player left it the last time: several shares added in a row are not set anew
+// each time (ticked until the player unticks it once)
+function panAddDl() { let v = null; try { v = localStorage.getItem("vrclib.panadddl"); } catch (e) {} return v !== "0"; }
 function openPanAdd(prefill) {
   const m = $("#modal");
   m.innerHTML = `<div class="mhead">添加网盘素材</div><div class="mbody">
     <div class="row"><label>分享链接或分享文本</label><textarea id="pa_text" placeholder="链接: https://pan.baidu.com/s/1xxxx 提取码: abcd，或 Google Drive / Dropbox 链接"></textarea><div class="muted small" id="pa_cloudnote"></div></div>
     <div class="row"><label>提取码</label><input id="pa_pwd" placeholder="选填"></div>
     <div class="row"><label>名称</label><input id="pa_name" placeholder="选填"></div>
-    <div class="row"><label class="check"><input type="checkbox" id="pa_dl"${S.data.paneMode ? " checked" : " disabled"}> 添加后立即下载到素材库<span id="pa_bdnote">${(S.data.baidu || {}).loggedIn ? "" : "（首次需登录百度网盘）"}</span></label></div>
+    <div class="row"><label class="check"><input type="checkbox" id="pa_dl"${S.data.paneMode ? (panAddDl() ? " checked" : "") : " disabled"}> 添加后立即下载到素材库<span id="pa_bdnote">${(S.data.baidu || {}).loggedIn ? "" : "（首次需登录百度网盘）"}</span></label></div>
     <div class="row muted small pafromdisk">已在百度网盘中保存了分享？<button class="linkbtn" data-dk="open">从我的百度网盘下载</button></div>
   </div><div class="mfoot"><button class="btn ghost" data-m="close">取消</button><button class="btn primary" data-m="panadd">添加</button></div>`;
   showModal();
   $("#pa_text").focus();
   $("#pa_text").addEventListener("input", e => { const r = parseShareText(e.target.value); if (r.pwd && !$("#pa_pwd").value) $("#pa_pwd").value = r.pwd; });
+  $("#pa_dl").addEventListener("change", e => { try { localStorage.setItem("vrclib.panadddl", e.target.checked ? "1" : "0"); } catch (x) {} });
   cloudAddHook();
   if (prefill) { $("#pa_text").value = prefill; $("#pa_text").dispatchEvent(new Event("input")); }
 }
@@ -2502,7 +2594,7 @@ function aiProvLabel(c) {
 }
 // ---------- 流水线 (the fifth tab: the AI assistant as an assembly line) ----------
 const KINDS = ["素体", "衣服", "头发", "皮肤", "表情", "配饰", "道具", "光影", "互动", "面捕", "其他"];
-const PIPE = { tool: null, assets: null, pick: {}, kind: {}, extra: [], preset: null, hier: "", noAI: false, text: "", add: "", err: "" };
+const PIPE = { tool: null, assets: null, pick: {}, kind: {}, extra: [], preset: null, hier: "", noAI: false, text: "", add: "", err: "", fold: undefined, keep: new Set() };
 function pipeActive() { return S.view === "pipe" && !!AI.proj; }
 function pipeProject(path) {
   return (S.projs || []).find(x => x.path === path) || ((S.data || {}).projects || []).find(x => x.path === path);
@@ -2526,7 +2618,7 @@ function pipeKeep() {
 function pipeSelect(p, quiet) {
   if (AI.proj && AI.proj.path === p.path) return;
   pipeKeep();
-  AI.proj = p; AI.sess = null; PIPE.assets = null; PIPE.pick = {}; PIPE.kind = {}; PIPE.extra = []; PIPE.err = "";
+  AI.proj = p; AI.sess = null; PIPE.assets = null; PIPE.pick = {}; PIPE.kind = {}; PIPE.extra = []; PIPE.err = ""; PIPE.keep = new Set();
   try { localStorage.setItem("vrclib.pipeproj", p.path); } catch (e) {}
   setProject(p.path); // what is imported from the library goes into the project the pipeline is on
   if (!quiet) { renderPipeSide(); renderPipeMain(); pipeLoad(); }
@@ -2535,7 +2627,7 @@ function pipeSelect(p, quiet) {
 function pipeEnter() {
   if (!AI.proj) {
     let want = ""; try { want = localStorage.getItem("vrclib.pipeproj") || ""; } catch (e) {}
-    const ps = (S.projs || (S.data || {}).projects || []).slice().sort((a, b) => ((b.running || 0) - (a.running || 0)) || (b.opened || 0) - (a.opened || 0) || a.name.localeCompare(b.name));
+    const ps = projsToPick("");
     const p = ps.find(x => x.path === want) || ps[0];
     if (p) { AI.proj = p; setProject(p.path); }
   }
@@ -2582,8 +2674,8 @@ function pipeRows() {
 function pipePicked() { return pipeRows().filter(a => a.pick && a.kind !== "其他"); }
 
 function renderPipeSide() {
-  const ps = (S.projs || (S.data || {}).projects || []).slice().sort((a, b) => ((b.running || 0) - (a.running || 0)) || (b.opened || 0) - (a.opened || 0) || a.name.localeCompare(b.name));
-  const q = (S.pq || "").toLowerCase(), cur = AI.proj ? AI.proj.path : "";
+  const cur = AI.proj ? AI.proj.path : "", ps = projsToPick(cur);
+  const q = (S.pq || "").toLowerCase();
   const t = PIPE.tool, c = AI.cfg || {};
   const list = ps.filter(p => !q || (p.name + " " + p.path).toLowerCase().includes(q));
   const tool = (ok, name, val, btn) => `<div class="toolrow"><i class="dot ${ok ? "ok" : "warn"}"></i><span class="k">${name}</span><span class="v">${val}</span>${btn || ""}</div>`;
@@ -2653,7 +2745,7 @@ function renderPipeMain() {
       <div class="hacts" id="pipe_hacts"></div></header>
       <div class="aistat" id="ai_stat"></div></section>
     <section class="stn" id="stn2"><header><span class="no">2</span><h2>素材</h2><span class="hint">自动列出工程 Assets 中已导入的素材。勾选要装配的素材，类别有误可在下拉列表中修改。</span>
-      <div class="hacts"><button class="btn small" data-cov="batch" title="在 Unity 中渲染素材的 prefab，作为素材库中的封面；已有封面的素材不受影响">为没有封面的素材生成封面</button><button class="btn small" data-pipe="rescan" title="重新读取工程中的素材">刷新</button></div></header>
+      <div class="hacts"><button class="btn small" data-cov="batch" title="在 Unity 中渲染素材的 prefab，作为素材库中的封面；来自 unitypackage 的预览图会被替换，已有其他封面的素材不受影响">为没有清晰封面的素材生成封面</button><button class="btn small" data-pipe="rescan" title="重新读取工程中的素材">刷新</button></div></header>
       <div id="cov_prog"></div>
       <div id="pipe_assets"></div>
       <div class="addrow"><input id="pipe_add" value="${esc(f.add)}" placeholder="手动添加路径：Assets/店铺名/素材名（也可填写 prefab 路径）" autocomplete="off" spellcheck="false"><button class="btn small" data-pipe="add">添加</button></div></section>
@@ -2670,6 +2762,7 @@ function renderPipeMain() {
       <div class="ailog" id="ai_log" aria-live="polite"></div>
       <div class="aifoot"><textarea id="ai_text" placeholder="继续向 AI 下达指令，例如：将鞋子的开关改名为“凉鞋”；为外套添加红色配色；检查是否有丢失的材质。按 Ctrl+Enter 发送">${esc(f.text)}</textarea>
         <div class="aibtns" id="ai_btns"></div></div>
+      <div class="gptline" id="gpt_use"></div>
       <div id="ck_panel"></div>
       <ul class="accept"><li>在 Unity 中进入 Play 模式，用 Gesture Manager 逐项测试菜单：互斥组是否只显示一件，开关是否对应正确的物体。</li><li>确认无误后按 Ctrl+S 保存场景；如需回退，按 Ctrl+Z 或点击「撤销上一步」。</li><li>上传前检查 VRChat SDK 面板：同步参数不得超过 256 位，如有警告，可让 AI 减少开关数量。</li></ul></section>
   </div>`);
@@ -2684,6 +2777,19 @@ function pipeAssetsDraw() {
   const refocus = focusMark(el);
   if (put(el, pipeAssetsHTML())) refocus();
 }
+// A long asset list (a project with many assets in it) folds away to the ticked ones: the player's last choice,
+// folded until then. What is unticked while it is folded stays in sight until the list is folded or opened again
+// (PIPE.keep), so a row does not vanish under the pointer.
+const PIPE_FOLD_AT = 10;
+function pipeFolded() {
+  if (PIPE.fold === undefined) { let v = null; try { v = localStorage.getItem("vrclib.pipefold"); } catch (e) {} PIPE.fold = v !== "0"; }
+  return PIPE.fold;
+}
+function pipeFoldText(rows) {
+  const n = rows.filter(a => a.pick).length;
+  if (!pipeFolded()) return `共 ${rows.length} 项素材，已勾选 ${n} 项`;
+  return n ? `已收起：只显示已勾选的 ${n} 项（共 ${rows.length} 项）` : `已收起：尚未勾选素材（共 ${rows.length} 项）`;
+}
 function pipeAssetsHTML() {
   if (PIPE.err) return `<div class="aiempty err">${esc(PIPE.err)}</div>`;
   if (PIPE.assets === null) return `<div class="aiempty">正在读取工程中的素材…</div>`;
@@ -2691,7 +2797,12 @@ function pipeAssetsHTML() {
   if (!rows.length) return `<div class="aiempty">该工程的 Assets 中暂无素材。可在「素材库」中选择素材并「一键导入」，或在下方手动添加路径。</div>`;
   const k = (AI.sess || {}).kit || {};
   const sel = a => `<select data-pkind="${esc(a.folder)}" title="类别">${KINDS.map(x => `<option${x === a.kind ? " selected" : ""}>${x}</option>`).join("")}</select>`;
-  return `<table class="atable"><thead><tr><th></th><th>素材</th><th>类别</th><th>工程内路径</th><th class="r">prefab</th><th></th></tr></thead><tbody>${rows.map(a => {
+  const long = rows.length > PIPE_FOLD_AT, folded = long && pipeFolded();
+  const shown = folded ? rows.filter(a => a.pick || PIPE.keep.has(a.folder)) : rows;
+  const bar = long ? `<div class="pafold"><span id="pafold_t">${pipeFoldText(rows)}</span><button class="btn small" data-pipe="fold" aria-expanded="${!folded}" aria-controls="pipe_assets">${folded ? "展开全部" : "收起"}</button></div>` : "";
+  const end = long && !folded ? `<div class="pafold end"><button class="btn small ghost" data-pipe="fold" data-end="1" aria-expanded="true" aria-controls="pipe_assets">收起列表</button></div>` : "";
+  if (!shown.length) return bar + (k.alive ? "" : `<div class="hint2">Unity 连接后，将标注已装配的素材和完整模型。</div>`);
+  return bar + `<table class="atable"><thead><tr><th></th><th>素材</th><th>类别</th><th>工程内路径</th><th class="r">prefab</th><th></th></tr></thead><tbody>${shown.map(a => {
     const marks = [];
     if (a.worn) marks.push(`<span class="tag ok" title="该素材的 prefab 已在模型上">已装配</span>`);
     if (a.avatar) marks.push(`<span class="tag" title="包含完整模型的 prefab">完整模型</span>`);
@@ -2699,7 +2810,7 @@ function pipeAssetsHTML() {
     if (a.extra) marks.push(`<button class="tag x" data-pipe="drop" data-folder="${esc(a.folder)}" title="移除此行">×</button>`);
     return `<tr class="${a.pick ? "on" : ""}${a.kind === "其他" ? " dim" : ""}"><td><input type="checkbox" data-ppick="${esc(a.folder)}"${a.pick ? " checked" : ""} aria-label="选择此素材"></td>
       <td class="nm" title="${esc(a.name)}">${esc(a.name)}</td><td>${sel(a)}</td><td class="path" title="${esc(a.folder)}">${esc(a.folder)}</td><td class="r muted">${a.prefabs || ""}</td><td class="marks">${marks.join("")}</td></tr>`;
-  }).join("")}</tbody></table>${k.alive ? "" : `<div class="hint2">Unity 连接后，将标注已装配的素材和完整模型。</div>`}`;
+  }).join("")}</tbody></table>${end}${k.alive ? "" : `<div class="hint2">Unity 连接后，将标注已装配的素材和完整模型。</div>`}`;
 }
 // the one thing to do next gets the coloured button: the plugins, Unity, the service, then the line itself
 function aiNext() {
@@ -2737,6 +2848,7 @@ function aiStatHTML() {
       none: ["warn", "当前 AI 模型不支持识图，该服务商也未提供视觉模型，截图仅显示在记录中。配置视觉模型后，AI 可检查画面", set],
       off: ["", "已关闭，截图仅显示在记录中", set],
     }[c.looks || "unknown"];
+    if (window.gptStatRow) h += gptStatRow(row);
     h += row(looks[0], "识图", looks[1], looks[2] || "");
     if (window.aiUsageRow) h += aiUsageRow(row);
   }
@@ -2761,6 +2873,7 @@ function aiLogHTML() {
       const shots = (s.imgs || []).length ? `<span class="shots">${s.imgs.map((n, i) => `<img src="/shot?f=${encodeURIComponent(n)}" data-shot="${i}" data-shots="${esc(s.imgs.join("|"))}" alt="截图 ${i + 1}" title="点击放大" loading="lazy">`).join("")}</span>` : "";
       return `<div class="aistep tool${s.busy ? " busy" : ""}">${mark}<span><b>${esc(s.text)}</b>${s.out ? `<span class="out">　${esc(s.out)}</span>` : ""}${s.busy ? aiWaitHTML(s.at) : ""}${shots}</span></div>`;
     }
+    if (s.kind === "error" && s.code && window.gptStepHTML) { const h = gptStepHTML(s); if (h) return h; }
     // what the AI says is markdown; mdLite escapes first, so it is as safe as the plain text of the other lines
     return s.kind === "say" ? `<div class="aistep say md">${mdLite(s.text)}</div>` : `<div class="aistep ${s.kind === "error" ? "err" : esc(s.kind)}">${esc(s.text)}</div>`;
   }).join("") + ((AI.sess || {}).busy && !busyTool ? `<div class="aistep tool busy"><i class="spin"></i><span class="out">AI 正在规划下一步…</span>${aiWaitHTML((steps[steps.length - 1] || {}).at)}</div>` : "");
@@ -2790,7 +2903,7 @@ function aiBtnsHTML() {
 function aiRenderLive() {
   if (!pipeActive() || !$("#pipe_belt")) return;
   const parts = { pipe_belt: pipeBeltHTML(), pipe_hacts: pipeHactsHTML(), ai_stat: aiStatHTML(), ai_log: aiLogHTML(), ai_btns: aiBtnsHTML(), recipe_acts: window.recipeActsHTML ? recipeActsHTML() : "",
-    pipe_est: window.aiEstimateHTML ? aiEstimateHTML() : "" };
+    pipe_est: window.aiEstimateHTML ? aiEstimateHTML() : "", gpt_use: window.gptComposerHTML ? gptComposerHTML() : "" };
   for (const id in parts) {
     const el = $("#" + id); if (!el || el.dataset.h === parts[id]) continue;
     // the record follows its end only when it was at the end; read further up, it stays where it is
@@ -2861,6 +2974,15 @@ async function pipeAction(b) {
     toast(r.ok ? "正在打开…" : r.err || "打开失败", 4000); return;
   }
   if (what === "folder" && p) return openPath(p.path);
+  if (what === "fold") { // the long asset list: folded to the ticked ones, or all of it
+    PIPE.fold = !pipeFolded(); PIPE.keep = new Set();
+    try { localStorage.setItem("vrclib.pipefold", PIPE.fold ? "1" : "0"); } catch (e) {}
+    pipeAssetsDraw();
+    const sec = $("#stn2"); // folded from the end of a long list: back to where the list begins
+    if (PIPE.fold && sec && sec.getBoundingClientRect().top < 0) sec.scrollIntoView({ block: "start" });
+    const nb = $('#pipe_assets [data-pipe="fold"]'); if (nb) nb.focus({ preventScroll: true });
+    return;
+  }
   if (what === "rescan") { b.disabled = true; try { await pipeRescan(false); } finally { b.disabled = false; } return; }
   if (what === "add") {
     const inp = $("#pipe_add"), f = inp.value.trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
@@ -2877,6 +2999,7 @@ async function pipeAction(b) {
 }
 async function aiAction(b) {
   const what = b.dataset.ai, p = AI.proj;
+  if (/^gpt/.test(what || "") && window.gptAction) return gptAction(b); // 「ChatGPT 账号」 (chatgpt.js)
   if (b.dataset.aiprov) { aiCfgKeep(); AI.cfgForm.provider = b.dataset.aiprov; return openAICfg(true); }
   if (what === "cfg") { pipeKeep(); AI.back = p ? p.path : null; return openAICfg(); }
   if (what === "hierdef") { $("#pipe_hier").value = AI.cfg.defaultHierarchy; PIPE.hier = AI.cfg.defaultHierarchy; return; }
@@ -2930,9 +3053,10 @@ async function aiAction(b) {
     let r; try { r = await api("/api/ai/" + what, body); } catch (e) { r = { ok: false, err: "程序无响应" }; }
     b.disabled = false;
     if (!$("#ai_test")) return;
-    if (!r.ok) { out.className = "aitest err"; out.textContent = r.err; return; }
+    if (!r.ok) { if (!(window.gptTestErr && gptTestErr(out, r))) { out.className = "aitest err"; out.textContent = r.err; } return; }
     if (what === "test") { out.className = "aitest ok"; out.textContent = r.note; return; }
     AI.cfgForm.models[body.provider] = r.models;
+    (AI.cfgForm.names || (AI.cfgForm.names = {}))[body.provider] = r.names || null; // (ChatGPT: the names OpenAI gives them)
     out.className = "aitest ok"; out.textContent = `已获取 ${r.models.length} 个模型，请在列表中选择`;
     return aiModelList(true, true);
   }
@@ -3070,7 +3194,7 @@ async function npAction(b) {
 }
 // which project the AI is to work on
 function openAIPick() {
-  const ps = (S.projs || (S.data || {}).projects || []).slice().sort((a, b) => ((b.running || 0) - (a.running || 0)) || (b.opened || 0) - (a.opened || 0) || a.name.localeCompare(b.name));
+  const ps = projsToPick("");
   if (!ps.length) { closeModal(); toast("AI 服务配置已保存。在「流水线」页新建或添加 Unity 工程后即可使用", 6000); return; }
   const m = $("#modal");
   m.dataset.kind = "aicfg";
@@ -3090,7 +3214,8 @@ function aiModelList(open, all) {
   const cur = $("#ai_model").value.trim(), q = cur.toLowerCase();
   let list = all || ms.includes(cur) ? ms : ms.filter(m => m.toLowerCase().includes(q));
   if (!list.length) list = ms;
-  box.innerHTML = list.map(m => `<button class="mopt${m === cur ? " on" : ""}" data-aimodel="${esc(m)}">${esc(m)}</button>`).join("") +
+  const names = (f.names || {})[f.provider] || {};
+  box.innerHTML = list.map(m => `<button class="mopt${m === cur ? " on" : ""}" data-aimodel="${esc(m)}" data-i18n="off">${names[m] && names[m] !== m ? `${esc(names[m])}<span class="muted small">　${esc(m)}</span>` : esc(m)}</button>`).join("") +
     `<button class="mopt again" data-ai="models" data-again="1">刷新列表</button>`;
   box.hidden = false; if (btn) btn.setAttribute("aria-expanded", "true");
   const on = box.querySelector(".mopt.on"); if (on) on.scrollIntoView({ block: "nearest" });
@@ -3153,17 +3278,18 @@ async function openAICfg(keep) {
   }
   const f = AI.cfgForm, info = c.providers.find(x => x.id === f.provider), saved = c.profiles[f.provider] || {};
   const v = f.vals[f.provider] || (f.vals[f.provider] = { base: saved.baseUrl || info.base, model: saved.model || "", key: "" });
-  const tail = (c.keys || {})[f.provider];
+  const tail = (c.keys || {})[f.provider], gpt = info.wire === "responses" && window.gptCardHTML; // 「ChatGPT 账号」: a sign-in, no address or key
+  if (gpt && gptWelcomeDue()) return gptWelcome();
   const m = $("#modal");
   clearTimeout(AI.timer); m.dataset.kind = "aicfg"; // closeModal starts the polling again
   const refocus = keep ? focusMark(m) : () => {};
   m.innerHTML = `<div class="mhead">AI 服务</div><div class="mbody">
-    <p class="lead">流水线调用自行配置的 AI 服务，费用由服务商按用量收取。API Key 加密保存在本机，仅发送至下方填写的接口地址。</p>
+    <p class="lead">${gpt ? "流水线可使用你的 ChatGPT 套餐额度，也可使用自行配置的 AI 服务（费用由服务商按用量收取）。" : "流水线调用自行配置的 AI 服务，费用由服务商按用量收取。API Key 加密保存在本机，仅发送至下方填写的接口地址。"}</p>
     <div class="row"><label>服务商</label><div class="seg">${c.providers.map(p => `<button class="segbtn${p.id === f.provider ? " on" : ""}" data-aiprov="${esc(p.id)}" aria-pressed="${p.id === f.provider}">${esc(p.label)}</button>`).join("")}</div>
       <div class="hint2">${esc(info.note)}</div></div>
-    <div class="row"><label for="ai_base">接口地址</label><input id="ai_base" value="${esc(v.base)}" placeholder="${esc(info.base)}" autocomplete="off" spellcheck="false"></div>
+    ${gpt ? `${gptCardHTML()}<input type="hidden" id="ai_base" value=""><input type="hidden" id="ai_key" value="">` : `<div class="row"><label for="ai_base">接口地址</label><input id="ai_base" value="${esc(v.base)}" placeholder="${esc(info.base)}" autocomplete="off" spellcheck="false"></div>
     <div class="row"><label for="ai_key">API Key${tail ? `<span class="muted small">　已保存（${esc(tail)}）</span>` : ""}</label>
-      <div class="inline"><input id="ai_key" type="password" value="${esc(v.key)}" placeholder="${tail ? "留空则沿用已保存的 Key" : "粘贴 API Key"}" autocomplete="off" spellcheck="false">${tail ? `<button class="btn small" data-ai="keyclear">清除</button>` : ""}</div></div>
+      <div class="inline"><input id="ai_key" type="password" value="${esc(v.key)}" placeholder="${tail ? "留空则沿用已保存的 Key" : "粘贴 API Key"}" autocomplete="off" spellcheck="false">${tail ? `<button class="btn small" data-ai="keyclear">清除</button>` : ""}</div></div>`}
     <div class="row"><label for="ai_model">模型</label>
       <div class="inline"><input id="ai_model" value="${esc(v.model)}" placeholder="${esc(info.model || "点击「选择模型」选取，或直接填写模型名称")}" autocomplete="off" spellcheck="false" aria-controls="ai_modelist"><button class="btn small" data-ai="models" aria-expanded="false">选择模型 ▾</button></div>
       <div class="modelist" id="ai_modelist" hidden></div>
@@ -3172,6 +3298,7 @@ async function openAICfg(keep) {
     <div class="aitest" id="ai_test" role="status"></div>
   </div><div class="mfoot"><button class="btn" data-ai="test">测试连接</button><span class="spacer"></span><button class="btn ghost" data-ai="cfgclose">取消</button><button class="btn primary" data-ai="cfgsave">保存</button></div>`;
   refocus(); showModal();
+  if (gpt && (c.chatgpt || {}).pending) gptFollow(); // a sign-in under way (the dialog was closed meanwhile)
 }
 
 // ---------- events ----------
@@ -3279,7 +3406,7 @@ document.addEventListener("click", async e => {
   if (t.closest("#btnStyles")) { openSettings("s_styles"); return; }
   const fb = t.closest(".side [data-fold]");
   if (fb) { S.fold[fb.dataset.fold] = !S.fold[fb.dataset.fold]; saveUI(); renderSide(); return; }
-  const side = t.closest(".side [data-cat], .side [data-usage], .side [data-share], .side [data-root], .side [data-base], .side [data-purchase], .side [data-style], .side [data-recent]");
+  const side = t.closest(".side [data-cat], .side [data-usage], .side [data-share], .side [data-root], .side [data-base], .side [data-purchase], .side [data-style], .side [data-recent], .side [data-blink]");
   if (side) {
     const ds = side.dataset;
     if (S.web.open.lib) closeWeb();
@@ -3292,10 +3419,11 @@ document.addEventListener("click", async e => {
     if (ds.share !== undefined) S.share = again(S.share, ds.share);
     if (ds.root !== undefined) S.root = again(S.root, ds.root);
     if (ds.purchase !== undefined) S.purchase = again(S.purchase, ds.purchase);
+    if (ds.blink !== undefined) S.link = again(S.link, ds.blink);
     if (ds.base !== undefined) { S.bases.has(ds.base) ? S.bases.delete(ds.base) : S.bases.add(ds.base); }
     renderSide(); renderGrid(); $(".main").scrollTop = 0; return;
   }
-  if (t.closest("#clearFilters")) { S.q = ""; $("#q").value = ""; S.cat = "全部"; S.style = ""; S.recent = ""; S.bases.clear(); S.usage = S.share = S.root = S.purchase = "all"; renderSide(); renderGrid(); return; }
+  if (t.closest("#clearFilters")) { S.q = ""; $("#q").value = ""; S.cat = "全部"; S.style = ""; S.recent = ""; S.bases.clear(); S.usage = S.share = S.root = S.purchase = S.link = "all"; renderSide(); renderGrid(); return; }
   if (t.closest("#emptySettings") || t.closest("#btnSettings")) { openSettings(); return; }
   if (t.closest("#btnPanAdd")) { openPanAdd(""); return; }
   if (t.closest("#btnUpdate")) { openUpdate(false); return; }
@@ -3304,6 +3432,7 @@ document.addEventListener("click", async e => {
   if (t.closest("#btnAICfg")) { pipeKeep(); AI.back = S.view === "pipe" && AI.proj ? AI.proj.path : null; return openAICfg(); }
   const ad = t.closest("[data-aidress]");
   if (ad) { const j = S.data.importJob; return openAI(ad.dataset.aidress, j && j.project === ad.dataset.aidress ? j.tops || [] : []); }
+  if (t.closest("#showHidProj")) { S.showHiddenProj = true; renderProjSide(); renderProjGrid(); return; }
   const pa = t.closest("[data-pa]");
   if (pa) return projAction(pa.dataset.pa, pa.closest("[data-proj]").dataset.proj, pa);
   if (t.closest("#btnProjAdd")) return addProject();
@@ -3319,6 +3448,7 @@ document.addEventListener("click", async e => {
     const n = S.bulk.keys.size, what = bk.dataset.bulk;
     if (what === "hide") return bulkApply({ hidden: true }, () => `已隐藏 ${n} 个，可在左侧勾选「显示已隐藏」查看`);
     if (what === "show") return bulkApply({ hidden: false }, () => `已取消隐藏 ${n} 个`);
+    if (what === "nobooth") return bulkApply({ noBooth: true }, () => `已将 ${n} 个标记为非 Booth 商品`);
     if (what === "ignore") {
       const local = bulkAssets().filter(isLocal).length;
       if (!local) { toast("所选素材均不在本地文件夹中"); return; }
@@ -3348,6 +3478,7 @@ document.addEventListener("click", async e => {
     else if (what === "pan") openPan(a);
     else if (what === "booth") goBooth(a);
     else if (what === "edit") renderDrawer(a.key);
+    else if (what === "cover") { renderDrawer(a.key); const f = $("#covfield"); if (f) { f.scrollIntoView({ block: "center" }); f.classList.add("flash"); setTimeout(() => f.classList.remove("flash"), 1600); } }
     return;
   }
 
@@ -3384,8 +3515,8 @@ document.addEventListener("click", async e => {
     if (!btn) return;
     if (btn.dataset.url !== undefined) return openLink(btn.dataset.url);
     if (btn.dataset.link !== undefined) {
-      const u = collectUser(a); u.boothUrl = boothItemURL(btn.dataset.link); u.noBooth = false; S.bs = null;
-      return saveUser(a, u, "已关联");
+      const u = collectUser(a); u.boothUrl = boothLinkURL(btn.dataset.link); u.noBooth = false; S.bs = null;
+      return saveLink(a, u, "已关联 Booth 商品");
     }
     if (btn.dataset.loc !== undefined) return openPath(a.locations[+btn.dataset.loc].path);
     if (btn.dataset.copy !== undefined) return copyText(a.locations[+btn.dataset.copy].path, "已复制路径");
@@ -3407,6 +3538,12 @@ document.addEventListener("click", async e => {
         const r = await api("/api/booth/download", { item: a.purchase.id, ids: [], importTo });
         if (!r.ok) { toast(r.err || "无法开始下载", 3500); return; }
         toast("开始下载，完成后自动导入"); await load(); return poll(true);
+      }
+      case "gobooth": { // from 封面: the Booth section, its search box ready
+        const sec = $("#boothsec"), q = $("#bs_q");
+        if (sec) sec.scrollIntoView({ block: "start", behavior: "smooth" });
+        if (q) q.focus({ preventScroll: true });
+        return;
       }
       case "coverfile": case "coverreset": {
         let r;
@@ -3439,10 +3576,15 @@ document.addEventListener("click", async e => {
       case "bsearch": return runBoothSearch(a, ($("#bs_q").value || "").trim());
       case "bopen": return openLink(boothSearchURL(($("#bs_q") || {}).value || a.boothQuery || a.name));
       case "bchange": return runBoothSearch(a, a.boothQuery || a.name);
-      case "bconfirm": { const u = collectUser(a); u.boothUrl = boothItemURL(a.boothId); u.noBooth = false; return saveUser(a, u, "已确认匹配"); }
-      case "breject": { const u = collectUser(a); u.boothUrl = ""; u.noBooth = true; S.bs = { key: a.key, q: a.boothQuery || a.name, hits: (a.boothHits || []).filter(h => h.id !== a.boothId) }; return saveUser(a, u, "已取消匹配"); }
-      case "bunlink": { const u = collectUser(a); u.boothUrl = ""; u.noBooth = true; return saveUser(a, u, "已取消关联"); }
-      case "bnone": { const u = collectUser(a); u.noBooth = true; return saveUser(a, u, "已标记为非 Booth 商品"); }
+      case "bconfirm": { const u = collectUser(a); u.boothUrl = boothLinkURL(a.boothId); u.noBooth = false; return saveLink(a, u, "已确认匹配"); }
+      case "breject": { const u = collectUser(a); u.boothUrl = ""; u.noBooth = true; S.bs = { key: a.key, q: a.boothQuery || a.name, hits: (a.boothHits || []).filter(h => h.id !== a.boothId) };
+        return saveLink(a, u, "已取消匹配", m => m.boothSrc === "auto" && m.boothId === a.boothId); }
+      case "bunlink": { // (and from the other versions that were linked to the same item: the card as a whole)
+        const u = collectUser(a), id = a.boothId; u.boothUrl = ""; u.noBooth = true;
+        return saveLink(a, u, "已取消关联", m => m.boothSrc === "user" && m.boothId === id);
+      }
+      case "bnone": { const u = collectUser(a); u.noBooth = true; return saveLink(a, u, "已标记为非 Booth 商品"); }
+      case "linknext": return linkNext(a);
       case "dtrans": {
         const dd = S.desc[a.key] = S.desc[a.key] || {}; dd.open = true;
         if (dd.zh) { dd.showZh = !dd.showZh; return renderDrawer(a.key, true); }
@@ -3583,12 +3725,18 @@ document.addEventListener("change", e => {
     xyPref(e.target.checked ? "external" : "embed"); return;
   }
   // (the table is changed in place and told what it reads now, so pipeAssetsDraw does not draw it again under the pointer)
-  if (e.target.dataset && e.target.dataset.ppick !== undefined) { PIPE.pick[e.target.dataset.ppick] = e.target.checked; const tr = e.target.closest("tr"); if (tr) tr.classList.toggle("on", e.target.checked); $("#pipe_assets")._h = pipeAssetsHTML(); aiRenderLive(); return; }
+  if (e.target.dataset && e.target.dataset.ppick !== undefined) {
+    PIPE.pick[e.target.dataset.ppick] = e.target.checked; PIPE.keep.add(e.target.dataset.ppick);
+    const tr = e.target.closest("tr"); if (tr) tr.classList.toggle("on", e.target.checked);
+    const ft = $("#pafold_t"); if (ft) ft.textContent = pipeFoldText(pipeRows());
+    $("#pipe_assets")._h = pipeAssetsHTML(); aiRenderLive(); return;
+  }
   if (e.target.dataset && e.target.dataset.pkind !== undefined) { PIPE.kind[e.target.dataset.pkind] = e.target.value; const tr = e.target.closest("tr"); if (tr) tr.classList.toggle("dim", e.target.value === "其他"); $("#pipe_assets")._h = pipeAssetsHTML(); aiRenderLive(); return; }
   if (e.target.id === "pipe_noai") { PIPE.noAI = e.target.checked; aiRenderLive(); return; }
   if (e.target.id === "pipe_hier") { PIPE.hier = e.target.value; return; }
   if (e.target.dataset && e.target.dataset.sk && S.setup) { S.setup[e.target.dataset.sk][+e.target.dataset.si].checked = e.target.checked; return; }
   if (e.target.id === "showHidden") { S.showHidden = e.target.checked; renderSide(); renderGrid(); }
+  if (e.target.id === "showHiddenProj") { S.showHiddenProj = e.target.checked; renderProjGrid(); }
   if (e.target.id === "bulkCat" && S.bulk && e.target.value) {
     const v = e.target.value, n = S.bulk.keys.size;
     return bulkApply({ category: v === "__auto" ? "" : v }, () => v === "__auto" ? `已恢复 ${n} 个的自动分类` : `已将 ${n} 个移至「${v}」`);
@@ -3693,6 +3841,7 @@ async function poll(fast) {
       if (JSON.stringify([p.importJob || null, p.panJobs || []]) !== JSON.stringify([S.data.importJob || null, S.data.panJobs || []])) refreshJobs(p.importJob, p.panJobs);
       if (JSON.stringify(p.newProject || null) !== JSON.stringify(S.data.newProject || null)) { S.data.newProject = p.newProject || null; renderNPLive(); }
       if (flip && S.view === "lib") renderSide();
+      if (typeof W !== "undefined") wishSyncTick(!!p.purchaseBusy, flip); // the wish list's 「立即同步」, and the list again after a sync it began
     }
     if (p.rev !== S.rev) await load();
     announceUpdate();

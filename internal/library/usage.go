@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"io/fs"
+	"math/bits"
 	"os"
 	"path/filepath"
 	"sort"
@@ -206,37 +207,107 @@ func metaGUIDs(dirs []string) []string {
 	return keys(set)
 }
 
+// Where the projects are looked for: a project folder that is a project itself, and the projects inside it down to
+// projDepth levels — a folder per avatar with the project's versions in it (backups, one with face tracking …) is
+// how many players keep them. Nothing is looked for inside a project, nor in what Unity, Git or the system make
+// (Library and Temp — of a project that lost its ProjectSettings, say —, .git, $RECYCLE.BIN …); a folder that is a
+// link is not followed. Each project folder is gone through level by level, projBudget folders of it at most: one
+// that is a whole drive ends in time, its own level is always looked at, and it takes nothing from the others.
+const (
+	projDepth   = 4
+	maxProjects = 256 // what a usage scan follows (projSet has a bit for each)
+)
+
+var projBudget = 20000 // folders opened in one project folder (tests make it smaller)
+
+var projSkipDirs = map[string]bool{"library": true, "temp": true, "node_modules": true, "$recycle.bin": true, "system volume information": true}
+
+// findProjects: the Unity projects in the project folders, by name. A project deeper than the folder's own level is
+// named by its path below the folder ("Manuka/v2"); names two projects share get the project folder's name before
+// them, or their whole path.
 func findProjects(roots []string) []core.ProjectInfo {
-	var out []core.ProjectInfo
+	type found struct{ root, path, rel string }
+	type dir struct {
+		path, rel string
+		depth     int
+	}
+	var all []found
 	seen := map[string]bool{}
 	for _, r := range roots {
 		if core.IsUnityProject(r) {
-			if !seen[core.PathKey(r)] {
-				seen[core.PathKey(r)] = true
-				out = append(out, core.ProjectInfo{Name: filepath.Base(r), Path: r})
+			if k := core.PathKey(r); !seen[k] {
+				seen[k] = true
+				all = append(all, found{r, r, filepath.Base(r)})
 			}
 			continue
 		}
-		ents, err := os.ReadDir(r)
-		if err != nil {
-			continue
-		}
-		for _, e := range ents {
-			if !e.IsDir() {
+		queue := []dir{{r, "", 1}}
+		for budget := projBudget; len(queue) > 0 && budget > 0; budget-- {
+			d := queue[0]
+			queue = queue[1:]
+			ents, err := os.ReadDir(d.path)
+			if err != nil {
 				continue
 			}
-			p := filepath.Join(r, e.Name())
-			if core.IsUnityProject(p) && !seen[core.PathKey(p)] {
-				seen[core.PathKey(p)] = true
-				out = append(out, core.ProjectInfo{Name: e.Name(), Path: p})
+			for _, e := range ents {
+				n := e.Name()
+				if !e.IsDir() || strings.HasPrefix(n, ".") || projSkipDirs[strings.ToLower(n)] {
+					continue
+				}
+				p, rel := filepath.Join(d.path, n), n
+				if d.rel != "" {
+					rel = d.rel + "/" + n
+				}
+				if core.IsUnityProject(p) {
+					if k := core.PathKey(p); !seen[k] {
+						seen[k] = true
+						all = append(all, found{r, p, rel})
+					}
+					continue // (nothing is looked for inside a project)
+				}
+				if d.depth < projDepth {
+					queue = append(queue, dir{p, rel, d.depth + 1})
+				}
 			}
 		}
 	}
+	count := map[string]int{}
+	for _, f := range all {
+		count[f.rel]++
+	}
+	out := make([]core.ProjectInfo, 0, len(all))
+	used := map[string]bool{}
+	for _, f := range all {
+		name := f.rel
+		if count[name] > 1 && f.path != f.root {
+			name = filepath.Base(f.root) + "/" + f.rel
+		}
+		if used[name] {
+			name = filepath.ToSlash(f.path)
+		}
+		used[name] = true
+		out = append(out, core.ProjectInfo{Name: name, Path: f.path})
+	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	if len(out) > 64 {
-		out = out[:64]
+	if len(out) > maxProjects {
+		out = out[:maxProjects]
 	}
 	return out
+}
+
+// projSet: the projects a GUID is found in, a bit for each (maxProjects of them).
+type projSet [(maxProjects + 63) / 64]uint64
+
+func (s *projSet) add(j int) { s[j/64] |= 1 << uint(j%64) }
+
+// each calls f with every project in the set.
+func (s *projSet) each(f func(j int)) {
+	for w, word := range s {
+		for word != 0 {
+			f(w*64 + bits.TrailingZeros64(word))
+			word &= word - 1
+		}
+	}
 }
 
 // projectGUIDs returns every GUID in the project plus the subset living under Packages/ (shared libraries such as lilToon).
@@ -332,7 +403,7 @@ func RunUsageScan(st *core.Store, prog *core.Task) {
 	cache := loadGuidCache()
 	projects := findProjects(roots)
 	prog.Set(0, len(projects)+len(assets), "正在索引 Unity 工程")
-	guidProj := map[string]uint64{}
+	guidProj := map[string]*projSet{}
 	libGuids := map[string]bool{}
 	projFold := make([]map[string]uint16, len(projects))
 	projDirs := make([][]string, len(projects))
@@ -348,7 +419,12 @@ func RunUsageScan(st *core.Store, prog *core.Task) {
 		}
 		projects[i].Guids = len(set)
 		for g := range set {
-			guidProj[g] |= 1 << uint(i)
+			ps := guidProj[g]
+			if ps == nil {
+				ps = &projSet{}
+				guidProj[g] = ps
+			}
+			ps.add(i)
 		}
 	}
 
@@ -428,11 +504,8 @@ func RunUsageScan(st *core.Store, prog *core.Task) {
 		if len(eligible) > 0 {
 			matched := make([]int, len(projects))
 			for _, g := range eligible {
-				m := guidProj[g]
-				for j := range projects {
-					if m&(1<<uint(j)) != 0 {
-						matched[j]++
-					}
+				if ps := guidProj[g]; ps != nil {
+					ps.each(func(j int) { matched[j]++ })
 				}
 			}
 			for j, p := range projects {

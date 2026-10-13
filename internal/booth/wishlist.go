@@ -72,14 +72,25 @@ type WishItem struct {
 	Change   *WishChange `json:"change,omitempty"`
 	Unseen   bool        `json:"unseen,omitempty"` // changed since the player last opened the list
 	Bought   int64       `json:"bought,omitempty"` // found among the purchases: no longer watched
+	Like     bool        `json:"like,omitempty"`   // put on the list from the player's スキ！ on Booth (WishFromLikes)
 }
 
 func (it *WishItem) Key() string { return it.Site + ":" + it.ID }
 
 type wishFile struct {
-	Ver     int         `json:"ver"`
-	NoWatch bool        `json:"noWatch,omitempty"` // the player turned the daily look off
-	Items   []*WishItem `json:"items"`
+	Ver     int  `json:"ver"`
+	NoWatch bool `json:"noWatch,omitempty"` // the player turned the daily look off
+	// the items the player marked スキ！ on Booth go on the list at each purchase sync (WishFromLikes); what the
+	// last sync that was to read them found
+	Likes      bool   `json:"likes,omitempty"`
+	LikesAt    int64  `json:"likesAt,omitempty"`
+	LikesN     int    `json:"likesN,omitempty"`     // スキ！ on Booth
+	LikesAdded int    `json:"likesAdded,omitempty"` // put on the list
+	LikesFull  int    `json:"likesFull,omitempty"`  // not, the list being full
+	LikesErr   string `json:"likesErr,omitempty"`   // why they could not be read
+	// items the player took off the list (when): not put back from their スキ！
+	Off   map[string]int64 `json:"off,omitempty"`
+	Items []*WishItem      `json:"items"`
 }
 
 const (
@@ -87,6 +98,7 @@ const (
 	wishVarHistKeep = 12
 	wishMax         = 500
 	wishNoteMax     = 500
+	wishOffKeep     = 3000 // items remembered as taken off the list
 )
 
 // How often Booth is asked. Tests shorten the times.
@@ -294,6 +306,10 @@ func WishAdd(st *core.Store, seed WishSeed) (*WishItem, error) {
 		return &c, nil
 	}
 	full := len(wishData.Items) >= wishMax
+	if !full && wishData.Off[id] > 0 { // put back by the player: their スキ！ may bring it back too
+		delete(wishData.Off, id)
+		wishSave()
+	}
 	wishMu.Unlock()
 	if full {
 		return nil, errWishFull
@@ -376,6 +392,7 @@ func wishFirstLook(st *core.Store, key string) {
 	time.Sleep(boothGap)
 }
 
+// WishRemove takes an item off the list. It is remembered as taken off: the player's スキ！ do not bring it back.
 func WishRemove(key string) bool {
 	wishMu.Lock()
 	defer wishMu.Unlock()
@@ -385,12 +402,121 @@ func WishRemove(key string) bool {
 	for i, it := range wishData.Items {
 		if it.Key() == key {
 			wishData.Items = append(wishData.Items[:i], wishData.Items[i+1:]...)
+			if it.Site == "booth" {
+				wishOff(it.ID, time.Now().Unix())
+			}
 			wishSave()
 			core.BumpRev()
 			return true
 		}
 	}
 	return false
+}
+
+// wishOff remembers an item as taken off the list, the oldest forgotten beyond wishOffKeep. Caller holds wishMu.
+func wishOff(id string, at int64) {
+	if wishData.Off == nil {
+		wishData.Off = map[string]int64{}
+	}
+	wishData.Off[id] = at
+	for len(wishData.Off) > wishOffKeep {
+		old, oldAt := "", int64(0)
+		for k, t := range wishData.Off {
+			if old == "" || t < oldAt || (t == oldAt && k < old) {
+				old, oldAt = k, t
+			}
+		}
+		delete(wishData.Off, old)
+	}
+}
+
+// ---------- the player's スキ！ on Booth ----------
+
+// LikeItem: an item the player marked スキ！ on Booth, as the list of them gives it (purchases' scraper).
+type LikeItem struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Price   string `json:"price"` // "¥ 3,000~"
+	Shop    string `json:"shop"`
+	ShopURL string `json:"shopUrl"`
+	Thumb   string `json:"thumb"`
+}
+
+// WishLikesOn: whether the purchase sync is to read the player's スキ！ and put them on the list.
+func WishLikesOn() bool {
+	wishMu.Lock()
+	defer wishMu.Unlock()
+	return wishLoad() == nil && wishData.Likes
+}
+
+func WishSetLikes(on bool) {
+	wishMu.Lock()
+	defer wishMu.Unlock()
+	if wishLoad() != nil {
+		return
+	}
+	if wishData.Likes != on {
+		wishData.Likes = on
+		wishSave()
+		core.BumpRev()
+	}
+}
+
+// WishFromLikes puts the player's スキ！ on the list, in the order Booth gives them: those not on it yet, not
+// skipped (bought, in the library) and not taken off the list by the player before. Booth is not asked about
+// them here — the rounds look at them one at a time, as at any item not looked at yet. total: how many スキ！
+// Booth counts. It returns how many were put on the list, and how many were not for the list being full.
+func WishFromLikes(likes []LikeItem, total int, skip func(id string) bool) (added, full int) {
+	wishMu.Lock()
+	defer wishMu.Unlock()
+	if wishLoad() != nil {
+		return 0, 0
+	}
+	now := time.Now().Unix()
+	for _, l := range likes {
+		id := strings.TrimSpace(l.ID)
+		if !reWishID.MatchString(id) || wishFind("booth:"+id) != nil || wishData.Off[id] > 0 || (skip != nil && skip(id)) {
+			continue
+		}
+		if len(wishData.Items) >= wishMax {
+			full++
+			continue
+		}
+		it := &WishItem{Site: "booth", ID: id, Title: strings.TrimSpace(l.Name), Shop: strings.TrimSpace(l.Shop), Currency: "JPY",
+			Price: priceNumber(l.Price), First: -1, Low: -1, Like: true,
+			Added: now - int64(added)} // (Booth's order kept when the list is sorted by when items were added)
+		if it.Title == "" {
+			it.Title = "Booth #" + id
+		}
+		if u, err := url.Parse(l.ShopURL); err == nil && u.Scheme == "https" && (u.Host == "booth.pm" || strings.HasSuffix(u.Host, ".booth.pm")) {
+			it.ShopURL = u.String()
+		}
+		if u, err := url.Parse(l.Thumb); err == nil && u.Host != "" && (u.Scheme == "https" || strings.HasPrefix(l.Thumb, core.BoothWebBase()+"/")) { // (http: the stand-in the tests use)
+			it.Thumb = u.String()
+		}
+		if it.Price >= 0 {
+			it.First, it.Low, it.LowAt = it.Price, it.Price, now
+			it.Hist = []WishPoint{{At: now, Price: it.Price}}
+		}
+		wishData.Items = append(wishData.Items, it)
+		added++
+	}
+	wishData.LikesAt, wishData.LikesN, wishData.LikesAdded, wishData.LikesFull, wishData.LikesErr = now, max(total, len(likes)), added, full, ""
+	wishSave()
+	core.BumpRev()
+	return added, full
+}
+
+// WishLikesFailed: the purchase sync could not read the player's スキ！ (why).
+func WishLikesFailed(why string) {
+	wishMu.Lock()
+	defer wishMu.Unlock()
+	if wishLoad() != nil {
+		return
+	}
+	wishData.LikesAt, wishData.LikesErr = time.Now().Unix(), why
+	wishSave()
+	core.BumpRev()
 }
 
 var errWishGone = errors.New("该商品已不在愿望单中")
@@ -520,6 +646,7 @@ type WishView struct {
 	Hist     []WishPointView `json:"hist,omitempty"`
 	Change   *WishChangeView `json:"change,omitempty"`
 	Unseen   bool            `json:"unseen,omitempty"`
+	Like     bool            `json:"like,omitempty"`
 }
 
 type WishState struct {
@@ -528,12 +655,19 @@ type WishState struct {
 	Watch  bool       `json:"watch"`
 	Paused bool       `json:"paused"` // Booth is turning requests away: looks wait
 	Busy   bool       `json:"busy"`   // a round is under way
+	// the player's スキ！: whether the purchase sync puts them on the list, and what the last one found
+	Likes      bool   `json:"likes"`
+	LikesAt    int64  `json:"likesAt,omitempty"`
+	LikesN     int    `json:"likesN,omitempty"`
+	LikesAdded int    `json:"likesAdded,omitempty"`
+	LikesFull  int    `json:"likesFull,omitempty"`
+	LikesErr   string `json:"likesErr,omitempty"`
 }
 
 func (it *WishItem) view() WishView {
 	v := WishView{Key: it.Key(), Site: it.Site, ID: it.ID, Title: it.Title, Shop: it.Shop, Thumb: it.Thumb, Currency: it.Currency,
 		Price: PriceText(it.Currency, it.Price), PriceNum: it.Price, First: PriceText(it.Currency, it.First), Low: PriceText(it.Currency, it.Low), LowAt: it.LowAt,
-		State: it.State, Bought: it.Bought > 0, Note: it.Note, Added: it.Added, Checked: it.Checked, Err: it.Err, Unseen: it.Unseen}
+		State: it.State, Bought: it.Bought > 0, Note: it.Note, Added: it.Added, Checked: it.Checked, Err: it.Err, Unseen: it.Unseen, Like: it.Like}
 	if it.Price >= 0 && it.First >= 0 && it.Price != it.First {
 		d := it.Price - it.First
 		v.DiffDir = 1
@@ -579,7 +713,8 @@ func WishSnapshot(st *core.Store) WishState {
 	wishMu.Lock()
 	defer wishMu.Unlock()
 	_ = wishLoad() // (one that cannot be read shows as empty, and is not written over)
-	s := WishState{Items: make([]WishView, 0, len(wishData.Items)), Watch: !wishData.NoWatch, Paused: boothPaused(), Busy: busy}
+	s := WishState{Items: make([]WishView, 0, len(wishData.Items)), Watch: !wishData.NoWatch, Paused: boothPaused(), Busy: busy,
+		Likes: wishData.Likes, LikesAt: wishData.LikesAt, LikesN: wishData.LikesN, LikesAdded: wishData.LikesAdded, LikesFull: wishData.LikesFull, LikesErr: wishData.LikesErr}
 	changed := false
 	for _, it := range wishData.Items {
 		if it.Site == "booth" && it.Bought == 0 && bought[it.ID] {

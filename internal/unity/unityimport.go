@@ -539,9 +539,9 @@ func overlap(a, b []string) bool {
 
 // projectBases: the base bodies a project is built on (素体 assets it uses).
 func projectBases(st *core.Store, project string) []string {
-	name := filepath.Base(project)
 	st.Mu.RLock()
 	defer st.Mu.RUnlock()
+	name := st.UsageName(project)
 	var out []string
 	for _, a := range st.Assets {
 		if a.Category != "素体" {

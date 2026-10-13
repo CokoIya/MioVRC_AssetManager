@@ -18,10 +18,11 @@ import (
 
 var thumbMu sync.Mutex
 
-// Thumbnail returns a cached JPEG thumbnail path for an image, or "" if it cannot be decoded.
+// Thumbnail returns a cached JPEG thumbnail path for an image, or "" when the image goes to the window as it is:
+// one that cannot be decoded here (webp …), or one no larger than asked (asIs).
 func Thumbnail(src string, w int) string {
 	fi, err := os.Stat(src)
-	if err != nil {
+	if err != nil || asIs(src, fi.Size(), w) {
 		return ""
 	}
 	h := sha1.Sum([]byte(fmt.Sprintf("%s|%d|%d|%d", src, fi.Size(), fi.ModTime().Unix(), w)))
@@ -58,6 +59,28 @@ func Thumbnail(src string, w int) string {
 	}
 	_ = os.Rename(dst+".part", dst)
 	return dst
+}
+
+// asIs: a PNG or JPEG whose shorter side is no longer than asked is sent as it is. A JPEG of the same size would
+// only lose detail — the 128 px previews out of unitypackages most of all, whose edges and colours a JPEG smears —
+// and the browser shows the picture as well as the program would. (Not a GIF: one that moves would move on the
+// card, where its first picture is what is shown.)
+func asIs(src string, size int64, w int) bool {
+	switch core.LowerExt(src) {
+	case ".png", ".jpg", ".jpeg":
+	default:
+		return false
+	}
+	if size > 4<<20 {
+		return false
+	}
+	f, err := os.Open(src)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	cfg, _, err := image.DecodeConfig(f) // the header alone
+	return err == nil && cfg.Width > 0 && cfg.Height > 0 && min(cfg.Width, cfg.Height) <= w
 }
 
 // resizeFit scales the image so its shorter side is w (cover crop happens in CSS), with 3x3 supersampling.

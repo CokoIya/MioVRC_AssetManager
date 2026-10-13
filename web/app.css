@@ -105,12 +105,32 @@ select, .btn {
   position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 18px;
   font-size: 22px; font-weight: 700; color: rgba(255,255,255,.22); line-height: 1.25; word-break: break-all;
 }
+/* a preview out of a unitypackage (128 px at most): at about its own size, on a blurred copy of itself */
+.pkprev { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; background: var(--raised); }
+.pkprev .pkbg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.35); filter: blur(16px) brightness(.58) saturate(1.15); }
+.cover .pkprev .pkfg, .dcover .pkprev .pkfg {
+  position: relative; width: min(128px, 66%); height: auto; aspect-ratio: 1 / 1; object-fit: contain;
+  border-radius: 8px; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, .5));
+}
+.dcover .pkprev .pkfg { width: min(128px, 86%); }
+/* top left, where the purchased badge would be (an asset with such a cover is seldom one bought: under it if so) —
+   at the bottom the card's buttons would cover it as soon as the pointer is on the card */
+.badge-prev {
+  position: absolute; left: 8px; top: 8px; height: 20px; padding: 0 7px; border-radius: 6px; font: inherit; font-size: 11px; line-height: 18px;
+  color: #c9cbe0; background: rgba(20, 21, 31, .8); border: 1px solid rgba(255, 255, 255, .2); cursor: pointer;
+}
+.badge-prev:hover, .badge-prev:focus-visible { color: #fff; border-color: rgba(255, 255, 255, .5); }
+.badge-bought ~ .badge-prev, .badge-pan ~ .badge-prev { top: 34px; }
+.badge-prev ~ .badge-used { max-width: calc(100% - 76px); } /* beside it, not over it (wider words: i18n.css) */
+.badge-bought ~ .badge-prev ~ .badge-used { max-width: calc(100% - 64px); } /* (the chip under 已购: beside 已购) */
+.grid.bulk .badge-prev { display: none; }
 .badge-used {
   position: absolute; top: 8px; right: 8px; background: rgba(20, 21, 31, .82); color: var(--ok);
   border: 1px solid rgba(63, 208, 166, .45); border-radius: 12px; padding: 1px 8px; font-size: 12px; max-width: 70%;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .badge-used.partial { color: var(--warn); border-color: rgba(255, 181, 71, .45); }
+.badge-bought ~ .badge-used { max-width: calc(100% - 64px); } /* beside 已购: shortened, not over it (wider words: i18n.css) */
 .badge-bought {
   position: absolute; top: 8px; left: 8px; background: var(--accent-fill); color: #fff; border-radius: 6px;
   padding: 0 7px; font-size: 11.5px; font-weight: 600; letter-spacing: .5px; box-shadow: 0 1px 4px rgba(0,0,0,.35);
@@ -272,6 +292,11 @@ select, .btn {
 .covers img { width: 64px; height: 64px; object-fit: cover; border-radius: 6px; cursor: pointer; border: 2px solid transparent; }
 .covers img.on { border-color: var(--accent); }
 .ownc .covers { margin-bottom: 6px; }
+.covnote { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 8px; padding: 8px 10px; border-radius: 8px;
+  background: rgba(255, 181, 71, .08); border: 1px solid rgba(255, 181, 71, .28); font-size: 12.5px; line-height: 1.5; color: var(--text); }
+.covnote > span { flex: 1 1 260px; }
+.field.flash { animation: fieldflash 1.6s ease-out; border-radius: 8px; }
+@keyframes fieldflash { 0%, 30% { background: rgba(124, 92, 255, .22); } 100% { background: transparent; } }
 .ownc .btnrow { margin-top: 0; }
 
 /* modal */
@@ -662,6 +687,28 @@ body.paneon .toast.on { transform: translate(-50%, 0); }
 .aistep .shots img { height: 132px; max-width: 100%; border-radius: 6px; border: 1px solid var(--line); background: #33363f; cursor: zoom-in; display: block; }
 .aistep .shots img:hover, .aistep .shots img:focus-visible { border-color: var(--accent); }
 .visionbox { margin: 4px 0 12px; padding: 14px 14px 2px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+/* 「ChatGPT 账号」 (chatgpt.js) */
+.gptcard { margin: 4px 0 12px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+.gptcard h4 { margin: 0 0 6px; font-size: 14px; }
+.gptcard p.hint2 { margin: 0 0 6px; }
+.gptcard p .linkbtn { margin-left: 6px; }
+.gptcard .btnrow { margin: 8px 0 2px; align-items: center; }
+.gptcard .aitest { margin-top: 6px; }
+.btn.gpt { background: #000; border-color: #4a4f68; color: #fff; font-weight: 600; }
+.btn.gpt:hover { border-color: #8a8fac; }
+.gptwait { display: flex; gap: 8px; align-items: flex-start; color: var(--muted); }
+.gptacct { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+.gptacct .btn { margin-left: auto; }
+.gptnow { margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.gptaccts { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; }
+.gptcard .hint2 > span + span { margin-left: 4px; }
+.gptuse { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 13px; color: var(--muted); }
+.gptuse .dot { margin: 0; }
+.gptline { margin: 6px 0 0; min-height: 0; }
+.gptline:empty { display: none; }
+.aistep.gptlimit { margin: 8px 0; padding: 10px 12px; border: 1px solid rgba(255, 90, 106, .45); border-radius: 8px; background: var(--card); white-space: normal; }
+.aistep.gptlimit .t { color: var(--text); margin: 4px 0 2px; white-space: pre-wrap; }
+.aistep .btnrow { margin: 6px 0 0; }
 .visionbox .btnrow { margin: 0 0 8px; }
 .mk { flex: none; width: 16px; height: 16px; margin-top: 3px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 11px; font-weight: 700; color: var(--bg); }
 .mk.ok { background: var(--ok); }
@@ -693,6 +740,9 @@ body.paneon .toast.on { transform: translate(-50%, 0); }
 .mopt:hover { background: var(--card); }
 .mopt.on { background: var(--accent-soft); font-weight: 600; }
 .mopt.again { color: var(--muted); border-top: 1px solid var(--line); border-radius: 0 0 6px 6px; margin-top: 4px; }
+/* the pipeline's long asset list, folded to the ticked ones */
+.pafold { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 8px; font-size: 13px; color: var(--muted); }
+.pafold.end { justify-content: center; margin: 8px 0 0; }
 
 /* v1.7.1: 流水线 tab */
 .grid.pipegrid { display: block; max-width: 1040px; margin: 0 auto; }
@@ -1010,6 +1060,13 @@ body.paneon .offline:not([hidden]) ~ .toast { top: 104px; }
 .wladd .btn { flex: none; }
 .wl .empty { padding: 56px 20px; }
 .wlpause { margin: 0 2px 10px; font-size: 12.5px; color: var(--warn); }
+/* 「同步 Booth 上的スキ」 under the paste field, and the mark on what it put on the list */
+.wllikes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: -4px 2px 12px; }
+.wllikes .check { margin: 0; }
+.wllikes .wllast { min-width: 0; }
+.wllike { display: inline-flex; align-items: center; gap: 3px; color: #ff9aa4; font-size: 12px; white-space: nowrap; }
+.wllike svg { width: 12px; height: 12px; fill: currentColor; stroke: none; }
+.wgthumb .wllike { position: absolute; left: 8px; bottom: 8px; padding: 0 7px 0 6px; border-radius: 6px; background: rgba(20, 21, 31, .85); line-height: 20px; }
 .wlfoot { margin: 12px 2px 0; font-size: 12px; color: var(--faint); }
 .wlrow {
   display: grid; grid-template-columns: 72px minmax(0, 1fr) minmax(120px, auto) 76px auto; grid-template-areas: "thumb main price state acts";
@@ -1336,3 +1393,43 @@ body.paneon .offline:not([hidden]) ~ .toast { top: 104px; }
 .aibudget input { width: 90px; }
 .pipe_est:empty { display: none; }
 
+/* linking one after another (the library filtered to 未关联 / 待确认): how many are left, and the next one */
+.linkbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 12px; padding: 8px 12px; border-radius: 10px;
+  background: rgba(255, 90, 106, .08); border: 1px solid rgba(255, 90, 106, .28); font-size: 13px; }
+.linkbar.done { background: rgba(63, 208, 166, .08); border-color: rgba(63, 208, 166, .32); }
+.linkbar .btn { flex: none; }
+/* a project the player hid, shown because 「显示已隐藏的工程」 is ticked */
+.pcard.hiddenproj { opacity: .5; }
+.pcard.hiddenproj:hover { opacity: .85; }
+/* the wish list as a grid (「网格」), as Booth lays out items; 「列表」 / 「网格」 side by side in the result bar */
+.wlview { display: inline-flex; }
+.wlview .btn { border-radius: 0; }
+.wlview .btn:first-child { border-radius: var(--r-ctl) 0 0 var(--r-ctl); }
+.wlview .btn:last-child { border-radius: 0 var(--r-ctl) var(--r-ctl) 0; margin-left: -1px; }
+.wlview .btn.on { position: relative; z-index: 1; border-color: var(--accent); color: var(--text); background: var(--raised); }
+#wl_list.wlgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 14px 12px; }
+.wgcard { display: flex; flex-direction: column; min-width: 0; padding-bottom: 10px; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--card); overflow: hidden; }
+.wgthumb { position: relative; display: block; width: 100%; aspect-ratio: 1 / 1; padding: 0; border: 0; background: var(--raised); cursor: pointer; overflow: hidden; }
+.wgthumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.wgstate { position: absolute; left: 8px; top: 8px; }
+.wgstate .wltag { background: rgba(20, 21, 31, .85); }
+.wgstate .wltag.bought { background: var(--accent-fill); }
+.wgchange { position: absolute; right: 8px; top: 8px; padding: 0 7px; border-radius: 6px; font-size: 11.5px; font-weight: 600; background: rgba(20, 21, 31, .85); color: var(--muted); }
+.wgchange.drop, .wgchange.free, .wgchange.back { color: var(--ok); }
+.wgchange.rise, .wgchange.off { color: var(--warn); }
+.wgchange.fresh { box-shadow: 0 0 0 1px currentColor; }
+.wgcard .wltitle { margin: 8px 10px 0; font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.wgshop { margin: 2px 10px 0; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wgnote { display: flex; gap: 6px; margin: 4px 10px 0; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; }
+.wgnote .lb { flex: none; color: var(--faint); }
+.wgnote span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.wgfoot { display: flex; align-items: center; gap: 6px; margin: auto 10px 0; padding-top: 8px; }
+.wgprice { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; min-width: 0; }
+.wgprice b { font-size: 15px; white-space: nowrap; }
+.wgprice .from { font-size: 12px; color: var(--muted); }
+.wgdiff { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.wgdiff.down { color: var(--ok); }
+.wgdiff.up { color: var(--warn); }
+.wgacts { display: flex; flex: none; gap: 2px; margin-left: auto; }
+.wgcard .wlerr { margin: 4px 10px 0; }
+.wgcard.dim .wgthumb img { filter: saturate(.5) brightness(.8); }

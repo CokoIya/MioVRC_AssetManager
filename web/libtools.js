@@ -143,7 +143,7 @@ async function ltRefresh() {
       if (changed || first || jobsWas !== JSON.stringify(LT.jobs)) ltDrawLive();
       if (fresh) toast(`${fresh} 个素材有更新`, 7000, () => {
         if (S.view !== "lib") setView("lib");
-        S.q = ""; $("#q").value = ""; S.cat = "全部"; S.style = ""; S.bases.clear(); S.usage = S.share = S.root = "all"; S.purchase = "all";
+        S.q = ""; $("#q").value = ""; S.cat = "全部"; S.style = ""; S.bases.clear(); S.usage = S.share = S.root = S.link = "all"; S.purchase = "all";
         S.recent = "upd"; renderSide(); renderGrid(); $(".main").scrollTop = 0;
       });
     }
@@ -177,7 +177,8 @@ function ltShow(kind, head, body, foot, wide) {
 function ltOpenUpdDlg(key) {
   const a = findAsset(key); if (!a || !a.upd) return;
   const used = new Set((a.usage || []).map(u => u.project));
-  LT.dlg = { key, picked: new Set((S.data.projects || []).filter(p => used.has(p.name)).map(p => p.path)), recycle: false, job: null };
+  // (a project the player hid — a backup copy, say — is not ticked for them)
+  LT.dlg = { key, picked: new Set((S.data.projects || []).filter(p => used.has(p.name) && !projHidden(p)).map(p => p.path)), recycle: false, job: null };
   ltDrawUpdDlg();
 }
 function ltDrawUpdDlg() {
@@ -193,7 +194,7 @@ function ltDrawUpdDlg() {
       <span class="p"><b>${esc(p.name)}</b><span class="muted small">${esc(p.path)}</span></span>
       ${st.has(p.name) ? `<span class="tag ok">${st.get(p.name) === "used" ? "使用中" : "部分使用"}</span>` : ""}</label>`).join("")}</div>`
       : `<div class="muted small">尚未添加 Unity 工程，可在设置中添加工程文件夹。</div>`}
-    <div class="hint2">已默认勾选正在使用该素材的工程。将依次下载新版本、解压并导入所选工程：工程中已有的文件原位更新，已安装的插件（Packages）不会被覆盖。未勾选工程时仅下载新版本。</div>
+    <div class="hint2">已默认勾选正在使用该素材的工程（已隐藏的工程除外）。将依次下载新版本、解压并导入所选工程：工程中已有的文件原位更新，已安装的插件（Packages）不会被覆盖。未勾选工程时仅下载新版本。</div>
     ${old.length ? `<h4 class="boardh">旧版本</h4>
       <label class="check opt"><input type="checkbox" id="lt_recycle"${d.recycle ? " checked" : ""}> 全部更新成功后，将旧版本移至回收站</label>
       <div class="ltfiles">${old.map(o => `<div class="ltfile"><span class="p">${esc(o.path)}</span><span class="s">${fmtSize(o.size)}</span></div>`).join("")}</div>
@@ -488,7 +489,7 @@ function pkFieldHTML(a) {
   if (!pkWants(a)) return "";
   const s = PK.st[a.key], busy = !!PK.busy[a.key], has = !!a.coverPkg;
   const entry = has && s && s.cover && s.cover.entry ? s.cover.entry.split("/").pop() : "";
-  const hint = has ? `当前封面来自 unitypackage 中的预览图${entry ? `（${esc(entry)}）` : ""}。关联 Booth 商品、选择图片或从 Unity 生成封面后，将改用其封面。`
+  const hint = has ? (entry ? `预览图来自 unitypackage 中的「${esc(entry)}」。` : "预览图来自 unitypackage。")
     : s && s.busy ? "正在后台读取该素材的 unitypackage…" : s && s.failed ? `上次未在 unitypackage 中找到可用的预览图${s.failed === "unitypackage 中没有可用的预览图" ? "" : `（${esc(s.failed)}）`}。` : "读取 unitypackage 内由 Unity 生成的预览图，作为封面。";
   return `<div class="field pkcov">${covFieldHTML(a) ? `<span></span>` : `<label>封面</label>`}<div class="covgen">
     <button class="btn small" data-lt="pkextract"${busy || (s && s.busy) ? " disabled" : ""} title="读取 unitypackage 内由 Unity 生成的预览图（prefab 的渲染图、贴图的缩略图），作为封面">${busy ? "正在提取…" : has ? "重新提取封面" : "从 unitypackage 提取封面"}</button>
@@ -796,7 +797,7 @@ document.addEventListener("click", async e => {
       closeModal();
       if (S.view !== "lib") setView("lib");
       if (S.web.open.lib) closeWeb();
-      S.q = ""; $("#q").value = ""; S.style = ""; S.usage = S.share = S.root = "all"; S.purchase = "all";
+      S.q = ""; $("#q").value = ""; S.style = ""; S.usage = S.share = S.root = S.link = "all"; S.purchase = "all";
       S.cat = cat || "全部"; S.bases.clear(); S.recent = "";
       if (base) S.bases.add(base); else S.recent = "nobase";
       renderSide(); renderGrid(); $(".main").scrollTop = 0; return;

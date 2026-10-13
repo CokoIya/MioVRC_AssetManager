@@ -238,7 +238,7 @@ func newVisionRig(t *testing.T, provider string, sees bool, script []mockTurn) *
 	proj := t.TempDir()
 	u := &cameraUnity{project: proj}
 	unitytest.FakeUnity(t, proj, u.answer)
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	llm := &eyeLLM{wire: aiProvider(provider).Wire, sees: sees, script: script}
 	srv := httptest.NewServer(llm)
 	t.Cleanup(srv.Close)
@@ -559,7 +559,7 @@ func TestQuickPipelineShots(t *testing.T) {
 	proj := t.TempDir()
 	u := &cameraUnity{project: proj}
 	unitytest.FakeUnity(t, proj, u.answer)
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	if err := startAIRun(st, aiRunReq{Project: proj, Mode: "dress", NoAI: true, Folders: []string{"Assets/Shop/SailorSet"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -754,7 +754,7 @@ func TestVisionKeyReuse(t *testing.T) {
 			t.Errorf("provider %s: %+v", id, p)
 		}
 	}
-	if v := aiView(); len(v.Presets) != 4 || len(v.Providers) != 6 {
+	if v := aiView(); len(v.Presets) != 4 || len(v.Providers) != 7 {
 		t.Errorf("view: %d presets, %d providers", len(v.Presets), len(v.Providers))
 	}
 }

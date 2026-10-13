@@ -261,7 +261,7 @@ func TestAlwaysAllowCoversOneOperation(t *testing.T) {
 func TestAlwaysAllowInARun(t *testing.T) {
 	st := testkit.NewStore(t)
 	proj := t.TempDir()
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	f := skillsServer(t, proj, skColour, skSave, skDelete)
 	llm := &mockLLM{wire: "openai", script: []mockTurn{
 		{calls: []aiCall{{ID: "a1", Name: "unity_skill", Args: json.RawMessage(`{"name":"material_set_color","args":{"path":"Assets/M.mat"}}`)}}},
@@ -309,7 +309,7 @@ func TestRunWantsSkillsServer(t *testing.T) {
 	st := testkit.NewStore(t)
 	proj := t.TempDir()
 	unitytest.FakeUnity(t, proj, (&sceneUnity{}).answer)
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	llm := &mockLLM{wire: "openai", script: []mockTurn{{text: "好的"}}}
 	gate := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

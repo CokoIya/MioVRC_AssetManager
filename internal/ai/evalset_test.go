@@ -34,7 +34,7 @@ func TestEvalSet(t *testing.T) {
 	proj := t.TempDir()
 	u := &sceneUnity{}
 	unitytest.FakeUnity(t, proj, u.answer)
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	evalMu.Lock()
 	evalRuns, evalLoaded = nil, false
 	evalMu.Unlock()

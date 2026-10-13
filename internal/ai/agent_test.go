@@ -33,7 +33,7 @@ func newAgentRig(t *testing.T, provider string, u *sceneUnity, script []mockTurn
 	st := testkit.NewStore(t)
 	proj := t.TempDir()
 	unitytest.FakeUnity(t, proj, u.answer)
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	llm := &mockLLM{wire: aiProvider(provider).Wire, script: script}
 	srv := httptest.NewServer(llm)
 	t.Cleanup(srv.Close)
@@ -427,7 +427,7 @@ func TestPipelineRerun(t *testing.T) {
 	proj := t.TempDir()
 	u := &sceneUnity{live: true}
 	unitytest.FakeUnity(t, proj, u.answer)
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	s := aiSessionFor(proj)
 	for run := 1; run <= 2; run++ {
 		if err := startAIRun(st, aiRunReq{Project: proj, Mode: "dress", NoAI: true, Folders: []string{"Assets/Shop/SailorSet"}}); err != nil {
@@ -482,7 +482,7 @@ func TestPipelineSameNamePrefabs(t *testing.T) {
 		proj := t.TempDir()
 		u := &sceneUnity{live: true, extra: twins}
 		unitytest.FakeUnity(t, proj, u.answer)
-		st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+		st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 		if err := startAIRun(st, aiRunReq{Project: proj, Mode: "dress", NoAI: true, Folders: []string{"Assets/Shop/Twin"}}); err != nil {
 			t.Fatal(err)
 		}
@@ -569,7 +569,7 @@ func TestPipelineMenuRoots(t *testing.T) {
 		return res, e
 	}
 	unitytest.FakeUnity(t, proj, answer)
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	req := aiRunReq{Project: proj, Mode: "dress", NoAI: true, Assets: []aiAsset{
 		{Folder: "Assets/Shop/SailorSet", Kind: "衣服", Name: "水手服"}, {Folder: "Assets/_头发/耳发", Kind: "头发", Name: "蓝耳发"}, {Folder: "Assets/_配饰/Glasses", Kind: "配饰", Name: "眼镜"}}}
 	if err := startAIRun(st, req); err != nil {
@@ -613,7 +613,7 @@ func TestAbortSaysWhatIsDone(t *testing.T) {
 	proj := t.TempDir()
 	u := &sceneUnity{live: true, menuErr: "「衣服」已是开关而非子菜单，无法在其中添加菜单项"}
 	unitytest.FakeUnity(t, proj, u.answer)
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	if err := startAIRun(st, aiRunReq{Project: proj, Mode: "dress", NoAI: true, Folders: []string{"Assets/Shop/SailorSet"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -655,7 +655,7 @@ func TestUndoCountsRealChanges(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 	u := &sceneUnity{live: true}
 	unitytest.FakeUnity(t, proj, u.answer)
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	skills := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/skills" {
 			_, _ = io.WriteString(w, `{"skills":[

@@ -75,6 +75,13 @@ func registerStores(st *core.Store, post func(string, func(http.ResponseWriter, 
 		booth.WishSetWatch(on)
 		core.WriteJSON(w, map[string]any{"ok": true})
 	})
+	// 「同步 Booth 上的スキ」: the items the player marked スキ！ on Booth go on the list at each purchase sync
+	post("/api/wish/likes", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		var on bool
+		_ = json.Unmarshal(b["on"], &on)
+		booth.WishSetLikes(on)
+		core.WriteJSON(w, map[string]any{"ok": true})
+	})
 	// 「立即检查」: every item not looked at within the hour, one after the other in the background
 	post("/api/wish/check", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		n, err := booth.WishStartRound(st)

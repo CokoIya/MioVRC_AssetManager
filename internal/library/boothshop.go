@@ -238,12 +238,17 @@ func SearchShop(st *core.Store, q ShopQuery) ([]ShopItem, bool, error) {
 }
 
 // OwnedBoothIDs: Booth items that are in the library (on disk or in a netdisk share) → a card key.
-func OwnedBoothIDs(st *core.Store) map[string]string {
+func OwnedBoothIDs(st *core.Store) map[string]string { return ownedBooth(st, true) }
+
+// LinkedBoothIDs: the same, without the matches by name the player has not confirmed (待确认).
+func LinkedBoothIDs(st *core.Store) map[string]string { return ownedBooth(st, false) }
+
+func ownedBooth(st *core.Store, auto bool) map[string]string {
 	st.Mu.RLock()
 	defer st.Mu.RUnlock()
 	out := map[string]string{}
 	for _, v := range AllViews(st) {
-		if v.BoothID == "" || v.Virtual || v.SplitInto > 0 {
+		if v.BoothID == "" || v.Virtual || v.SplitInto > 0 || (!auto && v.BoothSrc == "auto") {
 			continue
 		}
 		if _, ok := out[v.BoothID]; !ok {

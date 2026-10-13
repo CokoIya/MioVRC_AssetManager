@@ -184,8 +184,11 @@ var (
 	//   pkgcovers.json the unitypackage each preview came from, by its path (looked at again on every scan);
 	//                  the previews (covers/unitypackage) are read from the packages anew
 	//   ai-usage.json  what this computer's AI account was asked for, and the prices the player set for it
+	//   chatgpt-host.json  this computer's registrations with OpenAI (「ChatGPT 账号」); the sign-in itself
+	//                  (chatgpt-auth.dat) is encrypted for this Windows user and stays behind as the keys do
 	dataSkipFile = map[string]bool{"library.json": true, "library.json.bak": true, "guidcache.json": true, "tidy-cache.json": true,
-		"transfer.json": true, "manifest.json": true, "ai.json": true, "checkups.json": true, "pkgcovers.json": true, "ai-usage.json": true}
+		"transfer.json": true, "manifest.json": true, "ai.json": true, "checkups.json": true, "pkgcovers.json": true, "ai-usage.json": true,
+		"chatgpt-host.json": true}
 	dataSkipDir = map[string]bool{"booth-profile": true, "booth-profile-firefox": true, "web-login": true, "web-xianyu": true, "webview": true, "webview2": true,
 		"ebwebview": true, "update": true, "vpm": true, "shots": true, "downloads": true, "covers/thumbs": true, "covers/remote": true,
 		"covers/unitypackage": true}
@@ -965,6 +968,12 @@ func remapStore(in *core.Store, rootMap, projMap map[string]string, coverHere fu
 			out.Settings.ProjectRoots = append(out.Settings.ProjectRoots, p)
 		}
 	}
+	out.Settings.HiddenProjects = nil // the projects the player hid, where they are here
+	for _, h := range in.Settings.HiddenProjects {
+		if p, ok := pm.apply(h); ok && !containsPath(out.Settings.HiddenProjects, p) {
+			out.Settings.HiddenProjects = append(out.Settings.HiddenProjects, p)
+		}
+	}
 	for _, f := range []*string{&out.Settings.DownloadDir, &out.AutoDLDir} {
 		if p, ok := m.apply(*f); ok {
 			*f = p
@@ -1378,6 +1387,11 @@ func mergeStore(st, src *core.Store) {
 	for _, r := range src.Settings.ProjectRoots {
 		if !containsPath(st.Settings.ProjectRoots, r) {
 			st.Settings.ProjectRoots = append(st.Settings.ProjectRoots, r)
+		}
+	}
+	for _, h := range src.Settings.HiddenProjects {
+		if !containsPath(st.Settings.HiddenProjects, h) {
+			st.Settings.HiddenProjects = append(st.Settings.HiddenProjects, h)
 		}
 	}
 	have := map[string]bool{}

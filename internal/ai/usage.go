@@ -254,7 +254,8 @@ func runEstimate(provider, model, mode string) map[string]any {
 
 // minus: what was used between two looks at the same sum.
 func (v UsageView) minus(o UsageView) UsageView {
-	d := UsageView{Calls: v.Calls - o.Calls, Tokens: v.Tokens - o.Tokens, In: v.In - o.In, Hit: v.Hit - o.Hit, Write: v.Write - o.Write, Out: v.Out - o.Out, Unpriced: v.Unpriced - o.Unpriced}
+	d := UsageView{Calls: v.Calls - o.Calls, Tokens: v.Tokens - o.Tokens, In: v.In - o.In, Hit: v.Hit - o.Hit, Write: v.Write - o.Write, Out: v.Out - o.Out, Unpriced: v.Unpriced - o.Unpriced,
+		Plan: v.Plan - o.Plan}
 	for k, c := range v.Cost {
 		if c -= o.Cost[k]; c > 0 {
 			if d.Cost == nil {
@@ -316,8 +317,23 @@ func priceKey(provider, model string) string {
 	return provider + "/" + strings.ToLower(strings.TrimSpace(model))
 }
 
+// planCurrency: what the answers on a ChatGPT plan are counted in — the plan's usage, not money (planPrice is
+// the "price" of such a model: usageSum counts its tokens apart).
+const planCurrency = "PLAN"
+
+var planPrice = aiPrice{Currency: planCurrency}
+
+// onPlan: the service is the player's ChatGPT plan (「ChatGPT 账号」).
+func onPlan(provider string) bool {
+	info := aiProvider(provider)
+	return info != nil && info.Wire == "responses"
+}
+
 // priceLocked: the player's price for the model, else the service's own list. Caller holds usageMu.
 func priceLocked(provider, model string) (aiPrice, bool) {
+	if onPlan(provider) {
+		return planPrice, true
+	}
 	k := priceKey(provider, model)
 	if p, ok := usageLocked().Prices[k]; ok && p.ok() {
 		return p, true
@@ -333,6 +349,7 @@ type usageSum struct {
 	used     aiUsage
 	cost     map[string]float64 // currency → amount, of the answers whose model has a price
 	unpriced int64              // tokens of the answers whose model has none
+	plan     int64              // tokens of the answers on a ChatGPT plan (no money: the plan's usage)
 }
 
 func (s *usageSum) note(u aiUsage, p aiPrice, priced, peak bool) { s.noteN(1, u, p, priced, peak) }
@@ -343,6 +360,10 @@ func (s *usageSum) noteN(calls int, u aiUsage, p aiPrice, priced, peak bool) {
 	defer s.mu.Unlock()
 	s.calls += calls
 	s.used.add(u)
+	if priced && p.Currency == planCurrency {
+		s.plan += u.total()
+		return
+	}
 	if !priced {
 		s.unpriced += u.total()
 		return
@@ -356,7 +377,7 @@ func (s *usageSum) noteN(calls int, u aiUsage, p aiPrice, priced, peak bool) {
 func (s *usageSum) reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.calls, s.used, s.cost, s.unpriced = 0, aiUsage{}, nil, 0
+	s.calls, s.used, s.cost, s.unpriced, s.plan = 0, aiUsage{}, nil, 0, 0
 }
 
 // UsageView: tokens and what they cost, as the window shows them.
@@ -369,12 +390,13 @@ type UsageView struct {
 	Out      int64              `json:"out"`
 	Cost     map[string]float64 `json:"cost,omitempty"`     // currency → amount
 	Unpriced int64              `json:"unpriced,omitempty"` // tokens without a price to count them at
+	Plan     int64              `json:"plan,omitempty"`     // tokens on a ChatGPT plan (its usage, not money)
 }
 
 func (s *usageSum) view() UsageView {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	v := UsageView{Calls: s.calls, Tokens: s.used.total(), In: s.used.In, Hit: s.used.Hit, Write: s.used.Write, Out: s.used.Out, Unpriced: s.unpriced}
+	v := UsageView{Calls: s.calls, Tokens: s.used.total(), In: s.used.In, Hit: s.used.Hit, Write: s.used.Write, Out: s.used.Out, Unpriced: s.unpriced, Plan: s.plan}
 	if len(s.cost) > 0 {
 		v.Cost = map[string]float64{}
 		for k, c := range s.cost {
@@ -454,6 +476,7 @@ type usageModel struct {
 	All      UsageView `json:"all"`
 	Price    *aiPrice  `json:"price,omitempty"`
 	Builtin  bool      `json:"builtin,omitempty"` // the price is the service's own list (not the player's)
+	Plan     bool      `json:"plan,omitempty"`    // on the player's ChatGPT plan: no price, the plan's usage
 }
 
 // usageReport: what the window shows — every model used, and the one set up now (even when not used yet).
@@ -480,8 +503,8 @@ func usageReport() map[string]any {
 		if info := aiProvider(provider); info != nil {
 			label = info.Label
 		}
-		m := &usageModel{Provider: provider, Label: label, Model: model}
-		if p, ok := priceLocked(provider, model); ok {
+		m := &usageModel{Provider: provider, Label: label, Model: model, Plan: onPlan(provider)}
+		if p, ok := priceLocked(provider, model); ok && !m.Plan {
 			pp := p
 			m.Price = &pp
 			_, own := f.Prices[k]
@@ -495,8 +518,11 @@ func usageReport() map[string]any {
 	for _, r := range f.Rows {
 		m := get(r.Provider, r.Model)
 		var p aiPrice
-		if m.Price != nil {
+		priced := m.Price != nil
+		if priced {
 			p = *m.Price
+		} else if m.Plan {
+			p, priced = planPrice, true
 		}
 		periods := []string{"all"}
 		if strings.HasPrefix(r.Day, month) {
@@ -506,7 +532,7 @@ func usageReport() map[string]any {
 			periods = append(periods, "today")
 		}
 		for _, per := range periods {
-			sums[priceKey(r.Provider, r.Model)][per].noteN(r.Calls, r.aiUsage, p, m.Price != nil, r.Peak)
+			sums[priceKey(r.Provider, r.Model)][per].noteN(r.Calls, r.aiUsage, p, priced, r.Peak)
 		}
 	}
 	if curModel != "" {
@@ -546,6 +572,9 @@ func usageToday() UsageView {
 func setPrice(provider, model string, p *aiPrice) error {
 	if strings.TrimSpace(model) == "" || provider == "" {
 		return errors.New("未指定模型")
+	}
+	if onPlan(provider) {
+		return errors.New("ChatGPT 账号使用的是套餐额度，无需设置价格")
 	}
 	usageMu.Lock()
 	defer usageMu.Unlock()

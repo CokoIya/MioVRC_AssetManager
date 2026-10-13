@@ -383,7 +383,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 			return
 		}
 		var category *string
-		var hidden *bool
+		var hidden, noBooth *bool
 		if raw, ok := b["category"]; ok {
 			var c string
 			if json.Unmarshal(raw, &c) == nil {
@@ -394,6 +394,12 @@ func NewMux(st *core.Store) *http.ServeMux {
 			var h bool
 			if json.Unmarshal(raw, &h) == nil {
 				hidden = &h
+			}
+		}
+		if raw, ok := b["noBooth"]; ok { // 「标记为非 Booth 商品」: no matching by name (a link of its own stays)
+			var nb bool
+			if json.Unmarshal(raw, &nb) == nil {
+				noBooth = &nb
 			}
 		}
 		ignore := boolean(b, "ignore")
@@ -440,6 +446,9 @@ func NewMux(st *core.Store) *http.ServeMux {
 			if hidden != nil {
 				u.Hidden = *hidden
 			}
+			if noBooth != nil {
+				u.NoBooth = *noBooth
+			}
 			u.Updated = now
 			n++
 		}
@@ -485,6 +494,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 		st.Mu.Lock()
 		// (how 闲鱼's pages open is set through /api/xy/prefs only: the page's copy of the settings may be an older one)
 		s.XyExternal, s.XyNoticed, s.NoXyClip = st.Settings.XyExternal, st.Settings.XyNoticed, st.Settings.NoXyClip
+		s.HiddenProjects = st.Settings.HiddenProjects // (set through /api/project/hide only, for the same reason)
 		st.Settings = s
 		st.Mu.Unlock()
 		core.ProxyChanged()
@@ -975,6 +985,30 @@ func NewMux(st *core.Store) *http.ServeMux {
 			return
 		}
 		core.WriteJSON(w, map[string]any{"ok": true, "running": unity.ProjectRunning(p)})
+	})
+	// 工程: a project hidden from the 工程 page and the pipeline's lists, or shown again
+	post("/api/project/hide", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		p := strings.TrimSpace(str(b, "path"))
+		if p == "" {
+			core.WriteJSON(w, map[string]any{"ok": false, "err": "未指定工程"})
+			return
+		}
+		p = filepath.Clean(p)
+		st.Mu.Lock()
+		keep := []string{}
+		for _, h := range st.Settings.HiddenProjects {
+			if core.PathKey(h) != core.PathKey(p) {
+				keep = append(keep, h)
+			}
+		}
+		if boolean(b, "hidden") && len(keep) < 2000 {
+			keep = append(keep, p)
+		}
+		st.Settings.HiddenProjects = keep
+		st.Mu.Unlock()
+		_ = st.Save()
+		core.BumpRev()
+		core.WriteJSON(w, map[string]any{"ok": true, "hidden": keep})
 	})
 	// a project picked for the import that the library does not know yet
 	post("/api/import/project", func(w http.ResponseWriter, b map[string]json.RawMessage) {

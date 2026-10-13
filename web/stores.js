@@ -6,7 +6,8 @@
 // is the list in the Booth tab, the button on a search result and in the details panel, and the notice of a
 // lower price. What it shows comes from /api/stores/state, asked for again whenever the state's revision moves.
 const W = { on: false, items: [], byKey: new Map(), unseen: 0, watch: true, paused: false, busy: false, sig: "",
-  sort: "drop", paste: "", fresh: new Set(), histOpen: new Set(), adding: false };
+  sort: "drop", paste: "", fresh: new Set(), histOpen: new Set(), adding: false, view: "list", // view: list (rows) or grid (cards, as Booth)
+  likes: { on: false } }; // the player's スキ！ on Booth: put on the list at each purchase sync (on), and what the last one found
 // Jinxxy lives in the 闲鱼 tab (a sixth tab does not fit the header at 720 px): site = whose pages that tab shows
 const JX = { site: "xianyu", base: "https://jinxxy.com", search: "", q: { xianyu: "", jinxxy: "" }, files: [], told: null, saved: "", fsig: "", lsig: "" };
 const WISH_ICON = '<svg viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.6a4.3 4.3 0 0 1 7.5 2.7c0 5.6-7.5 10.2-7.5 10.2z"/></svg>';
@@ -14,6 +15,7 @@ try {
   const saved = JSON.parse(localStorage.getItem("vrclib.stores") || "{}");
   if (saved.site === "jinxxy") JX.site = "jinxxy";
   if (["drop", "added", "price"].includes(saved.sort)) W.sort = saved.sort;
+  if (saved.wview === "grid") W.view = "grid";
   if (saved.q) { JX.q.xianyu = String(saved.q.xianyu || ""); JX.q.jinxxy = String(saved.q.jinxxy || ""); }
   if (typeof saved.jxLast === "string" && webKind(saved.jxLast) !== "xianyu") { S.web.last.jinxxy = saved.jxLast; JX.saved = saved.jxLast; }
   // S.web.xq is the query of the site the tab shows; app.js restored 闲鱼's
@@ -21,7 +23,7 @@ try {
 } catch (e) {}
 function storesSave() {
   JX.q[JX.site] = S.web.xq; JX.saved = S.web.last.jinxxy || "";
-  try { localStorage.setItem("vrclib.stores", JSON.stringify({ site: JX.site, sort: W.sort, q: JX.q, jxLast: JX.saved })); } catch (e) {}
+  try { localStorage.setItem("vrclib.stores", JSON.stringify({ site: JX.site, sort: W.sort, q: JX.q, jxLast: JX.saved, wview: W.view })); } catch (e) {}
 }
 
 // called by load() after every state refresh; the first answer is waited for (the tab may open on Jinxxy)
@@ -45,6 +47,7 @@ function wishTake(w) {
   const sig = JSON.stringify(w), changed = sig !== W.sig;
   W.sig = sig; W.items = w.items || []; W.byKey = new Map(W.items.map(x => [x.key, x]));
   W.unseen = w.unseen || 0; W.watch = w.watch !== false; W.paused = !!w.paused; W.busy = !!w.busy;
+  W.likes = { on: !!w.likes, at: w.likesAt || 0, n: w.likesN || 0, added: w.likesAdded || 0, full: w.likesFull || 0, err: w.likesErr || "" };
   wishAnnounce();
   return changed;
 }
@@ -77,6 +80,27 @@ function wishOpen() {
   renderShopSide(); renderShopGrid(); backToScroll();
 }
 function wishClose() { keepScroll(); W.on = false; renderShopSide(); renderShopGrid(); backToScroll(); }
+// a purchase sync for the スキ: the Booth page is shown while it runs (its login, when needed), and the wish list
+// again when it is over — unless the player has gone elsewhere meanwhile
+async function wishLikeSync() {
+  W.syncBack = true; W.syncRan = false; W.syncAt = Date.now();
+  await startSync();
+  wishLikesRedraw(); // 「正在同步…」 (startSync says it is busy before the program is asked: no change for poll() to see)
+}
+function wishLikesRedraw() { const el = $("#wl_likes_row"); if (el && S.view === "shop" && W.on) put(el, wishLikesHTML()); }
+// told by poll() at every look at the program's progress (busy: a purchase sync is running; flip: it began or ended)
+function wishSyncTick(busy, flip) {
+  if (W.syncBack && busy) W.syncRan = true;
+  else if (W.syncBack && (W.syncRan || Date.now() - W.syncAt > 15000)) { // (one too quick to be seen running, or one that did not start)
+    W.syncBack = W.syncRan = false;
+    // the list again in place of the Booth page the sync showed (its login, its library) — not in place of a page
+    // the player went on to; where the list never left the screen (Booth in the browser), it stays as it is
+    const u = S.web.st.url || "", acc = S.data.boothAccounts || "https://accounts.booth.pm";
+    if (S.view === "shop" && S.web.open.shop && (!u || u.startsWith(acc))) return wishOpen();
+    return wishLikesRedraw();
+  }
+  if (flip) wishLikesRedraw(); // 「立即同步」 / 「正在同步…」
+}
 
 // the entry at the top of the Booth tab's side bar
 function wishSideHTML() {
@@ -101,6 +125,19 @@ function wishDrawerBtn(id, bought) {
 }
 
 const WISH_KIND = { drop: "降价", free: "变为免费", rise: "涨价", off: "不可购买", gone: "已下架", back: "恢复上架" };
+// an item put on the list from the player's スキ！ on Booth. (Booth's own word is kana, which the dictionaries do not
+// look at: English is chosen here.)
+const WISH_LIKE = `<span class="wllike" title="来自你在 Booth 上的スキ">${WISH_ICON}<span data-i18n="off">${window.I18N && I18N.lang === "en" ? "Liked" : "スキ"}</span></span>`;
+// 「同步 Booth 上的スキ」 under the paste field: the switch, 「立即同步」 (a purchase sync, which reads them), and what
+// the last sync found
+function wishLikesHTML() {
+  const L = W.likes, syncing = !!(S.data && S.data.purchaseBusy);
+  const last = L.err ? `<span class="err">未能读取 Booth 上的スキ：${esc(L.err)}</span>`
+    : L.at ? `<span>${esc(`上次同步：${fmtTime(L.at)}，Booth 上共 ${L.n} 件スキ，加入愿望单 ${L.added} 件`)}</span>${L.full ? `<span>${esc(`（愿望单已满，${L.full} 件未加入）`)}</span>` : ""}`
+    : L.on ? `<span>尚未同步。点击「立即同步」，登录 Booth 后读取</span>` : `<span>勾选后，在 Booth 点了「スキ！」的商品会在同步已购时自动加入愿望单</span>`;
+  return `<label class="check" title="每次同步 Booth 已购时，读取你在 Booth 点了「スキ！」的商品并加入愿望单。已购买的、已在素材库中的，以及你从愿望单移除过的商品不会加入。"><input type="checkbox" id="wl_likes"${L.on ? " checked" : ""}> 同步 Booth 上的スキ</label>
+    ${L.on ? `<button class="btn small" data-wl="likesync"${syncing ? " disabled" : ""}>${syncing ? "正在同步…" : "立即同步"}</button>` : ""}<span class="muted small wllast">${last}</span>`;
+}
 function wishSorted() {
   const by = {
     added: (a, b) => b.added - a.added,
@@ -132,7 +169,7 @@ function wishRowHTML(x) {
     <button class="wlthumb" data-wl="detail" data-id="${esc(x.id)}" title="查看商品详情" aria-label="查看商品详情">${x.thumb ? `<img loading="lazy" decoding="async" src="/rthumb?u=${encodeURIComponent(x.thumb)}" alt="">` : ""}</button>
     <div class="wlmain">
       <button class="wltitle" data-wl="detail" data-id="${esc(x.id)}" data-i18n="off">${esc(x.title || "Booth #" + x.id)}</button>
-      <div class="wlsub"><span>${esc(x.shop || "")}</span><span class="t"><span>加入于</span> ${esc(fmtTime(x.added))}</span></div>
+      <div class="wlsub"><span>${esc(x.shop || "")}</span><span class="t"><span>加入于</span> ${esc(fmtTime(x.added))}</span>${x.like ? WISH_LIKE : ""}</div>
       ${vars}${change}
       ${x.note ? `<div class="wlnote"><span class="lb">备注</span><span data-i18n="off">${esc(x.note)}</span></div>` : ""}
       ${x.err ? `<div class="wlerr small err"><span>价格检查失败</span>　${esc(x.err)}</div>` : ""}
@@ -148,14 +185,32 @@ function wishRowHTML(x) {
       <button class="wb" data-wl="remove" data-id="${esc(x.id)}" title="从愿望单移除" aria-label="从愿望单移除">${ICON.x}</button>
     </div></article>`;
 }
+// the wish list as a grid, as Booth lays out items: the picture with where the item stands on it, its name and shop,
+// the price with how far it fell, and the buttons. A variation's prices and the price record are the list's.
+function wishCardHTML(x) {
+  const c = x.change, kind = c && WISH_KIND[c.kind];
+  return `<article class="wgcard${x.bought || x.state ? " dim" : ""}" data-wlkey="${esc(x.key)}">
+    <button class="wgthumb" data-wl="detail" data-id="${esc(x.id)}" title="查看商品详情" aria-label="查看商品详情">${x.thumb ? `<img loading="lazy" decoding="async" src="/rthumb?u=${encodeURIComponent(x.thumb)}" alt="">` : ""}
+      <span class="wgstate">${wishState(x)}</span>${kind ? `<span class="wgchange ${esc(c.kind)}${W.fresh.has(x.key) ? " fresh" : ""}">${esc(kind)}</span>` : ""}${x.like ? WISH_LIKE : ""}</button>
+    <button class="wltitle" data-wl="detail" data-id="${esc(x.id)}" data-i18n="off" title="${esc(x.title || "")}">${esc(x.title || "Booth #" + x.id)}</button>
+    <div class="wgshop" data-i18n="off">${esc(x.shop || "")}</div>
+    ${x.note ? `<div class="wgnote" title="${esc(x.note)}"><span class="lb">备注</span><span data-i18n="off">${esc(x.note)}</span></div>` : ""}
+    <div class="wgfoot">
+      <span class="wgprice" title="${x.checked ? "上次检查：" + esc(fmtTime(x.checked)) : "尚未检查"}"><b>${esc(x.price || "—")}</b>${x.from ? `<span class="from">起</span>` : ""}${
+        x.diffDir ? `<span class="wgdiff ${x.diffDir < 0 ? "down" : "up"}">${x.diffDir < 0 ? "−" : "+"}${esc(x.diff)}</span>` : ""}</span>
+      <span class="wgacts"><button class="wb" data-wl="open" data-id="${esc(x.id)}" title="在 Booth 中打开" aria-label="在 Booth 中打开">${ICON.bag}</button><button class="wb" data-wl="note" data-id="${esc(x.id)}" title="编辑备注" aria-label="编辑备注">${ICON.edit}</button><button class="wb" data-wl="remove" data-id="${esc(x.id)}" title="从愿望单移除" aria-label="从愿望单移除">${ICON.x}</button></span>
+    </div>${x.err ? `<div class="wlerr small err" title="${esc(x.err)}">价格检查失败</div>` : ""}</article>`;
+}
 // drawn in place of the Booth results. The paste field and the list are separate parts: a refresh in the
 // background redraws the list only when it changed, and never the field being typed into.
 function renderWish() {
   if (W.unseen && !S.web.open.shop) { wishSeen(); renderShopSide(); } // the list is in view: what changed is seen
   const n = W.items.length;
   const opt = (v, label) => `<option value="${v}"${W.sort === v ? " selected" : ""}>${label}</option>`;
+  const vb = (v, label) => `<button class="btn small${W.view === v ? " on" : ""}" data-wl="view" data-v="${v}" aria-pressed="${W.view === v}">${label}</button>`;
   put($("#resultbar"), `<b>${esc(n)}</b><span>件愿望单商品</span>
-    <span class="wlbar"><label class="wlsort">排序<select id="wl_sort">${opt("drop", "降幅")}${opt("added", "加入时间")}${opt("price", "价格")}</select></label>
+    <span class="wlbar"><span class="wlview" role="group" aria-label="显示方式">${vb("list", "列表视图")}${vb("grid", "网格视图")}</span>
+      <label class="wlsort">排序<select id="wl_sort">${opt("drop", "降幅")}${opt("added", "加入时间")}${opt("price", "价格")}</select></label>
     <label class="check"><input type="checkbox" id="wl_watch"${W.watch ? " checked" : ""}> 每天检查价格</label>
     <button class="btn small" data-wl="check">立即检查</button>
     <button class="btn small" data-wl="nav">返回 Booth 商品</button></span>`);
@@ -165,14 +220,16 @@ function renderWish() {
   if (cb.textContent !== label) cb.textContent = label;
   if (!$("#wl")) {
     gridPut(`<div class="wl" id="wl"><div class="wladd"><input id="wl_paste" autocomplete="off" placeholder="粘贴 Booth 商品链接或商品编号" aria-label="Booth 商品链接或商品编号"><button class="btn" data-wl="add">加入愿望单</button></div>
-      <div id="wl_top"></div><div id="wl_list"></div><p class="wlfoot">价格取自 Booth 商品页，按店铺所用货币显示，未作换算。</p></div>`);
+      <div class="wllikes" id="wl_likes_row"></div><div id="wl_top"></div><div id="wl_list"></div><p class="wlfoot">价格取自 Booth 商品页，按店铺所用货币显示，未作换算。</p></div>`);
     $("#wl_paste").value = W.paste;
   }
+  put($("#wl_likes_row"), wishLikesHTML());
   put($("#wl_top"), W.paused ? `<p class="wlpause">Booth 暂时限制了访问，价格检查将稍后自动继续。</p>` : !W.watch && n ? `<p class="wlpause">已关闭每天的价格检查，价格不会自动更新。</p>` : "");
-  const list = $("#wl_list");
-  if (!n) { put(list, `<div class="empty"><h2>愿望单为空</h2><p>在此收藏想购买的 Booth 商品，软件每天检查一次价格，降价时提醒。</p></div>`); return; }
+  const list = $("#wl_list"), grid = W.view === "grid" && n > 0;
+  list.classList.toggle("wlgrid", grid);
+  if (!n) { put(list, `<div class="empty"><h2>愿望单为空</h2><p>在此收藏想购买的 Booth 商品，软件每天检查一次价格，降价时提醒。</p>${W.likes.on ? "" : `<p>也可以勾选上方的「同步 Booth 上的スキ」，把在 Booth 点了「スキ！」的商品一次加入。</p>`}</div>`); return; }
   // row by row: one item's price being looked at does not redraw the others (nor the one a button is being pressed in)
-  const rows = wishSorted().map(x => [x.key, wishRowHTML(x)]), kids = [...list.children], refocus = focusMark(list);
+  const rows = wishSorted().map(x => [x.key, grid ? wishCardHTML(x) : wishRowHTML(x)]), kids = [...list.children], refocus = focusMark(list);
   if (kids.length === rows.length && kids.every((k, i) => k.dataset.wlkey === rows[i][0])) {
     rows.forEach(([, html], i) => {
       if (kids[i]._h === html) return;
@@ -239,6 +296,7 @@ async function wishAction(b) {
       return;
     }
     case "detail": return openShopItem(id);
+    case "view": { const v = b.dataset.v === "grid" ? "grid" : "list"; if (W.view === v) return; W.view = v; storesSave(); return renderWish(); }
     case "open": return openWeb(boothItemURL(id), "booth");
     case "note": return wishNoteOpen(key);
     case "notesave": {
@@ -248,9 +306,10 @@ async function wishAction(b) {
     }
     case "remove": {
       const x = W.byKey.get(key);
-      if (!x || !confirm("从愿望单移除该商品？其价格记录将一并删除。\n\n" + x.title)) return;
+      if (!x || !confirm("从愿望单移除该商品？其价格记录将一并删除。" + (W.likes.on ? "同步 Booth 上的スキ时也不会再加入。" : "") + "\n\n" + x.title)) return;
       return wishRemove(key);
     }
+    case "likesync": return wishLikeSync();
     case "check": {
       const r = await api("/api/wish/check", {});
       if (!r.ok) { toast(r.err || "检查失败", 4000); return; }
@@ -633,6 +692,14 @@ document.addEventListener("keydown", e => {
 document.addEventListener("input", e => { if (e.target.id === "wl_paste") W.paste = e.target.value; if (e.target.id === "fl_paste") F.paste = e.target.value; }, true);
 document.addEventListener("change", e => {
   if (e.target.id === "wl_sort") { W.sort = e.target.value; storesSave(); renderWish(); }
+  if (e.target.id === "wl_likes") {
+    const on = e.target.checked; W.likes.on = on;
+    api("/api/wish/likes", { on }).then(() => {
+      if (!on) { toast("已关闭同步 Booth 上的スキ"); return storesFetch(); }
+      if (S.data && S.data.purchaseBusy) { toast("正在同步，完成后再次同步即可读取スキ", 4000); return storesFetch(); }
+      return wishLikeSync(); // read them now
+    }).catch(() => {});
+  }
   if (e.target.id === "wl_watch") {
     const on = e.target.checked; W.watch = on;
     api("/api/wish/watch", { on }).then(() => { toast(on ? "已开启每天的价格检查" : "已关闭每天的价格检查"); return storesFetch(); }).catch(() => {});

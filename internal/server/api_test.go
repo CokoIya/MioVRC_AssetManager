@@ -11,10 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"vrclib/internal/booth"
 	"vrclib/internal/core"
 	"vrclib/internal/library"
 	"vrclib/internal/netdisk"
 	"vrclib/internal/testkit"
+	"vrclib/internal/unity"
 )
 
 func postJSON(t *testing.T, srv *httptest.Server, path string, body any) map[string]any {
@@ -104,6 +106,72 @@ func TestBulkEdit(t *testing.T) {
 	st.Mu.RUnlock()
 	if mode != "ignore" {
 		t.Errorf("override %q", mode)
+	}
+	// 「标记为非 Booth 商品」: no match by name for the picked ones; a link of the player's own still stands
+	st.Mu.Lock()
+	st.User[as["Beta Hair"].Key].BoothURL = "https://booth.pm/ja/items/1234567"
+	st.Mu.Unlock()
+	if r := postJSON(t, srv, "/api/user/bulk", map[string]any{"keys": keys[:2], "noBooth": true}); r["ok"] != true || r["n"] != float64(2) {
+		t.Fatalf("not from Booth: %v", r)
+	}
+	st.Mu.RLock()
+	a, b = st.User[as["Alpha Coat"].Key], st.User[as["Beta Hair"].Key]
+	if !a.NoBooth || a.Notes != "kept" || !b.NoBooth || b.BoothURL == "" {
+		t.Errorf("after 非 Booth 商品: %+v %+v", a, b)
+	}
+	st.Mu.RUnlock()
+	if id, src := booth.AssetBooth(st, as["Beta Hair"].Key, as["Beta Hair"]); id != "1234567" || src != "user" {
+		t.Errorf("the player's own link went: %q %q", id, src)
+	}
+}
+
+// 工程「隐藏」: a project hidden is marked on its card, stays hidden through a settings save from a page that does not
+// know of it yet, and is shown again; its path is matched as the program matches paths.
+func TestProjectHide(t *testing.T) {
+	core.DataDir = t.TempDir()
+	st := core.LoadStore(filepath.Join(core.DataDir, "library.json"))
+	base := t.TempDir()
+	pa, pb := filepath.Join(base, "Main"), filepath.Join(base, "Manuka", "Backup")
+	st.Projects = []core.ProjectInfo{{Name: "Main", Path: pa}, {Name: "Manuka/Backup", Path: pb}}
+	apiToken = "t"
+	srv := httptest.NewServer(NewMux(st))
+	defer srv.Close()
+	hidden := func() map[string]bool {
+		out := map[string]bool{}
+		for _, c := range unity.ProjectCards(st) {
+			out[c.Name] = c.Hidden
+		}
+		return out
+	}
+	if r := postJSON(t, srv, "/api/project/hide", map[string]any{"path": pb, "hidden": true}); r["ok"] != true || len(r["hidden"].([]any)) != 1 {
+		t.Fatalf("hide: %v", r)
+	}
+	if h := hidden(); !h["Manuka/Backup"] || h["Main"] {
+		t.Errorf("cards: %v", h)
+	}
+	// the page's copy of the settings, older than the hide: the hidden one stays hidden
+	if r := postJSON(t, srv, "/api/settings", map[string]any{"settings": map[string]any{"roots": []string{}, "hiddenProjects": []string{}}, "noRescan": true}); r["ok"] != true {
+		t.Fatalf("settings: %v", r)
+	}
+	if h := hidden(); !h["Manuka/Backup"] {
+		t.Errorf("a settings save showed it again: %v", h)
+	}
+	// hidden twice: one entry; shown again by its path written another way
+	postJSON(t, srv, "/api/project/hide", map[string]any{"path": pb + string(filepath.Separator), "hidden": true})
+	st.Mu.RLock()
+	n := len(st.Settings.HiddenProjects)
+	st.Mu.RUnlock()
+	if n != 1 {
+		t.Errorf("hidden twice: %d entries", n)
+	}
+	if r := postJSON(t, srv, "/api/project/hide", map[string]any{"path": filepath.Join(base, "Manuka", ".", "Backup"), "hidden": false}); r["ok"] != true || len(r["hidden"].([]any)) != 0 {
+		t.Fatalf("show: %v", r)
+	}
+	if h := hidden(); h["Manuka/Backup"] {
+		t.Errorf("still hidden: %v", h)
+	}
+	if r := postJSON(t, srv, "/api/project/hide", map[string]any{"path": " ", "hidden": true}); r["ok"] != false {
+		t.Errorf("no path: %v", r)
 	}
 }
 

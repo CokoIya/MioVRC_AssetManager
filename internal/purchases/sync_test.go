@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"vrclib/internal/booth"
 	"vrclib/internal/core"
 	"vrclib/internal/testkit"
 	"vrclib/internal/webpane"
@@ -136,7 +137,11 @@ func TestScraperReportsGaps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("harness: %v", err)
 	}
-	var got map[string]struct{ Error, IDs, Incomplete, Downloads string }
+	var got map[string]struct {
+		Error, IDs, Incomplete, Downloads, Likes, LikesError string
+		LikesTotal, AskedLikes                               int
+		LikesRead                                            bool
+	}
 	if err := json.Unmarshal(out, &got); err != nil {
 		t.Fatalf("harness output %q: %v", out, err)
 	}
@@ -145,6 +150,11 @@ func TestScraperReportsGaps(t *testing.T) {
 		"emptyMiddle": {"1 3", "已购列表第 2 页没有内容"},
 		"failedPage":  {"1 3", "已购列表第 2 页未能加载"},
 		"repeats":     {"1 3", ""},
+		"likes":       {"1 2 3", ""},
+		"noLikes":     {"1 2 3", ""},
+		"likesShape":  {"1 2 3", ""},
+		"likesHTML":   {"1 2 3", ""},
+		"likes403":    {"1 2 3", ""},
 	} {
 		if g := got[name]; g.Error != "" || g.IDs != want[0] || g.Incomplete != want[1] {
 			t.Errorf("%s: %+v, want items %q and incomplete %q", name, g, want[0], want[1])
@@ -152,6 +162,23 @@ func TestScraperReportsGaps(t *testing.T) {
 	}
 	if got["whole"].Downloads != "10 20 30" {
 		t.Errorf("downloads %q", got["whole"].Downloads)
+	}
+	// the items marked スキ！: every page, each item once, what the wish list needs of it
+	if g := got["likes"]; !g.LikesRead || g.LikesTotal != 3 || g.AskedLikes != 2 || g.LikesError != "" || g.Likes !=
+		"11|Like 11|¥ 1,000~|Shop 11|https://s11.booth.pm/|https://booth.pximg.net/11.jpg 12|Like 12|¥ 1,000~|Shop 12|https://s12.booth.pm/|https://booth.pximg.net/12.jpg 13|Like 13|¥ 1,000~|Shop 13|https://s13.booth.pm/|https://booth.pximg.net/13.jpg" {
+		t.Errorf("likes: %+v", g)
+	}
+	if g := got["noLikes"]; g.LikesRead || g.AskedLikes != 0 || g.Likes != "" {
+		t.Errorf("likes read without being asked for: %+v", g)
+	}
+	if g := got["likesShape"]; g.LikesRead || g.LikesError != "スキ列表的格式无法识别" {
+		t.Errorf("another shape: %+v", g)
+	}
+	if g := got["likesHTML"]; g.LikesRead || !strings.Contains(g.LikesError, "返回的不是 JSON") {
+		t.Errorf("not JSON: %+v", g)
+	}
+	if g := got["likes403"]; g.LikesRead || g.LikesError != "Booth 拒绝读取スキ列表（HTTP 403）" {
+		t.Errorf("refused: %+v", g)
 	}
 }
 
@@ -267,5 +294,30 @@ func TestGumroadLoginWatch(t *testing.T) {
 	}
 	if errors.Is(errGumBlocked, errGumLogin) {
 		t.Error("a protection page is not a lost login")
+	}
+}
+
+// The items marked スキ！ that a sync read go on the wish list, but not those bought or already in the library;
+// the sync's status says how many went on it, or why the list could not be read.
+func TestTakeLikes(t *testing.T) {
+	st := testkit.NewStore(t)
+	booth.WishReload()
+	t.Cleanup(booth.WishReload)
+	booth.WishSetLikes(true)
+	st.Purchases = map[string]*core.Purchase{"9101002": {ID: "9101002", Name: "Bought"}}
+	st.Assets = []*core.Asset{{Key: "name:hat", Name: "Hat", Category: "配饰"}}
+	st.User = map[string]*core.UserData{"name:hat": {BoothURL: "https://booth.pm/ja/items/9101003"}}
+	r := &scrapeResult{LikesRead: true, LikesTotal: 3, Likes: []booth.LikeItem{{ID: "9101001", Name: "Dress"}, {ID: "9101002", Name: "Bought"}, {ID: "9101003", Name: "Hat"}}}
+	if msg := takeLikes(st, r); msg != "。愿望单新增 1 件スキ商品" {
+		t.Errorf("status %q", msg)
+	}
+	if s := booth.WishSnapshot(st); len(s.Items) != 1 || s.Items[0].ID != "9101001" || !s.Items[0].Like || s.LikesN != 3 || s.LikesAdded != 1 {
+		t.Errorf("wish list %+v", s)
+	}
+	if msg := takeLikes(st, &scrapeResult{LikesErr: "スキ列表的格式无法识别"}); msg != "。未能读取 Booth 上的スキ：スキ列表的格式无法识别" || booth.WishSnapshot(st).LikesErr == "" {
+		t.Errorf("failed: %q", msg)
+	}
+	if msg := takeLikes(st, &scrapeResult{}); msg != "" {
+		t.Errorf("not asked for: %q", msg)
 	}
 }

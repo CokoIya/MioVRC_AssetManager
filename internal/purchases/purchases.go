@@ -79,12 +79,18 @@ type scrapeResult struct {
 	OrderError string        `json:"orderError"`
 	Incomplete string        `json:"incomplete"` // why the lists may not be whole (a page that did not load, fewer pages than Booth shows)
 	Debug      string        `json:"debug"`
+	// the items the player marked スキ！, when the wish list wants them (booth.WishLikesOn)
+	Likes      []booth.LikeItem `json:"likes"`
+	LikesTotal int              `json:"likesTotal"`
+	LikesRead  bool             `json:"likesRead"`
+	LikesErr   string           `json:"likesError"`
 }
 
 type scrapeProgress struct {
 	Stage       string `json:"stage"`
 	Page        int    `json:"page"`
 	Items       int    `json:"items"`
+	Likes       int    `json:"likes"`
 	Orders      int    `json:"orders"`
 	OrdersTotal int    `json:"ordersTotal"`
 	OrderDone   int    `json:"orderDone"`
@@ -268,11 +274,12 @@ func boothLoop(st *core.Store, prog *core.Task, d webpane.PageDriver, quiet bool
 	saveSessionFrom(d)
 
 	n, partial := mergePurchases(st, res)
+	likes := takeLikes(st, res)
 	if n == 0 {
 		if res.Debug != "" {
 			_ = os.WriteFile(filepath.Join(core.DataDir, "booth-debug.html"), []byte(redactPage(res.Debug)), 0600)
 		}
-		prog.Set(1, 1, "未获取到已购商品（如确有已购，请将数据文件夹中的 booth-debug.html 发送给作者）")
+		prog.Set(1, 1, "未获取到已购商品（如确有已购，请将数据文件夹中的 booth-debug.html 发送给作者）"+likes)
 		return false
 	}
 	_ = os.Remove(filepath.Join(core.DataDir, "booth-debug.html"))
@@ -288,9 +295,44 @@ func boothLoop(st *core.Store, prog *core.Task, d webpane.PageDriver, quiet bool
 	if res.OrderError != "" {
 		msg += "（订单页未完整获取：" + res.OrderError + "）"
 	}
-	prog.Set(1, 1, msg)
+	prog.Set(1, 1, msg+likes)
 	core.Logf("Booth 已购同步完成：%d 件，%d 个订单，未读全：%v %s", n, len(res.Orders), partial, res.Incomplete)
 	return true
+}
+
+// takeLikes puts the items the player marked スキ！ on the wish list — not those bought or in the library (a match
+// by name not confirmed yet does not count) — and says what it did: a sentence of its own after the sync's status
+// (so the window's dictionaries take the two apart), "" when the wish list did not ask for them.
+func takeLikes(st *core.Store, r *scrapeResult) string {
+	if r.LikesErr != "" {
+		booth.WishLikesFailed(r.LikesErr)
+		core.Logf("Booth 的スキ未能读取：%s", r.LikesErr)
+		return "。未能读取 Booth 上的スキ：" + r.LikesErr
+	}
+	if !r.LikesRead {
+		return ""
+	}
+	owned := library.LinkedBoothIDs(st)
+	st.Mu.RLock()
+	bought := make(map[string]bool, len(st.Purchases))
+	for id := range st.Purchases {
+		bought[id] = true
+	}
+	st.Mu.RUnlock()
+	added, full := booth.WishFromLikes(r.Likes, r.LikesTotal, func(id string) bool {
+		_, own := owned[id]
+		return bought[id] || own
+	})
+	core.Logf("Booth 的スキ：%d 件，加入愿望单 %d 件，愿望单已满未加入 %d 件", max(r.LikesTotal, len(r.Likes)), added, full)
+	switch {
+	case added > 0 && full > 0:
+		return fmt.Sprintf("。愿望单新增 %d 件スキ商品（愿望单已满，%d 件スキ商品未加入）", added, full)
+	case added > 0:
+		return fmt.Sprintf("。愿望单新增 %d 件スキ商品", added)
+	case full > 0:
+		return fmt.Sprintf("。愿望单已满，%d 件スキ商品未加入", full)
+	}
+	return ""
 }
 
 // syncPartialNote: said in the sync's status when what was read cannot be all of it.
@@ -309,7 +351,8 @@ func redactPage(html string) string {
 }
 
 func runScraper(d webpane.PageDriver, prog *core.Task) (*scrapeResult, error) {
-	if _, err := d.Eval(boothScraperJS+"\n;window.__vrclibRun(); 'started'", 10*time.Second); err != nil {
+	opts, _ := json.Marshal(map[string]any{"likes": booth.WishLikesOn()})
+	if _, err := d.Eval(boothScraperJS+"\n;window.__vrclibRun("+string(opts)+"); 'started'", 10*time.Second); err != nil {
 		return nil, err
 	}
 	for {
@@ -335,6 +378,8 @@ func runScraper(d webpane.PageDriver, prog *core.Task) (*scrapeResult, error) {
 			prog.Set(0, 0, fmt.Sprintf("正在获取订单列表，第 %d 页（%d 个订单）", p.Page, p.Orders))
 		case "orderDetail":
 			prog.Set(p.OrderDone, p.OrdersTotal, "正在获取订单详情")
+		case "likes":
+			prog.Set(0, 0, fmt.Sprintf("正在获取 Booth 上的スキ，第 %d 页（%d 件）", p.Page, p.Likes))
 		}
 		if !p.Done {
 			continue

@@ -260,7 +260,7 @@ func startEval(st *core.Store) error {
 			// (only this goroutine changes the run, so it reads it without evalMu; logged before the run is seen to end)
 			core.Logf("AI 评测：%s %s，%d 个样本，首次通过 %d，修改后通过 %d，未通过 %d，出错 %d，%s tokens", run.Label, run.Model, run.Done, run.First, run.Fixed, run.Failed, run.Errors, tokText(run.Tokens))
 			evalMu.Lock()
-			run.Running, run.Stopped = false, ctx.Err() != nil
+			run.Running, run.Stopped = false, run.Stopped || ctx.Err() != nil
 			saveEvalRunsLocked()
 			evalMu.Unlock()
 		}()
@@ -270,6 +270,16 @@ func startEval(st *core.Store) error {
 			}
 			file = f
 			add(evalOne(ctx, c, f))
+			c.haltMu.Lock()
+			halt := c.halt
+			c.haltMu.Unlock()
+			if halt != nil { // the ChatGPT plan's limit, or the sign-in gone: the other samples are not asked
+				core.Logf("AI 评测中止：%v", halt)
+				evalMu.Lock()
+				run.Stopped = true
+				evalMu.Unlock()
+				break
+			}
 		}
 	}()
 	return nil

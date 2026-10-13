@@ -94,6 +94,7 @@ func winLibrary() *core.Store {
 	fillStore(st)
 	st.Settings.Roots = []string{`D:\VRC\Assets`, `E:\Other`}
 	st.Settings.ProjectRoots = []string{`D:\Unity`}
+	st.Settings.HiddenProjects = []string{`D:\Unity\Avatar\Backup`, `C:\Elsewhere\Old`} // (the second in no project folder)
 	st.Settings.DownloadDir = `D:\VRC\Assets\dl`
 	loc := func(root, rel, kind string) core.Location {
 		return core.Location{Path: root + `\` + rel, Kind: kind, Root: root}
@@ -200,6 +201,9 @@ func TestRemapStore(t *testing.T) {
 	}
 	if len(out.Projects) != 1 || out.Projects[0].Path != `F:\Unity\Avatar` {
 		t.Errorf("projects: %+v", out.Projects)
+	}
+	if strings.Join(s.HiddenProjects, "|") != `F:\Unity\Avatar\Backup` {
+		t.Errorf("hidden projects: %v", s.HiddenProjects)
 	}
 	// the folder without a mapping: its assets, and what goes by their path, wait
 	if len(rm.pending) != 1 || rm.pending[0].Root != `E:\Other` || rm.waiting != 3 {
@@ -762,7 +766,8 @@ func TestExportLeavesOutMachineData(t *testing.T) {
 	}
 	// a short name Windows keeps for a long one never passes for a data file
 	for rel, want := range map[string]bool{"WEB-LO~1/Cookies.json": false, "WEB-XI~1/x.json": false, "web-xianyu/EBWebView/Preferences.json": false, "BOOTH-~1/x.json": false, "covers/UNITYP~1/p.png": false, "AI~1.json": false,
-		"covers/a~b.jpg": true, "covers/a.jpg": true, "wishlist.json": true, "ai.json": false, "checkups.json": false, "pkgcovers.json": false, "covers/unitypackage/p.png": false} {
+		"covers/a~b.jpg": true, "covers/a.jpg": true, "wishlist.json": true, "ai.json": false, "checkups.json": false, "pkgcovers.json": false, "covers/unitypackage/p.png": false,
+		"chatgpt-host.json": false, "chatgpt-auth.dat": false, "CHATGPT-HOST.JSON": false, "chatgpt-auth.dat.broken-20261013-120000": false} {
 		if dataFileOK(rel) != want {
 			t.Errorf("dataFileOK(%q) = %v", rel, !want)
 		}

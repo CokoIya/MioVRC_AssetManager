@@ -31,6 +31,7 @@ type AIStep struct {
 	Busy bool     `json:"busy,omitempty"` // the tool is still running
 	Imgs []string `json:"imgs,omitempty"` // pictures taken in this step (names for /shot)
 	Opts string   `json:"opts,omitempty"` // an ask: which answers it offers ("": allow / allow all / deny; "once": allow / deny; "budget": go on / stop)
+	Code string   `json:"code,omitempty"` // an error: what the window offers for it (aiErrCode: usage, signin, plan)
 	At   int64    `json:"at"`
 }
 
@@ -81,6 +82,30 @@ func aiSessionFor(p string) *aiSession {
 		aiSess[core.PathKey(p)] = s
 	}
 	return s
+}
+
+// stopPlanWork stops what uses the ChatGPT plan now — the runs of the pipeline and an evaluation — before the
+// sign-out takes the plan away: no request goes out with a token that is being revoked.
+func stopPlanWork() {
+	aiSessMu.Lock()
+	ss := make([]*aiSession, 0, len(aiSess))
+	for _, s := range aiSess {
+		ss = append(ss, s)
+	}
+	aiSessMu.Unlock()
+	for _, s := range ss {
+		s.mu.Lock()
+		on := s.busy && s.client != nil && s.client.info.Wire == "responses"
+		s.mu.Unlock()
+		if on {
+			s.stop()
+		}
+	}
+	evalMu.Lock()
+	if n := len(evalRuns); n > 0 && evalRuns[n-1].Running && onPlan(evalRuns[n-1].Provider) && evalCancel != nil {
+		evalCancel()
+	}
+	evalMu.Unlock()
 }
 
 func (s *aiSession) add(st AIStep) int {
@@ -1416,7 +1441,7 @@ func startAIRun(st *core.Store, req aiRunReq) error {
 		}
 		if err != nil {
 			s.finishStep(false, "已中断")
-			s.add(AIStep{Kind: "error", Text: s.abortText(err)})
+			s.add(AIStep{Kind: "error", Text: s.abortText(err), Code: aiErrCode(err)})
 		}
 	}()
 	return nil
@@ -2202,7 +2227,11 @@ func RegisterAI(st *core.Store, post func(string, func(http.ResponseWriter, map[
 		return s
 	}
 	fail := func(w http.ResponseWriter, err error) {
-		core.WriteJSON(w, map[string]any{"ok": false, "err": err.Error()})
+		r := map[string]any{"ok": false, "err": err.Error()}
+		if code := aiErrCode(err); code != "" {
+			r["code"] = code // (the ChatGPT plan's limit: the window offers 「管理用量」)
+		}
+		core.WriteJSON(w, r)
 	}
 	project := func(w http.ResponseWriter, b map[string]json.RawMessage) (string, bool) {
 		p, ok := unity.KnownProject(st, str(b, "project"))
@@ -2357,8 +2386,41 @@ func RegisterAI(st *core.Store, post func(string, func(http.ResponseWriter, map[
 			fail(w, err)
 			return
 		}
-		core.WriteJSON(w, map[string]any{"ok": true, "models": ms})
+		r := map[string]any{"ok": true, "models": ms}
+		if len(c.names) > 0 {
+			r["names"] = c.names // (ChatGPT: the names OpenAI gives them, in its order)
+		}
+		core.WriteJSON(w, r)
 	})
+	// 「ChatGPT 账号」: signing in happens in the player's browser, on OpenAI's page (chatgpt.go)
+	gptAnswer := func(w http.ResponseWriter, err error, more map[string]any) {
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		r := map[string]any{"ok": true, "ai": aiView()}
+		for k, v := range more {
+			r[k] = v
+		}
+		core.WriteJSON(w, r)
+	}
+	post("/api/ai/chatgpt/signin", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		gptAnswer(w, gptStartSignIn(st, str(b, "mode"), str(b, "account")), nil)
+	})
+	post("/api/ai/chatgpt/cancel", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		gptCancelSignIn()
+		time.Sleep(150 * time.Millisecond) // (the sign-in ends on its own: the answer has it gone, mostly)
+		gptAnswer(w, nil, nil)
+	})
+	post("/api/ai/chatgpt/reopen", func(w http.ResponseWriter, b map[string]json.RawMessage) { gptAnswer(w, gptReopen(), nil) })
+	post("/api/ai/chatgpt/signout", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		stopPlanWork() // (OpenAI: requests stop before the sign-out)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		revoked, err := gptSignOut(ctx, gptHTTP(st, gptAuthBase))
+		gptAnswer(w, err, map[string]any{"revoked": revoked})
+	})
+	post("/api/ai/chatgpt/welcomed", func(w http.ResponseWriter, b map[string]json.RawMessage) { gptAnswer(w, gptWelcomed(), nil) })
 	post("/api/ai/setup", func(w http.ResponseWriter, b map[string]json.RawMessage) {
 		p, ok := project(w, b)
 		if !ok {

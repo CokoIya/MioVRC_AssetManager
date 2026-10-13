@@ -36,7 +36,7 @@ func recipeRig(t *testing.T) (*core.Store, string, *sceneUnity) {
 	st.Booth = map[string]*core.BoothInfo{"1234567": {ID: "1234567", Name: "Devil Sailor", URL: "https://booth.pm/ja/items/1234567"}}
 	u := &sceneUnity{live: true, extra: []prefabInfo{{Path: khaki, Name: "Khaki", Renderers: 3, MeshNames: []string{"Hair", "hairpin1", "hairpin2"}, MAReady: true}}}
 	unitytest.FakeUnity(t, proj, u.answer)
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	if err := startAIRun(st, aiRunReq{Project: proj, Mode: "dress", NoAI: true, Assets: []aiAsset{
 		{Folder: "Assets/Shop/SailorSet", Kind: "衣服", Name: "水手服"}, {Folder: "Assets/_头发/樱发", Kind: "头发", Name: "樱发"}}}); err != nil {
 		t.Fatal(err)
@@ -170,7 +170,7 @@ func TestRecipeFromAIRun(t *testing.T) {
 	touch(t, proj, "ProjectSettings/ProjectVersion.txt", sailor)
 	u := &sceneUnity{live: true}
 	unitytest.FakeUnity(t, proj, u.answer)
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	s := aiSessionFor(proj)
 	call := func(name, args string) {
 		t.Helper()

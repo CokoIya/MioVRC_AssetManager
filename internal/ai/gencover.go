@@ -56,7 +56,7 @@ func coverFolders(st *core.Store, key string) (name, category string, out []cove
 	}
 	for _, p := range st.Projects {
 		for _, u := range a.Usage {
-			if u.Project == filepath.Base(p.Path) {
+			if u.Project == p.Name { // (the name the usage scan gave it: "Manuka/v2" for one in a folder of its own)
 				add(p.Path, u.Folder)
 			}
 		}
@@ -328,7 +328,8 @@ func CancelCoverBatch() {
 }
 
 // coverless: the project's assets (as the pipeline page lists them) that the library knows and that show no
-// picture of their own and none made before.
+// picture of their own and none made before — no picture at all, or only the preview out of their unitypackage
+// (Unity's thumbnail of 128 px at most, which a render in Unity replaces).
 func coverless(st *core.Store, project string) (keys, names []string) {
 	seen := map[string]bool{}
 	list := projectAssets(st, project)
@@ -344,7 +345,7 @@ func coverless(st *core.Store, project string) (keys, names []string) {
 			continue
 		}
 		seen[pa.Key] = true
-		if v := library.BuildView(st, a); v.Cover == "" {
+		if v := library.BuildView(st, a); v.Cover == "" || v.CoverPkg {
 			keys, names = append(keys, pa.Key), append(names, v.Name)
 		}
 	}

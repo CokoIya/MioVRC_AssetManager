@@ -430,3 +430,22 @@ func TestImportUnpacksOnlyTheFilesItIsGiven(t *testing.T) {
 		t.Errorf("the earlier folder: %s", got)
 	}
 }
+
+// The base body a project is built on is read from the usage records by the name the usage scan gave the project:
+// "Manuka/v2" for one in a folder of its own, not its folder's name (which a top-level "v2" also has).
+func TestProjectBasesNested(t *testing.T) {
+	st := testkit.NewStore(t)
+	root := t.TempDir()
+	nested, top := filepath.Join(root, "Manuka", "v2"), filepath.Join(root, "v2")
+	st.Projects = []core.ProjectInfo{{Name: "Manuka/v2", Path: nested}, {Name: "v2", Path: top}}
+	st.Assets = []*core.Asset{
+		{Key: "name:manuka", Name: "Manuka", Category: "素体", Bases: []string{"Manuka"}, Usage: []core.Usage{{Project: "Manuka/v2", Status: "used"}}},
+		{Key: "name:kikyo", Name: "Kikyo", Category: "素体", Bases: []string{"Kikyo"}, Usage: []core.Usage{{Project: "v2", Status: "used"}}},
+	}
+	if got := projectBases(st, nested); !reflect.DeepEqual(got, []string{"Manuka"}) {
+		t.Errorf("nested: %v", got)
+	}
+	if got := projectBases(st, top); !reflect.DeepEqual(got, []string{"Kikyo"}) {
+		t.Errorf("top: %v", got)
+	}
+}

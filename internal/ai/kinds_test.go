@@ -169,7 +169,7 @@ func TestQuickPipelinePlugins(t *testing.T) {
 		{Path: "Assets/Broken/gimmick.prefab", Name: "gimmick", MissingScripts: 3},
 	}}
 	unitytest.FakeUnity(t, proj, u.answer)
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	req := aiRunReq{Project: proj, Mode: "dress", NoAI: true, Assets: []aiAsset{
 		{Folder: "Assets/Triturbo/Plum_FT", Kind: "面捕", Name: "Plum 面捕"},
 		{Folder: "Assets/Triturbo/Kaguya_FT", Kind: "面捕", Name: "辉夜面捕"},
@@ -263,7 +263,7 @@ func TestQuickPipelineNothingToPlace(t *testing.T) {
 		}
 		return u.answer(cmd, args)
 	})
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	if err := startAIRun(st, aiRunReq{Project: proj, Mode: "dress", NoAI: true, Assets: []aiAsset{{Folder: "Assets/Miu/SexyGlow", Kind: "皮肤"}, {Folder: "Assets/Faces/Pack", Kind: "表情", Name: "表情包"}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +311,7 @@ func TestQuickPipelineOldPlugin(t *testing.T) {
 		}
 		return u.answer(cmd, args)
 	})
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	if err := startAIRun(st, aiRunReq{Project: proj, Mode: "dress", NoAI: true, Assets: []aiAsset{{Folder: "Assets/Light", Kind: "光影", Name: "灯光"}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -327,7 +327,7 @@ func TestPlacePrefabTool(t *testing.T) {
 	proj := t.TempDir()
 	u := &sceneUnity{live: true, extra: []prefabInfo{{Path: "Assets/Light/Light.prefab", Name: "Light", SelfInstalling: true, MenuInstallers: 1}}}
 	unitytest.FakeUnity(t, proj, u.answer)
-	st.Projects = []core.ProjectInfo{{Name: "P", Path: proj}}
+	st.Projects = []core.ProjectInfo{{Name: filepath.Base(proj), Path: proj}} // (named as the usage scan names it)
 	s := aiSessionFor(proj)
 	content, short, ok := s.runTool(t.Context(), "place_prefab", map[string]any{"prefab": "Assets/Light/Light.prefab"})
 	if !ok || !strings.Contains(short, "「Light」已放置") || !strings.Contains(content, `"menuInstallers":["Light"]`) {

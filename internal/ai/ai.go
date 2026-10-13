@@ -28,7 +28,7 @@ type aiProviderInfo struct {
 	Label string `json:"label"`
 	Base  string `json:"base"`  // default address
 	Model string `json:"model"` // default model ("" = pick one from the list)
-	Wire  string `json:"wire"`  // openai or claude
+	Wire  string `json:"wire"`  // openai, claude, or responses (the ChatGPT plan: chatgpt.go)
 	Note  string `json:"note"`
 }
 
@@ -41,6 +41,8 @@ var aiProviders = []aiProviderInfo{
 		Note: "在智谱开放平台（bigmodel.cn）申请 API Key。常用模型：glm-5.3、glm-4.7；免费模型：glm-4.7-flash。识图使用其视觉模型（glm-4.6v-flash 免费）。"},
 	{ID: "kimi", Label: "Kimi", Base: "https://api.moonshot.cn/v1", Model: "kimi-k3", Wire: "openai",
 		Note: "在 Kimi 开放平台（platform.kimi.com）申请 API Key。常用模型：kimi-k3、kimi-k2.6，均支持识图。"},
+	{ID: "chatgpt", Label: "ChatGPT 账号", Base: "https://api.openai.com/v1", Model: "", Wire: "responses",
+		Note: "使用你的 ChatGPT 套餐额度，无需 API Key（需要支持此功能的套餐，以 OpenAI 帮助中心的说明为准）。"},
 	{ID: "openai", Label: "ChatGPT 兼容", Base: "https://api.openai.com/v1", Model: "", Wire: "openai",
 		Note: "OpenAI 官方，或任何兼容 OpenAI 接口的服务（中转站、本地的 Ollama / LM Studio 等）：填写该服务提供的接口地址和 Key。"},
 	{ID: "claude", Label: "Claude 兼容", Base: "https://api.anthropic.com", Model: "claude-sonnet-5-5", Wire: "claude",
@@ -308,6 +310,7 @@ type AIView struct {
 	EyeOwn    bool                 `json:"eyeOwn"`    // … and it is the provider's own, not one the player set up
 	Looks     string               `json:"looks"`     // who looks at pictures now: main, other, none, off, or unknown (not asked yet)
 	Presets   []visionPreset       `json:"visionPresets"`
+	ChatGPT   gptView              `json:"chatgpt"` // the sign-in of 「ChatGPT 账号」
 }
 
 func keyTail(k string) string {
@@ -335,9 +338,14 @@ func aiView() AIView {
 			v.Keys[p.ID] = t
 		}
 	}
-	if aiProvider(c.Provider) != nil {
+	v.ChatGPT = gptViewLocked()
+	if info := aiProvider(c.Provider); info != nil {
 		p := c.profile(c.Provider)
-		v.Ready = p.Model != "" && p.BaseURL != "" && (keys[c.Provider] != "" || isLocalHost(p.BaseURL))
+		if info.Wire == "responses" {
+			v.Ready = v.ChatGPT.Plan && p.Model != ""
+		} else {
+			v.Ready = p.Model != "" && p.BaseURL != "" && (keys[c.Provider] != "" || isLocalHost(p.BaseURL))
+		}
 	}
 	v.Vision, v.VisionKey = c.Vision, keyTail(keys[visionKeyID])
 	v.Looks, v.Presets = looksNow(c, keys), visionPresets
@@ -349,8 +357,12 @@ func aiView() AIView {
 
 // aiSave: the provider, its address and model; key == nil leaves the saved key alone, "" removes it.
 func aiSave(provider, base, model string, key *string, hierarchy *string) error {
-	if provider != "" && aiProvider(provider) == nil {
+	info := aiProvider(provider)
+	if provider != "" && info == nil {
 		return errors.New("未知的 AI 服务商：" + provider)
+	}
+	if info != nil && info.Wire == "responses" {
+		base, key = "", nil // OpenAI's own address, and the sign-in in place of a key
 	}
 	aiMu.Lock()
 	defer aiMu.Unlock()
@@ -483,9 +495,13 @@ type aiClient struct {
 	model  string
 	key    string
 	hc     *http.Client
-	outKey string                        // what this service calls the output limit ("" = max_tokens)
-	outMax int                           // the limit asked for (0 = aiOutputMax, -1 = none sent)
-	retry  func(n, of int) func(ok bool) // told before a request is sent again (nil = sent once only)
+	outKey string                                                // what this service calls the output limit ("" = max_tokens)
+	outMax int                                                   // the limit asked for (0 = aiOutputMax, -1 = none sent)
+	retry  func(n, of int) func(ok bool)                         // told before a request is sent again (nil = sent once only)
+	token  func(ctx context.Context, force bool) (string, error) // the sign-in's access token, in place of a key (force: refreshed first)
+	names  map[string]string                                     // the models' names, as the last list gave them (ChatGPT)
+	haltMu sync.Mutex
+	halt   error // the ChatGPT plan's limit was reached, or the sign-in is gone: no more requests on this client
 }
 
 // aiOutputMax: how long one answer may get. Without a limit some services stop at a few hundred tokens and
@@ -534,6 +550,23 @@ func newAIClient(st *core.Store) (*aiClient, error) {
 }
 
 func aiClientWith(st *core.Store, info aiProviderInfo, base, model, key string) (*aiClient, error) {
+	if info.Wire == "responses" { // the ChatGPT plan: OpenAI's own API with the sign-in's token, at no other address
+		aiMu.Lock()
+		t, err := loadGptTokensLocked()
+		aiMu.Unlock()
+		switch {
+		case err != nil:
+			return nil, err
+		case !t.signedIn():
+			return nil, errGptSignedOut
+		case !t.planOK():
+			return nil, errGptNoPlan
+		}
+		auth, pin := gptHTTP(st, gptAuthBase), gptPin{sub: t.Sub, client: t.ClientID}
+		c := &aiClient{info: info, base: gptAPIBase, model: strings.TrimSpace(model), hc: gptHTTP(st, gptAPIBase)}
+		c.token = func(ctx context.Context, force bool) (string, error) { return gptAccess(ctx, auth, force, pin) }
+		return c, nil
+	}
 	base = normBase(info.Wire, base)
 	if base == "" {
 		return nil, errors.New("未填写接口地址")
@@ -593,6 +626,7 @@ type aiHTTPError struct {
 	Msg    string
 	Said   string        // the service's own words, lower case
 	After  time.Duration // Retry-After, -1 when the service names none
+	code   string        // what the window offers for it (aiErrCode)
 }
 
 func (e *aiHTTPError) Error() string { return e.Msg }
@@ -622,6 +656,9 @@ func (e *aiHTTPError) noPictures() bool {
 // busy: worth sending again in a moment (too many requests, or the service's own trouble). A 429 that is about
 // money is not.
 func (e *aiHTTPError) busy() bool {
+	if hasAny(e.Said, "usage_limit_exceeded", "not_eligible", "unsupported_capability", "route_not_supported", "chatpass_v2", "invalid_user") {
+		return false // the ChatGPT plan's answers that the same request would get again
+	}
 	if e.Status == 429 {
 		return !hasAny(e.Said, "insufficient", "balance", "quota", "余额", "额度", "欠费")
 	}
@@ -642,12 +679,20 @@ func (c *aiClient) do(ctx context.Context, method, path string, body any) ([]byt
 		}
 	}
 	var done func(ok bool)
+	refreshed, force := false, false
 	for try := 0; ; try++ {
-		b, timeout, err := c.once(ctx, method, path, payload)
+		b, timeout, err := c.once(ctx, method, path, payload, force)
+		force = false
 		if done != nil {
 			done(err == nil)
+			done = nil
 		}
 		var he *aiHTTPError
+		if c.token != nil && !refreshed && errors.As(err, &he) && he.Status == 401 && ctx.Err() == nil {
+			refreshed, force = true, true // the sign-in's token was refused: refreshed, and the request sent once more
+			try--
+			continue
+		}
 		again := timeout && try == 0 || errors.As(err, &he) && he.busy() // a second timeout is the end of it
 		if err == nil || !again || c.retry == nil || try >= len(aiRetryWait) || ctx.Err() != nil {
 			return b, err
@@ -666,7 +711,7 @@ func (c *aiClient) do(ctx context.Context, method, path string, body any) ([]byt
 	}
 }
 
-func (c *aiClient) once(ctx context.Context, method, path string, payload []byte) (b []byte, timeout bool, err error) {
+func (c *aiClient) once(ctx context.Context, method, path string, payload []byte, force bool) (b []byte, timeout bool, err error) {
 	var rd io.Reader
 	if payload != nil {
 		rd = bytes.NewReader(payload)
@@ -676,6 +721,19 @@ func (c *aiClient) once(ctx context.Context, method, path string, payload []byte
 		return nil, false, err
 	}
 	c.headers(req)
+	if c.token != nil {
+		tok, err := c.token(ctx, force)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil, false, errors.New("已停止")
+			}
+			return nil, false, err
+		}
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+	if c.info.Wire == "responses" && method == "POST" {
+		req.Header.Set("Accept", "text/event-stream")
+	}
 	resp, err := c.hc.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -694,6 +752,11 @@ func (c *aiClient) once(ctx context.Context, method, path string, payload []byte
 	defer resp.Body.Close()
 	b, _ = io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 	if resp.StatusCode/100 != 2 {
+		if c.info.Wire == "responses" {
+			he := gptHTTPError(resp.StatusCode, resp.Header.Get("x-request-id"), b)
+			he.After = retryAfter(resp.Header.Get("Retry-After"))
+			return nil, false, he
+		}
 		return nil, false, &aiHTTPError{Status: resp.StatusCode, Msg: aiErrText(c.info.Label, resp.StatusCode, b), Said: strings.ToLower(aiSaid(b)),
 			After: retryAfter(resp.Header.Get("Retry-After"))}
 	}
@@ -777,6 +840,9 @@ func aiErrText(label string, status int, body []byte) string {
 
 // models: what the service offers, for the model list in the settings.
 func (c *aiClient) models(ctx context.Context) ([]string, error) {
+	if c.info.Wire == "responses" {
+		return c.gptModels(ctx)
+	}
 	path := "/models"
 	if c.info.Wire == "claude" {
 		path = "/v1/models?limit=100"
@@ -819,12 +885,28 @@ func (c *aiClient) models(ctx context.Context) ([]string, error) {
 }
 
 // chat sends the conversation and returns the assistant's next turn: text, tool calls, or both.
-func (c *aiClient) chat(ctx context.Context, system string, turns []aiTurn, tools []aiTool) (aiTurn, error) {
+func (c *aiClient) chat(ctx context.Context, system string, turns []aiTurn, tools []aiTool) (out aiTurn, err error) {
+	c.haltMu.Lock()
+	halt := c.halt
+	c.haltMu.Unlock()
+	if halt != nil { // (OpenAI: new requests on the plan wait once its limit is reached)
+		return aiTurn{}, halt
+	}
+	defer func() {
+		if aiErrCode(err) != "" {
+			c.haltMu.Lock()
+			c.halt = err
+			c.haltMu.Unlock()
+		}
+	}()
 	if c.model == "" {
 		return aiTurn{}, errors.New("未选择模型，请在「AI 服务」中填写模型名称，或点击「选择模型」选取")
 	}
-	if c.info.Wire == "claude" {
+	switch c.info.Wire {
+	case "claude":
 		return c.chatClaude(ctx, system, turns, tools)
+	case "responses":
+		return c.chatResponses(ctx, system, turns, tools)
 	}
 	return c.chatOpenAI(ctx, system, turns, tools)
 }
