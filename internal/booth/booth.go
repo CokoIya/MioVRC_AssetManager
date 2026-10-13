@@ -346,15 +346,30 @@ func downloadCover(c *http.Client, id, u string) (string, error) {
 	return DownloadTo(c, u, "booth_"+id)
 }
 
-// DownloadTo saves an image from Booth's CDN into covers/<name>.<ext>.
-func DownloadTo(c *http.Client, u, name string) (string, error) {
-	_ = os.MkdirAll(core.CoversDir(), 0755)
-	ext := strings.ToLower(filepath.Ext(strings.Split(u, "?")[0]))
-	if ext == "" || len(ext) > 5 {
-		ext = ".jpg"
+// pictureExt: the extension of the picture a file begins with — JPEG, PNG, GIF or WebP; "" for anything else
+// (a page, an SVG, a script …), whatever its address or the server says it is.
+func pictureExt(head []byte) string {
+	switch http.DetectContentType(head) {
+	case "image/jpeg":
+		return ".jpg"
+	case "image/png":
+		return ".png"
+	case "image/gif":
+		return ".gif"
+	case "image/webp":
+		return ".webp"
 	}
-	dst := filepath.Join(core.CoversDir(), name+ext)
-	req, _ := http.NewRequest("GET", u, nil)
+	return ""
+}
+
+// DownloadTo saves a picture (JPEG, PNG, GIF or WebP) into covers/<name>.<ext>, under the extension of what it
+// is, not of its address. Anything else is refused and nothing of it stays on disk: what is saved here is shown
+// on the program's own pages.
+func DownloadTo(c *http.Client, u, name string) (string, error) {
+	req, err := http.NewRequest("GET", u, nil)
+	if err != nil {
+		return "", err
+	}
 	req.Header.Set("User-Agent", core.UA)
 	req.Header.Set("Referer", "https://booth.pm/")
 	resp, err := c.Do(req)
@@ -365,16 +380,39 @@ func DownloadTo(c *http.Client, u, name string) (string, error) {
 	if resp.StatusCode != 200 {
 		return "", fmt.Errorf("image %d", resp.StatusCode)
 	}
+	body := io.LimitReader(resp.Body, 30<<20)
+	head := make([]byte, 512) // (what http.DetectContentType looks at)
+	n, err := io.ReadFull(body, head)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return "", err
+	}
+	head = head[:n]
+	ext := pictureExt(head)
+	if ext == "" {
+		core.Logf("封面下载：%s 返回的不是图片（%s），未保存", req.URL.Hostname(), http.DetectContentType(head))
+		return "", errors.New("not a picture")
+	}
+	_ = os.MkdirAll(core.CoversDir(), 0755)
+	dst := filepath.Join(core.CoversDir(), name+ext)
 	f, err := os.Create(dst + ".part")
 	if err != nil {
 		return "", err
 	}
-	_, err = io.Copy(f, io.LimitReader(resp.Body, 30<<20))
-	f.Close()
+	_, err = f.Write(head)
+	if err == nil {
+		_, err = io.Copy(f, body)
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(dst+".part", dst)
+	}
 	if err != nil {
+		_ = os.Remove(dst + ".part")
 		return "", err
 	}
-	return dst, os.Rename(dst+".part", dst)
+	return dst, nil
 }
 
 // busyErr: Booth turns requests away — too many of them (429), or its protection stepped in (403).

@@ -86,13 +86,14 @@ function ltJobHTML(j, inDlg) {
       ${failedN && (j.packages || []).length ? `<button class="btn small" data-lt="updretry" data-job="${id}">重试失败的工程</button>` : ""}
       ${inDlg ? "" : `<button class="btn small ghost" data-lt="upddismiss" data-job="${id}">关闭</button>`}</div></div>`;
 }
-// the packages an import asks about (several base bodies): ticked as the import suggests, until the player changes them
+// the packages an import asks about (several base bodies, or packages that write the same files): ticked as the
+// import suggests, until the player changes them
 function ltChooseHTML() {
   const ij = S.data.importJob, d = LT.dlg || {};
   if (!ij || ij.stage !== "choose") return "";
   if (d.ipickFor !== ij.id) { d.ipickFor = ij.id; d.ipick = new Set((ij.choices || []).map((c, i) => c.pick ? i : -1).filter(i => i >= 0)); }
-  return `<div class="impchoose updchoose"><div>该素材包含多个素体版本，请选择要导入的版本：</div><div class="num">目标工程<b>${esc(rootLabel(ij.project))}</b></div>
-    ${(ij.choices || []).map((c, i) => `<label class="check"><input type="checkbox" data-ltipick="${i}"${d.ipick.has(i) ? " checked" : ""}><span class="n">${esc(c.name)}</span>${(c.bases || []).map(b => `<span class="base">${esc(b)}</span>`).join("")}<span class="s">${fmtSize(c.size)}</span></label>`).join("")}
+  return `<div class="impchoose updchoose"><div>${impChooseHead(ij)}</div><div class="num">目标工程<b>${esc(rootLabel(ij.project))}</b></div>
+    ${impChoiceRows(ij.choices, "data-ltipick", (c, i) => d.ipick.has(i))}
     <div class="btnrow"><button class="btn small primary" data-lt="updpick">导入所选</button><button class="btn small ghost" data-lt="updskip">跳过该工程</button></div></div>`;
 }
 // the details panel: what is newer for this asset, how to get it, and the update that is running or has ended

@@ -7,8 +7,10 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -117,6 +119,8 @@ func tasksSnapshot() []core.Task {
 // (127.0.0.1 or localhost, with the port being listened on). A page of another site whose name has been
 // pointed at 127.0.0.1 (DNS rebinding) arrives with that site's Host, and gets nothing: not the page with
 // the token, not a picture, not a route added later.
+// Nothing it answers may be shown inside a frame of another page either (the program's pages are never framed):
+// a site could lay the page with the token under its own and have the player click it.
 func LocalOnly(listen net.Addr, h http.Handler) http.Handler {
 	_, port, _ := net.SplitHostPort(listen.String())
 	own := map[string]bool{"127.0.0.1:" + port: true, "localhost:" + port: true}
@@ -124,6 +128,8 @@ func LocalOnly(listen net.Addr, h http.Handler) http.Handler {
 		own["[::1]:"+port] = true
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
 		if !own[strings.ToLower(r.Host)] {
 			http.Error(w, "forbidden", 403)
 			return
@@ -252,6 +258,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 			return
 		}
 		w.Header().Set("Cache-Control", "max-age=86400")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
 		if t := library.Thumbnail(p, wd); t != "" {
 			http.ServeFile(w, r, t)
 			return
@@ -259,7 +266,10 @@ func NewMux(st *core.Store) *http.ServeMux {
 		http.ServeFile(w, r, p) // webp etc.: let the browser decode the original
 	})
 
-	mux.HandleFunc("/shot", ai.ServeShot) // the screenshots of the AI's steps
+	mux.HandleFunc("/shot", func(w http.ResponseWriter, r *http.Request) { // the screenshots of the AI's steps
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		ai.ServeShot(w, r)
+	})
 
 	post := func(path string, h func(w http.ResponseWriter, body map[string]json.RawMessage)) {
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
@@ -294,16 +304,15 @@ func NewMux(st *core.Store) *http.ServeMux {
 		core.WriteJSON(w, map[string]any{"ok": err == nil})
 	})
 	post("/api/openurl", func(w http.ResponseWriter, b map[string]json.RawMessage) {
-		u := str(b, "url")
-		mail := strings.HasPrefix(strings.ToLower(u), "mailto:"+strings.ToLower(feedbackMail))
-		// a unityhub:// link installs the Unity version VRChat wants; it needs Unity Hub on this computer
-		hub := strings.HasPrefix(u, "unityhub://")
-		if hub && unity.FindUnityHub() == "" {
-			core.WriteJSON(w, map[string]any{"ok": false, "err": "本机未安装 Unity Hub，请先安装 Unity Hub（unity.com/download），再点击此处安装 Unity"})
+		// only what the program opens, in the form it was checked in: Windows puts it into a command line (shellURL)
+		u, ok := shellURL(str(b, "url"))
+		if !ok {
+			core.WriteJSON(w, map[string]any{"ok": false, "err": "网址无效"})
 			return
 		}
-		if !(strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://") || mail || hub) {
-			core.WriteJSON(w, map[string]any{"ok": false, "err": "网址无效"})
+		// a unityhub:// link installs the Unity version VRChat wants; it needs Unity Hub on this computer
+		if strings.HasPrefix(u, "unityhub:") && unity.FindUnityHub() == "" {
+			core.WriteJSON(w, map[string]any{"ok": false, "err": "本机未安装 Unity Hub，请先安装 Unity Hub（unity.com/download），再点击此处安装 Unity"})
 			return
 		}
 		core.WriteJSON(w, map[string]any{"ok": core.OpenURL(u) == nil})
@@ -459,8 +468,11 @@ func NewMux(st *core.Store) *http.ServeMux {
 			return
 		}
 		s.Roots, s.ProjectRoots, s.Bases = core.CleanPaths(s.Roots), core.CleanPaths(s.ProjectRoots), core.CleanList(s.Bases)
+		st.Mu.RLock()
+		s.BasesAdded = st.Settings.BasesAdded // (what the table was given is the program's to know, not the page's)
+		st.Mu.RUnlock()
 		if len(s.Bases) == 0 {
-			s.Bases = core.DefaultSettings().Bases
+			s.Bases, s.BasesAdded = core.DefaultSettings().Bases, len(core.BaseAdditions)
 		}
 		s.Styles = core.CleanList(s.Styles)
 		if s.Styles == nil {
@@ -598,11 +610,24 @@ func NewMux(st *core.Store) *http.ServeMux {
 		core.WriteJSON(w, map[string]any{"ok": true, "started": ok})
 	})
 	mux.HandleFunc("/rthumb", func(w http.ResponseWriter, r *http.Request) {
+		// for the program's own pages (an <img> of theirs asks as "same-origin"): another site's page cannot have
+		// pictures fetched and kept here
+		if s := r.Header.Get("Sec-Fetch-Site"); s != "" && s != "same-origin" && s != "none" {
+			http.Error(w, "forbidden", 403)
+			return
+		}
 		p, err := booth.RemoteThumb(st, r.URL.Query().Get("u"))
-		if err != nil {
+		ct := pictureTypes[core.LowerExt(p)]
+		if err != nil || ct == "" {
 			http.Error(w, "not found", 404)
 			return
 		}
+		// what it is, said by the program (not guessed by the browser), and nothing in it runs. (The policy every
+		// answer has, LocalOnly's, is given again: the picture's own replaced it.)
+		w.Header().Set("Content-Type", ct)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+		w.Header().Add("Content-Security-Policy", "frame-ancestors 'none'")
 		w.Header().Set("Cache-Control", "max-age=604800")
 		http.ServeFile(w, r, p)
 	})
@@ -892,6 +917,12 @@ func NewMux(st *core.Store) *http.ServeMux {
 		raw, _ := json.Marshal(b)
 		_ = json.Unmarshal(raw, &req)
 		req.Project = filepath.Clean(strings.Trim(strings.TrimSpace(req.Project), `"`))
+		if !req.Split && !boolean(b, "confirmed") {
+			if q := unity.ImportAsk(st, req.Key, req.Project); q != "" {
+				core.WriteJSON(w, map[string]any{"ok": false, "ask": q})
+				return
+			}
+		}
 		if err := unity.StartImport(st, req); err != nil {
 			core.WriteJSON(w, map[string]any{"ok": false, "err": err.Error()})
 			return
@@ -1015,6 +1046,68 @@ func badBody(what string, err error) string {
 	return what + "的数据格式有误，未保存"
 }
 
+// ---------- addresses handed to Windows to open ----------
+//
+// Windows (ShellExecute) puts an address into the command line of the program registered for its scheme — the
+// default browser, the mail program, Unity Hub — between quotes or not. A quote, a space, a control character or
+// a backslash (how a quote is escaped there) could end the address and begin an argument of its own. None gets
+// through (core.ShellChars; core.OpenURL refuses them too); a single quote, which encodeURIComponent leaves as it
+// is (the feedback mail's text, a netdisk folder's name), is passed on as %27, which reads the same to a browser
+// and to a mail program.
+
+// reHubLink: Unity Hub's link that installs a Unity version ("unityhub://2022.3.22f1/887be4894c44")
+var reHubLink = regexp.MustCompile(`^unityhub://[0-9]+\.[0-9]+\.[0-9]+[abfp][0-9]+(c[0-9]+)?/[0-9a-f]{6,40}$`)
+
+// shellURL: what /api/openurl hands to Windows — a web page (webLink), a mail to the feedback address with a
+// subject and a text, Unity Hub's install link; in the form it was checked in. false: none of these.
+func shellURL(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if !core.ShellChars(raw) {
+		return "", false
+	}
+	scheme, _, _ := strings.Cut(raw, ":")
+	switch strings.ToLower(scheme) {
+	case "http", "https":
+		return webLink(raw)
+	case "mailto":
+		p, err := url.Parse(raw)
+		if err != nil || !strings.EqualFold(p.Opaque, feedbackMail) || p.Fragment != "" {
+			return "", false
+		}
+		q, err := url.ParseQuery(p.RawQuery)
+		if err != nil {
+			return "", false
+		}
+		for k := range q {
+			if k != "subject" && k != "body" {
+				return "", false
+			}
+		}
+		u := "mailto:" + p.Opaque
+		if p.RawQuery != "" {
+			u += "?" + p.RawQuery
+		}
+		return strings.ReplaceAll(u, "'", "%27"), true
+	case "unityhub":
+		return raw, reHubLink.MatchString(raw)
+	}
+	return "", false
+}
+
+// webLink: an http or https address with a host (and no user part), in the form it was checked in — what
+// /api/openurl and the page area's 「在默认浏览器中打开」 hand to Windows. false: not such an address.
+func webLink(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if !core.ShellChars(raw) {
+		return "", false
+	}
+	p, err := url.Parse(raw)
+	if err != nil || (p.Scheme != "http" && p.Scheme != "https") || p.Opaque != "" || p.User != nil || p.Hostname() == "" {
+		return "", false
+	}
+	return strings.ReplaceAll(p.String(), "'", "%27"), true
+}
+
 func underAny(p string, dirs []string) bool {
 	lp := strings.ToLower(filepath.Clean(p))
 	for _, d := range dirs {
@@ -1025,6 +1118,9 @@ func underAny(p string, dirs []string) bool {
 	}
 	return false
 }
+
+// pictureTypes: what /rthumb says a picture is, by the extension it is kept under (booth.RemoteThumb)
+var pictureTypes = map[string]string{".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp"}
 
 func imageAllowed(st *core.Store, p string) bool {
 	if p == "" || !library.ImageExt[core.LowerExt(p)] {

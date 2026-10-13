@@ -13,7 +13,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -255,7 +257,9 @@ func EmbeddedPipelineVersion() string {
 	return m.Version
 }
 
-// skillsInProject: whether UnitySkills is in the project, and whose copy it is.
+// skillsInProject: whether UnitySkills is in the project, and whose copy it is. A folder under its name that this
+// program did not put there is the project's own, whatever its package.json says (version ""): it is never
+// replaced or removed.
 func skillsInProject(p string) (kind, version string) {
 	dir := filepath.Join(p, "Packages", SkillsPkg)
 	if name, ver, _ := pkgVersion(dir); name == SkillsPkg {
@@ -281,6 +285,9 @@ func skillsInProject(p string) (kind, version string) {
 				return "own", v
 			}
 		}
+	}
+	if core.StatOK(dir) && !core.StatOK(filepath.Join(dir, KitMarker)) {
+		return "own", ""
 	}
 	return "", ""
 }
@@ -370,15 +377,33 @@ func skillsHealthy(port int) bool {
 	return r.StatusCode == 200
 }
 
+// mayReplace: whether putPackage may set the package folder that is there aside and delete it. Of the packages
+// this program puts into projects itself only a folder it put there: UnitySkills' carries KitMarker, those of
+// unityhelper/ are known by their package.json. Another package's (a VPM package being updated) may be.
+func mayReplace(dir, pkg string) bool {
+	if pkg == SkillsPkg {
+		return core.StatOK(filepath.Join(dir, KitMarker))
+	}
+	if _, err := fs.Stat(vrclib.UnityHelper, "unityhelper/"+pkg); err != nil {
+		return true
+	}
+	name, _, author := pkgVersion(dir)
+	return name == pkg && author == "MioVRC"
+}
+
 // putPackage writes a package into the project's Packages folder in one step: next to it under a name Unity
-// skips ("~"), then moved into place.
+// skips ("~"), then moved into place. A folder of that name this program did not put there stays as it is.
 func putPackage(p, pkg string, write func(tmp string) error) error {
 	pkgs := filepath.Join(p, "Packages")
 	if err := os.MkdirAll(pkgs, 0755); err != nil {
 		return err
 	}
 	dir := filepath.Join(pkgs, pkg)
-	tmp, old := dir+"~", dir+".old~"
+	if core.StatOK(dir) && !mayReplace(dir, pkg) {
+		return errors.New("工程的 Packages 中已存在 " + pkg + "，但不是由本软件安装，未作改动")
+	}
+	// names of our own: "<package>~" is how a player sets a copy of the package aside
+	tmp, old := dir+".miovrca-new~", dir+".miovrca-old~"
 	_ = os.RemoveAll(tmp)
 	_ = os.RemoveAll(old)
 	if err := write(tmp); err != nil {
@@ -467,8 +492,9 @@ func writeSkillsPackage(tmp string) error {
 	return os.WriteFile(filepath.Join(tmp, KitMarker), []byte("由 MioVRCA 安装的 UnitySkills "+SkillsVersion+"（MIT，github.com/Besty0728/Unity-Skills）。在软件的「流水线」页点击「移除」将移除此文件夹。\n"), 0644)
 }
 
-// InstallAIKit puts both packages into the project (a UnitySkills the project already has is left alone),
-// asks for the UnitySkills server to be started, and opens the project in Unity when it is not open.
+// InstallAIKit puts both packages into the project (a UnitySkills the project already has is left alone) and
+// opens the project in Unity when it is not open. The UnitySkills server is started when the AI needs it
+// (WantSkills).
 func InstallAIKit(p string) (note string, err error) {
 	dir := filepath.Join(p, "Packages", PipePkg)
 	if name, _, author := pkgVersion(dir); core.StatOK(dir) && !(name == PipePkg && author == "MioVRC") {
@@ -481,6 +507,8 @@ func InstallAIKit(p string) (note string, err error) {
 	switch {
 	case kind == "own" && ver == "Git": // by the link of its README (a new project's, say), fetched by Unity
 		note = "工程已通过 Git 安装 UnitySkills，沿用该版本"
+	case kind == "own" && ver == "": // a folder of its name this program did not put there: the project's, as it is
+		note = "工程的 Packages 中已存在 " + SkillsPkg + "，但不是由本软件安装，未作改动"
 	case kind == "own":
 		note = "工程已自带 UnitySkills " + ver + "，沿用现有版本"
 	case kind == "ours" && ver == SkillsVersion:
@@ -489,9 +517,7 @@ func InstallAIKit(p string) (note string, err error) {
 			return "", fmt.Errorf("UnitySkills 安装失败：%v（文件可能被 Unity 占用，请关闭 Unity 后重试）", err)
 		}
 	}
-	if err := os.MkdirAll(BridgeDir(p), 0755); err == nil {
-		_ = os.WriteFile(filepath.Join(BridgeDir(p), "want_skills"), []byte("1"), 0644)
-	}
+	_ = os.MkdirAll(BridgeDir(p), 0755) // where the program and the plugin talk, before the plugin first runs
 	core.Logf("Unity 插件已放进 %s", p)
 	if ProjectRunning(p) {
 		if _, ok := ReadBridgeAlive(p); ok { // an older copy is running: have Unity pick the new files up
@@ -524,13 +550,13 @@ func RemoveAIKit(p string) error {
 		if name, _, author := pkgVersion(dir); !(name == PipePkg && author == "MioVRC") {
 			return errors.New("工程中的 " + PipePkg + " 不是由本软件安装，未作改动")
 		}
-		if err := os.RemoveAll(dir); err != nil {
+		if err := takeOut(dir); err != nil {
 			return fmt.Errorf("Unity 插件移除失败：%v（请关闭 Unity 后重试）", err)
 		}
 	}
 	sk := filepath.Join(p, "Packages", SkillsPkg)
 	if core.StatOK(filepath.Join(sk, KitMarker)) {
-		if err := os.RemoveAll(sk); err != nil {
+		if err := takeOut(sk); err != nil {
 			return fmt.Errorf("UnitySkills 移除失败：%v（请关闭 Unity 后重试）", err)
 		}
 	}
@@ -541,7 +567,90 @@ func RemoveAIKit(p string) error {
 	return nil
 }
 
+// takeOut removes a package folder of ours whole: set aside first under the name putPackage uses (Unity skips
+// it), so that a removal Unity stops half way by holding a file leaves the folder as it was, with what marks it as
+// ours. What is left of it set aside goes with the next install.
+func takeOut(dir string) error {
+	old := dir + ".miovrca-old~"
+	_ = os.RemoveAll(old)
+	if err := os.Rename(dir, old); err != nil {
+		return err
+	}
+	_ = os.RemoveAll(old)
+	return nil
+}
+
 // ---------- UnitySkills over REST ----------
+
+// The UnitySkills server answers anything on this computer, so it runs only while the program uses it:
+// want_skills next to the requests holds until when (unix seconds). The plugin starts the server while that time
+// is ahead and stops the one it started once it has passed (a server the player started is left alone).
+var (
+	wantMu          sync.Mutex
+	skillsStartWait = 20 * time.Second // how long a request waits for the plugin to start the server
+)
+
+// SkillsLease: how long one use keeps the server wanted.
+const SkillsLease = 3 * time.Minute
+
+// HasSkills: the project has UnitySkills (its own copy or the program's).
+func HasSkills(p string) bool {
+	kind, _ := skillsInProject(p)
+	return kind != ""
+}
+
+// WantSkills: the project's UnitySkills server is needed for d from now. A later time already set stays, and
+// nothing is written while more than half of d is left (it is called with every request).
+func WantSkills(p string, d time.Duration) {
+	wantMu.Lock()
+	defer wantMu.Unlock()
+	now := time.Now()
+	if time.Unix(wantedUntil(p), 0).Sub(now) > d/2 {
+		return
+	}
+	writeWanted(p, now.Add(d).Unix())
+}
+
+// SkillsDone: the program is done with the server for now. The time comes down to grace from now (one sooner
+// than that stays as it is): what comes soon after finds the server still up.
+func SkillsDone(p string, grace time.Duration) {
+	wantMu.Lock()
+	defer wantMu.Unlock()
+	if until := time.Now().Add(grace).Unix(); wantedUntil(p) > until {
+		writeWanted(p, until)
+	}
+}
+
+// wantedUntil: the time in want_skills, 0 when there is none (an older program wrote "1": long past).
+func wantedUntil(p string) int64 {
+	b, err := os.ReadFile(filepath.Join(BridgeDir(p), "want_skills"))
+	if err != nil {
+		return 0
+	}
+	n, _ := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64)
+	return n
+}
+
+// writeWanted puts a new time in place in one step: the plugin never reads half of one. Only into the folder the
+// program and the plugin talk through: a project without it has no plugin to start the server.
+func writeWanted(p string, until int64) {
+	if !core.StatOK(BridgeDir(p)) {
+		return
+	}
+	f := filepath.Join(BridgeDir(p), "want_skills")
+	tmp := f + ".tmp"
+	if err := os.WriteFile(tmp, []byte(strconv.FormatInt(until, 10)), 0644); err != nil {
+		_ = os.Remove(tmp)
+		return
+	}
+	for i := 0; os.Rename(tmp, f) != nil; i++ { // the plugin reading the file holds it for a moment on Windows
+		if i == 3 {
+			_ = os.Remove(tmp)
+			return
+		}
+		time.Sleep(time.Duration(i+1) * 50 * time.Millisecond)
+	}
+}
 
 // SkillsPort: where the project's UnitySkills server listens, 0 when it is not running.
 func SkillsPort(p string) int {
@@ -551,15 +660,40 @@ func SkillsPort(p string) int {
 	return registryPort(p)
 }
 
+// waitSkills: the port of the server the plugin starts for a request, 0 when it is not up within skillsStartWait
+// — or cannot come up: the editor is closed or compiling, or has no UnitySkills loaded.
+func waitSkills(ctx context.Context, p string) int {
+	until := time.Now().Add(skillsStartWait)
+	for {
+		if a, ok := ReadBridgeAlive(p); !ok || a.Compiling || !a.Skills.Installed || time.Now().After(until) {
+			return 0
+		}
+		select {
+		case <-ctx.Done():
+			return 0
+		case <-time.After(500 * time.Millisecond):
+		}
+		if port := SkillsPort(p); port > 0 {
+			return port
+		}
+	}
+}
+
 var skillsHTTP = &http.Client{Timeout: 5 * time.Minute, Transport: &http.Transport{Proxy: nil}}
 
 func SkillsRequest(ctx context.Context, p, method, path string, body any) ([]byte, int, error) {
+	WantSkills(p, SkillsLease) // what uses the server keeps it up
 	port := SkillsPort(p)
 	if port == 0 {
 		if kind, _ := skillsInProject(p); kind == "" {
 			return nil, 0, errors.New("该工程未安装 UnitySkills，请先点击「安装并打开 Unity」")
 		}
-		return nil, 0, errors.New("UnitySkills 服务未启动，请在 Unity 中打开 Window > UnitySkills 并点击 Start Server")
+		if port = waitSkills(ctx, p); port == 0 {
+			if ctx.Err() != nil {
+				return nil, 0, errors.New("已停止")
+			}
+			return nil, 0, errors.New("UnitySkills 服务未启动，请在 Unity 中打开 Window > UnitySkills 并点击 Start Server")
+		}
 	}
 	var rd io.Reader
 	if body != nil {

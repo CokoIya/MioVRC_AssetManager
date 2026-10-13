@@ -2,6 +2,7 @@ package follow
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,6 +63,7 @@ func setup(t *testing.T) (*fake, *core.Store) {
 	write(t, filepath.Join(old, "Kaguya_v1.06.unitypackage"))
 	st.Settings.Roots, st.Settings.DownloadDir = []string{f.root}, f.root
 	st.Settings.NoWatch, st.Settings.AutoBooth = true, false
+	st.Settings.HideZh = true // (no names are sent to the translator: there is no network here)
 	st.Assets = []*core.Asset{{Key: "booth:9000001", Name: "Kaguya", RawName: "9000001 Kaguya", BoothID: "9000001", HasDir: true,
 		Locations: []core.Location{{Path: old, Kind: "dir", Size: 1, Root: f.root}}}}
 	st.Purchases["9000001"] = &core.Purchase{ID: "9000001", Name: "Kaguya", Files: []string{"Kaguya_v1.06.zip"}, Downloads: []string{"10"}}
@@ -145,9 +147,10 @@ func setup(t *testing.T) (*fake, *core.Store) {
 	return f, st
 }
 
-// settle waits until no update and no scan is under way.
+// settle waits until no update is under way, and nothing of a rescan one started: the scan, and the look into
+// the packages and the translation of names that follow it (they read the data folder the next test replaces).
 func settle() {
-	for i := 0; i < 400 && (Active() || library.PipelineBusy()); i++ {
+	for i := 0; i < 400 && (Active() || library.BackgroundBusy()); i++ {
 		time.Sleep(25 * time.Millisecond)
 	}
 }
@@ -295,6 +298,36 @@ func TestUpdateRecyclesOldVersion(t *testing.T) {
 	got = waitJob(t, j.ID, ended)
 	if got.Stage != "done" || len(f.trash) != 0 || got.RecycleErr == "" || !core.StatOK(inOld) {
 		t.Fatalf("new files inside the old folder: %+v", got)
+	}
+}
+
+// What Start (and Retry) hands back is the job as it was queued: the window encodes it while the worker goes on
+// writing the projects' statuses into the job itself (go test -race).
+func TestQueuedJobIsACopy(t *testing.T) {
+	f, st := setup(t)
+	a, b := project(t, st, "ProjA"), project(t, st, "ProjB")
+	j, err := Start(st, "booth:9000001", []string{a, b}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitJob(t, j.ID, downloading)
+	f.mu.Lock()
+	f.hold, f.holdProj = make(chan struct{}), "ProjB"
+	f.mu.Unlock()
+	f.arrive(t)
+	waitJob(t, j.ID, func(j Job) bool { return j.Projects[1].Status == "running" })
+	// the worker goes on with ProjB while the handler encodes what Start gave it
+	close(f.hold)
+	for i := 0; i < 50; i++ {
+		if _, err := json.Marshal(map[string]any{"ok": true, "job": j}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := waitJob(t, j.ID, ended); got.Stage != "done" || got.Projects[1].Status != "done" {
+		t.Fatalf("ended: %+v", got)
+	}
+	if j.Projects[0].Status != "waiting" || j.Projects[1].Status != "waiting" {
+		t.Errorf("the job handed back changed with the job: %+v", j.Projects)
 	}
 }
 

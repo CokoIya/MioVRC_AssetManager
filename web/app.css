@@ -563,6 +563,11 @@ body.paneon .toast.on { transform: translate(-50%, 0); }
 .impchoose .check { padding: 6px 0; color: var(--text); flex-wrap: wrap; }
 .impchoose .n { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .impchoose .s { color: var(--faint); font-size: 12px; flex: none; }
+.impchoose .pnote { flex-basis: 100%; padding-left: 24px; color: var(--muted); font-size: 12px; }
+.impchoose .check.alt .n, .impchoose .check.old .n, .impchoose .check.quest .n, .impchoose .check.pc .n, .impchoose .check.dup .n { color: var(--muted); }
+.impskip .sk { display: inline-flex; gap: 4px; margin-right: 10px; }
+.impskip .sk .why { color: var(--faint); }
+.impskip .hint2 { display: block; margin-top: 2px; }
 .bdacct { display: flex; gap: 12px; align-items: baseline; font-size: 13px; margin-bottom: 10px; }
 .bdacct > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .bdacct .linkbtn { font-size: 12px; flex: none; }

@@ -1146,6 +1146,7 @@ async function projAction(what, path, btn) {
     btn.disabled = true; let r;
     try { r = await api("/api/project/open", { path: p.path }); } finally { if (!r || !r.ok) btn.disabled = false; }
     if (!r.ok) { toast(r.err || "打开失败", 5000); return; }
+    setProject(p.path); // the project being worked on is where imports go
     toast(`正在使用 Unity ${p.unity} 打开 ${p.name}`, 3500); setTimeout(() => { btn.disabled = false; loadProjects(); }, 4000); return;
   }
   if (what === "cover") {
@@ -1694,10 +1695,26 @@ function impResult(j) {
   const tops = (j.tops || []).slice(0, 4).join("、") + ((j.tops || []).length > 4 ? " 等" : "");
   return `<div class="impres ok"><div>已导入 <b>${esc(proj)}</b>：${(j.imported || []).length} 个 unitypackage，共 ${esc(j.files)} 个文件</div>
     <div class="small">${tops ? `位置：${esc(tops)}。` : ""}若 Unity 已打开，切换到 Unity 窗口即可刷新；否则将在下次打开工程时生效。</div>
+    ${impSkipped(j)}
     ${j.kept ? `<div class="small">已跳过 ${esc(j.kept)} 个属于已安装插件（Packages）的文件，未覆盖${(j.keptPkgs || []).length ? "：" + j.keptPkgs.map(esc).join("、") : ""}。</div>` : ""}
     ${j.removed ? `<div class="small">已将 ${esc(j.removed)} 个压缩包移至回收站。</div>` : ""}
     ${(j.failed || []).length ? `<div class="small warnline">解压失败：${j.failed.map(esc).join("；")}</div>` : ""}
     <div class="btnrow"><button class="btn small primary" data-aidress="${esc(j.project)}">${ICON.belt}<span>前往流水线装配</span></button><button class="btn small" data-gopen="${esc(j.project)}">打开工程文件夹</button><button class="btn small ghost" data-d="impdismiss">关闭</button></div></div>`;
+}
+// The packages an import asks about: what each is, and why one is not ticked (an older version, a Quest version,
+// one that writes the same files as another). isOn(c, i): ticked.
+function impChooseHead(j, bases) {
+  return j.why === "overlap" ? "部分 unitypackage 会写入同一批文件（不同版本、左右手、带或不带某个功能等），都导入时后导入的会覆盖前面的。请选择要导入的："
+    : bases || "该素材包含多个素体版本，请选择要导入的版本：";
+}
+function impChoiceRows(choices, attr, isOn) {
+  return (choices || []).map((c, i) => `<label class="check${c.why ? " " + esc(c.why) : ""}"><input type="checkbox" ${attr}="${i}"${isOn(c, i) ? " checked" : ""}><span class="n" data-i18n="off">${esc(c.name)}</span>${(c.bases || []).map(b => `<span class="base">${esc(b)}</span>`).join("")}<span class="s">${fmtSize(c.size)}</span>${c.note ? `<span class="pnote">${esc(c.note)}</span>` : ""}</label>`).join("");
+}
+const SKIPWHY = { dup: "重复", old: "旧版本", quest: "Quest 版本", pc: "PC 版本", alt: "与其他包写入同一批文件" };
+function impSkipped(j) {
+  const s = j.skipped || [];
+  if (!s.length) return "";
+  return `<div class="small impskip">未导入：${s.map(x => `<span class="sk"><span data-i18n="off">${esc(x.name)}</span><span class="why">${esc(SKIPWHY[x.why] || x.why)}</span></span>`).join("")}<span class="hint2">需要时可将它们直接拖入 Unity 导入。</span></div>`;
 }
 // the version checkboxes of an import that waits for a choice: what is ticked, to be ticked again after a redraw
 function ipickMark(root) {
@@ -1706,8 +1723,8 @@ function ipickMark(root) {
 }
 function impProgress(j) {
   if (j.stage === "choose") {
-    return `<div class="impchoose"><div>该素材包含多个素体版本，请选择要导入的版本：</div>
-      ${(j.choices || []).map((c, i) => `<label class="check"><input type="checkbox" data-ipick="${i}"${c.pick ? " checked" : ""}><span class="n">${esc(c.name)}</span>${(c.bases || []).map(b => `<span class="base">${esc(b)}</span>`).join("")}<span class="s">${fmtSize(c.size)}</span></label>`).join("")}
+    return `<div class="impchoose"><div>${impChooseHead(j)}</div>
+      ${impChoiceRows(j.choices, "data-ipick", c => c.pick)}
       <div class="btnrow"><button class="btn small primary" data-d="impgo">导入所选</button><button class="btn small ghost" data-d="impcancel">取消</button></div></div>`;
   }
   const pct = j.total ? Math.round(j.done / j.total * 100) : 0;
@@ -1731,7 +1748,12 @@ function importSec(a) {
 async function startImport(a) {
   const project = chosenProject(); if (!project) return;
   setProject(project);
-  const r = await api("/api/import/start", { key: a.key, project, pwd: ($("#imp_pwd") || {}).value || "", recycle: S.impRecycle !== false });
+  const req = { key: a.key, project, pwd: ($("#imp_pwd") || {}).value || "", recycle: S.impRecycle !== false };
+  let r = await api("/api/import/start", req);
+  if (!r.ok && r.ask) { // a base body into a project built on another one
+    if (!confirm(r.ask)) return;
+    r = await api("/api/import/start", Object.assign(req, { confirmed: true }));
+  }
   if (!r.ok) { toast(r.err || "无法开始导入", 4000); return; }
   await load(); poll(true);
 }
@@ -2506,6 +2528,7 @@ function pipeSelect(p, quiet) {
   pipeKeep();
   AI.proj = p; AI.sess = null; PIPE.assets = null; PIPE.pick = {}; PIPE.kind = {}; PIPE.extra = []; PIPE.err = "";
   try { localStorage.setItem("vrclib.pipeproj", p.path); } catch (e) {}
+  setProject(p.path); // what is imported from the library goes into the project the pipeline is on
   if (!quiet) { renderPipeSide(); renderPipeMain(); pipeLoad(); }
 }
 // coming to the tab: the last project, or the one open in Unity, or the newest
@@ -2514,7 +2537,7 @@ function pipeEnter() {
     let want = ""; try { want = localStorage.getItem("vrclib.pipeproj") || ""; } catch (e) {}
     const ps = (S.projs || (S.data || {}).projects || []).slice().sort((a, b) => ((b.running || 0) - (a.running || 0)) || (b.opened || 0) - (a.opened || 0) || a.name.localeCompare(b.name));
     const p = ps.find(x => x.path === want) || ps[0];
-    if (p) AI.proj = p;
+    if (p) { AI.proj = p; setProject(p.path); }
   }
   renderPipeSide(); renderPipeMain(); pipeLoad();
   if (!S.projs) loadProjects().then(() => { if (S.view === "pipe") { if (!AI.proj) pipeEnter(); else renderPipeSide(); } });
@@ -2700,7 +2723,8 @@ function aiStatHTML() {
     : row("warn", "Unity 插件", "未安装", `<button class="btn small${pri("install")}" data-ai="install">安装并打开 Unity</button>`);
   if (!k.pipeline) return h + row("", "Unity", k.running ? "已打开" : "未打开", !k.running && k.editor ? `<button class="btn small" data-ai="unity">打开 Unity</button>` : "");
   const ok = k.alive && !k.hint;
-  const conn = k.alive ? `已连接${k.skillsOn ? `<span class="sub">　UnitySkills 端口 ${esc(k.port)}${k.mode ? "，" + esc(k.mode) + " 模式" : ""}</span>` : `<span class="sub">　UnitySkills 服务未启动（不影响装配和菜单）</span>`}` : "";
+  // UnitySkills' server runs only while the AI needs it: the plugin starts it then
+  const conn = k.alive ? `已连接${k.skillsOn ? `<span class="sub">　UnitySkills 端口 ${esc(k.port)}${k.mode ? "，" + esc(k.mode) + " 模式" : ""}</span>` : k.skills ? `<span class="sub">　UnitySkills 将在 AI 需要时自动启动</span>` : `<span class="sub">　UnitySkills 服务未启动（不影响装配和菜单）</span>`}` : "";
   h += row(ok ? "ok" : "warn", "Unity", k.hint ? `${conn ? conn + "<br>" : ""}<span class="warnline">${esc(k.hint)}</span>` : conn,
     !k.running && k.editor ? `<button class="btn small${pri("unity")}" data-ai="unity">打开 Unity</button>` : "");
   if (!c.ready) h += row("warn", "AI 服务", "未配置。不使用 AI 也可运行流水线（按网格名称分组）", `<button class="btn small${pri("cfg")}" data-ai="cfg">配置</button>`);
@@ -2724,9 +2748,10 @@ function aiLogHTML() {
   const busyTool = steps.some(s => s.busy);
   return steps.map(s => {
     if (s.kind === "ask") {
+      // "once": an operation asked about every time (it deletes, saves, runs code…), without 「本次对话始终允许」
       const btns = s.opts === "budget" // the run reached its limit of tokens: go on, or stop here
         ? `<button class="btn small primary" data-ai="allow">继续运行</button><button class="btn small" data-ai="deny">停止</button>`
-        : `<button class="btn small primary" data-ai="allow">仅本次允许</button><button class="btn small" data-ai="allowall" title="本次对话中不再询问同类操作">本次对话始终允许</button><button class="btn small" data-ai="deny">拒绝</button>`;
+        : `<button class="btn small primary" data-ai="allow">仅本次允许</button>${s.opts === "once" ? "" : `<button class="btn small" data-ai="allowall" title="本次对话中不再询问这项操作">本次对话始终允许</button>`}<button class="btn small" data-ai="deny">拒绝</button>`;
       return `<div class="aistep ask${s.busy ? " open" : ""}"><div>${esc(s.text)}</div>${s.busy
         ? `<div class="btnrow">${btns}</div>`
         : `<div class="out">${esc(s.out || "")}</div>`}</div>`;
@@ -2977,12 +3002,13 @@ function renderNP() {
     const imp = S.data.importJob, choose = j.stage === "base" && imp && imp.stage === "choose";
     const pct = j.total ? Math.round(j.done / j.total * 100) : 0;
     let tail = "";
+    if (j.stage === "done" && S.npTarget !== j.path) { S.npTarget = j.path; setProject(j.path); } // the new project is where imports go now
     if (j.stage === "done") tail = `<div class="impres ok"><div>工程创建完成：<b>${esc(j.name)}</b></div><div class="small">${esc(j.path)}</div>
         ${(j.packages || []).length ? `<div class="small">已安装 ${j.packages.length} 个包：${j.packages.map(esc).join("、")}</div>` : ""}
         ${(j.notes || []).map(n => `<div class="small${/未|没|失败|无法|不了|出错|跳过/.test(n) ? " warnline" : ""}">${esc(n)}</div>`).join("")}</div>`;
     else if (j.stage === "failed") tail = `<div class="impres err"><div>${esc(j.err || "创建失败")}</div>${(j.notes || []).map(n => `<div class="small">${esc(n)}</div>`).join("")}<div class="small">已创建的文件保留在 ${esc(j.path)}，可删除后重试。</div></div>`;
-    else if (choose) tail = `<div class="impchoose"><div>该素体包含多个版本，请选择要导入的版本：</div>
-        ${(imp.choices || []).map((c, i) => `<label class="check"><input type="checkbox" data-ipick="${i}"${c.pick ? " checked" : ""}><span class="n">${esc(c.name)}</span>${(c.bases || []).map(b => `<span class="base">${esc(b)}</span>`).join("")}<span class="s">${fmtSize(c.size)}</span></label>`).join("")}
+    else if (choose) tail = `<div class="impchoose"><div>${impChooseHead(imp, "该素体包含多个版本，请选择要导入的版本：")}</div>
+        ${impChoiceRows(imp.choices, "data-ipick", c => c.pick)}
         <div class="btnrow"><button class="btn small primary" data-np="impgo">导入所选</button><button class="btn small ghost" data-np="impskip">不导入素体</button></div></div>`;
     else tail = `<div class="bar wide"><i style="width:${pct}%"></i></div>`;
     const html = `<div class="mhead">新建基础工程</div><div class="mbody"><ol class="npstages">${list}</ol>${tail}</div>

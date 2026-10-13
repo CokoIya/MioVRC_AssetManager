@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -318,7 +319,7 @@ func TestFollowRoundOnceADay(t *testing.T) {
 		t.Fatal("by hand again within the hour")
 	}
 	// note and unfollowing
-	if !FollowNote("luna", "  for Plum  ") || FollowNote("nobody", "x") || FollowSnapshot().Shops[0].Note != "for Plum" {
+	if FollowNote("luna", "  for Plum  ") != nil || FollowNote("nobody", "x") != errFollowGone || FollowSnapshot().Shops[0].Note != "for Plum" {
 		t.Fatal("note")
 	}
 	if !FollowRemove("komado") || FollowRemove("komado") || len(FollowSnapshot().Shops) != 1 {
@@ -691,5 +692,95 @@ func TestFollowSubOfDigits(t *testing.T) {
 		if got := FollowSub(in); got != want {
 			t.Errorf("FollowSub(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// follows.json is there but cannot be read (held by another program, no access): the list is not taken for an
+// empty one, nothing is written over the file, the window is told why where it can be (the log once), and the
+// file is read as it is once it can be.
+func TestFollowListUnreadable(t *testing.T) {
+	st := testkit.NewStore(t)
+	FollowReload()
+	t.Cleanup(FollowReload)
+	mine := `{"ver":1,"shops":[{"sub":"luna","name":"Luna","added":1,"seen":["5"],"news":[{"id":"5","title":"T","at":3,"unseen":true}]}]}`
+	p := followPath()
+	if err := os.WriteFile(p, []byte(mine), 0644); err != nil {
+		t.Fatal(err)
+	}
+	var logged strings.Builder
+	old := core.Logger
+	core.Logger = log.New(&logged, "", 0)
+	defer func() { core.Logger = old }()
+	giveBack := testkit.Unreadable(t, p)
+	if _, err := FollowAdd(st, FollowSeed{Sub: "komado"}); err == nil || !strings.Contains(err.Error(), "无法读取关注店铺文件 follows.json") {
+		t.Errorf("followed: %v", err)
+	}
+	if err := FollowNote("luna", "x"); err == nil || !strings.Contains(err.Error(), "follows.json") {
+		t.Errorf("note: %v", err)
+	}
+	if _, err := FollowStartRound(st); err == nil || !strings.Contains(err.Error(), "follows.json") {
+		t.Errorf("a round: %v", err)
+	}
+	if FollowRemove("luna") || FollowRead("") || FollowSetWatch("", false) || len(FollowSnapshot().Shops) != 0 {
+		t.Error("changed a list that was not read")
+	}
+	FollowSeen()
+	FollowTold([]string{"luna:5"})
+	giveBack()
+	if b, _ := os.ReadFile(p); string(b) != mine {
+		t.Fatalf("written over: %s", b)
+	}
+	if left, _ := filepath.Glob(p + ".*"); len(left) != 0 {
+		t.Errorf("files: %v", left)
+	}
+	if n := strings.Count(logged.String(), "follows.json 无法读取"); n != 1 {
+		t.Errorf("logged %d times:\n%s", n, logged.String())
+	}
+	// once it can be read: the list as it was, and changes are saved again
+	if s := FollowSnapshot(); len(s.Shops) != 1 || s.Shops[0].Name != "Luna" || s.Unseen != 1 || !s.Watch {
+		t.Fatalf("read again: %+v", s)
+	}
+	if err := FollowNote("luna", "mine"); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(p); !strings.Contains(string(b), `"note": "mine"`) {
+		t.Errorf("not saved: %s", b)
+	}
+}
+
+// A follows.json that cannot be parsed is moved out of the way before anything is written in its place — and
+// never onto one kept before.
+func TestFollowListDamaged(t *testing.T) {
+	testkit.NewStore(t)
+	t.Cleanup(FollowReload)
+	p := followPath()
+	junk := []string{`{"ver":1,"shops":[{"sub":`, `{"ver":1,"shops":["mine"]}`}
+	for i, j := range junk {
+		if err := os.WriteFile(p, []byte(j), 0644); err != nil {
+			t.Fatal(err)
+		}
+		FollowReload() // (as at a start)
+		if s := FollowSnapshot(); len(s.Shops) != 0 || !s.Watch {
+			t.Fatalf("%d: %+v", i, s)
+		}
+		FollowSetWatch("", false) // something to save
+		if b, _ := os.ReadFile(p); !strings.Contains(string(b), `"noWatch": true`) {
+			t.Fatalf("%d: not saved: %s", i, b)
+		}
+	}
+	kept, _ := filepath.Glob(p + ".broken-*")
+	if len(kept) != len(junk) {
+		t.Fatalf("kept: %v", kept)
+	}
+	var got []string
+	for _, k := range kept {
+		b, _ := os.ReadFile(k)
+		got = append(got, string(b))
+	}
+	want := append([]string{}, junk...)
+	sort.Strings(got)
+	sort.Strings(want)
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("kept %q", got)
 	}
 }

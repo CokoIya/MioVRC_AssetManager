@@ -22,17 +22,28 @@ namespace MioVRCA.Pipeline
     [InitializeOnLoad]
     internal static class Bridge
     {
-        public const string Version = "1.4.1";
+        public const string Version = "1.4.2";
         const string Dir = "UserSettings/MioVRCA/bridge";
 
-        const string SkillsAsked = "MioVRCA.Pipeline.SkillsAsked";
+        // set while the UnitySkills server that runs is one this package started, for this project. Kept in
+        // EditorPrefs: it outlives a domain reload, and a crash of the editor too — UnitySkills then starts its server
+        // again with the next launch, and it is still ours to stop. A normal quit clears it (UnitySkills does not
+        // start its server with the next launch then).
+        static readonly string SkillsOurs = "MioVRCA.Pipeline.SkillsOurs." + ProjectHash();
+        static string targetWritten; // what was last written to "target"
 
-        static double nextAlive, nextScan, nextSweep;
+        static double nextAlive, nextScan, nextSweep, nextSkillsStart, loadedAt;
+        static long skillsUntil; // the last time read from want_skills
 
         static Bridge()
         {
+            loadedAt = EditorApplication.timeSinceStartup;
             EditorApplication.update += Tick;
-            EditorApplication.quitting += () => { try { File.Delete(Path.Combine(Dir, "alive.json")); } catch (Exception) { } };
+            EditorApplication.quitting += () =>
+            {
+                try { File.Delete(Path.Combine(Dir, "alive.json")); } catch (Exception) { }
+                EditorPrefs.DeleteKey(SkillsOurs);
+            };
         }
 
         static void Tick()
@@ -91,13 +102,22 @@ namespace MioVRCA.Pipeline
             d["playing"] = EditorApplication.isPlayingOrWillChangePlaymode;
             d["ma"] = Refl.PackageVersion(Refl.MA + "ModularAvatarMenuItem");
             d["sdk"] = Refl.DescriptorType != null;
+            string target = EditorUserBuildSettings.activeBuildTarget == BuildTarget.Android || EditorUserBuildSettings.activeBuildTarget == BuildTarget.iOS ? "quest" : "pc";
+            d["target"] = target;
+            if (target != targetWritten) // also in a file of its own, which stays when the editor quits: the program imports for it then too
+            {
+                WriteAtomic(Path.Combine(Dir, "target"), target);
+                targetWritten = target;
+            }
             d["skills"] = Skills();
             WriteAtomic(Path.Combine(Dir, "alive.json"), MiniJson.Write(d));
         }
 
-        // UnitySkills in this editor: installed, serving, on which port. With want_skills next to the requests
-        // (the program puts it there when the player turns the AI assistant on for this project) its server is
-        // started once per editor session when it is not running.
+        // UnitySkills in this editor: installed, serving, on which port. Its server answers anything on this
+        // computer, so it runs only while the program needs it: want_skills next to the requests holds until when
+        // (unix seconds; the program moves it on while the AI works). Till then the server is started when it is
+        // not running; after it, the one this package started is stopped for good (after a plain Stop UnitySkills
+        // starts it again with the next domain reload). A server the player started is never stopped here.
         static Dictionary<string, object> Skills()
         {
             var d = new Dictionary<string, object>();
@@ -106,20 +126,45 @@ namespace MioVRCA.Pipeline
             if (server == null) return d;
             try
             {
-                bool running = (bool)server.GetProperty("IsRunning", BindingFlags.Public | BindingFlags.Static).GetValue(null, null);
-                if (!running && !SessionState.GetBool(SkillsAsked, false) && File.Exists(Path.Combine(Dir, "want_skills")) && !EditorApplication.isCompiling)
+                PropertyInfo isRunning = server.GetProperty("IsRunning", BindingFlags.Public | BindingFlags.Static);
+                bool running = (bool)isRunning.GetValue(null, null), wanted = SkillsWanted();
+                double now = EditorApplication.timeSinceStartup;
+                if (running && !wanted && EditorPrefs.GetBool(SkillsOurs, false))
                 {
-                    SessionState.SetBool(SkillsAsked, true); // once per editor session: a server the player stopped stays stopped
-                    MethodInfo start = server.GetMethod("Start", BindingFlags.Public | BindingFlags.Static);
-                    if (start != null)
+                    MethodInfo stop = server.GetMethod("StopPermanent", BindingFlags.Public | BindingFlags.Static, null, Type.EmptyTypes, null);
+                    object[] args = new object[0];
+                    if (stop == null)
                     {
-                        ParameterInfo[] ps = start.GetParameters();
-                        var args = new object[ps.Length];
-                        for (int i = 0; i < ps.Length; i++) args[i] = ps[i].ParameterType == typeof(bool) ? (object)true : (ps[i].ParameterType == typeof(int) ? (object)0 : null);
-                        start.Invoke(null, args);
-                        running = (bool)server.GetProperty("IsRunning", BindingFlags.Public | BindingFlags.Static).GetValue(null, null);
+                        stop = server.GetMethod("Stop", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(bool) }, null);
+                        args = new object[] { true };
+                    }
+                    if (stop != null)
+                    {
+                        stop.Invoke(null, args);
+                        running = (bool)isRunning.GetValue(null, null);
+                        if (!running) EditorPrefs.DeleteKey(SkillsOurs);
                     }
                 }
+                else if (!running && wanted)
+                {
+                    if (!EditorApplication.isCompiling && now >= nextSkillsStart)
+                    {
+                        nextSkillsStart = now + 10;
+                        MethodInfo start = server.GetMethod("Start", BindingFlags.Public | BindingFlags.Static);
+                        if (start != null)
+                        {
+                            ParameterInfo[] ps = start.GetParameters();
+                            var args = new object[ps.Length];
+                            for (int i = 0; i < ps.Length; i++) args[i] = ps[i].ParameterType == typeof(bool) ? (object)true : (ps[i].ParameterType == typeof(int) ? (object)0 : null);
+                            start.Invoke(null, args);
+                            running = (bool)isRunning.GetValue(null, null);
+                            if (running) EditorPrefs.SetBool(SkillsOurs, true);
+                        }
+                    }
+                }
+                // stopped some other way (the player, an error): a server started after that is not ours. A domain
+                // reload stops it only for a moment (UnitySkills starts it again by itself), so not just after one
+                else if (!running && now - loadedAt > 30) EditorPrefs.DeleteKey(SkillsOurs);
                 d["running"] = running;
                 d["port"] = running ? (int)server.GetProperty("Port", BindingFlags.Public | BindingFlags.Static).GetValue(null, null) : 0;
                 d["version"] = Refl.PackageVersion("UnitySkills.SkillsHttpServer");
@@ -132,6 +177,34 @@ namespace MioVRCA.Pipeline
                 d["error"] = e.InnerException != null ? e.InnerException.Message : e.Message;
             }
             return d;
+        }
+
+        // ProjectHash: this project's folder as a short name of its own (FNV-1a), for what is kept per project in
+        // EditorPrefs (they are the same for every project of this computer).
+        static string ProjectHash()
+        {
+            uint h = 2166136261;
+            foreach (char c in Path.GetFullPath(".").ToLowerInvariant())
+            {
+                h ^= c;
+                h *= 16777619;
+            }
+            return h.ToString("x8");
+        }
+
+        // Whether the time in want_skills is still ahead. Anything else in it is no wish (an older program wrote
+        // "1"); while the program swaps in a new file and it cannot be read, the time read last stands.
+        static bool SkillsWanted()
+        {
+            string f = Path.Combine(Dir, "want_skills");
+            try
+            {
+                long until;
+                skillsUntil = File.Exists(f) && long.TryParse(File.ReadAllText(f).Trim(), out until) ? until : 0;
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            return skillsUntil > DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         }
 
         // false: nothing was done with this file (it is still being written, or too old)

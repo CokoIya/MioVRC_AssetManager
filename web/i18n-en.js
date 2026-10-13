@@ -16,6 +16,33 @@
 //   Sentence case; no full stop on labels, buttons and one-line notices.
 I18N.add("en", {
   "exact": {
+    // --- files that could not be read are kept, never written over; UnitySkills only while the AI uses it; a yes for one operation; Quest projects; the browser's debugging address (1.7.14) ---
+    "UnitySkills 将在 AI 需要时自动启动": "UnitySkills starts by itself when the AI needs it",
+    "本次对话中不再询问这项操作": "Don't ask about this operation again in this conversation",
+    "AI 设置文件暂时无法读取，未保存修改，请稍后重试": "The AI settings file can't be read right now; nothing was saved. Try again later",
+    "API Key 文件暂时无法读取，未保存修改，请稍后重试": "The API key file can't be read right now; nothing was saved. Try again later",
+    "UnitySkills 的操作清单中没有该操作": "UnitySkills' list of operations doesn't have this one",
+    "PC 版本": "PC version",
+    "PC 版本，工程的目标平台为 Android（Quest）": "PC version; the project builds for Android (Quest)",
+    "浏览器调试接口的地址异常，已拒绝连接": "The browser's debugging interface named an unexpected address; the connection was refused",
+    "原文件保持原样，不会被覆盖": "The original file is left as it is and won't be overwritten",
+    // --- an import's packages (versions, copies, variants), the volumes of split archives, a base body into another's project, base bodies the table did not know (1.7.13) ---
+    "部分 unitypackage 会写入同一批文件（不同版本、左右手、带或不带某个功能等），都导入时后导入的会覆盖前面的。请选择要导入的：": "Some of the unitypackages write the same files (versions, left and right hand, with or without a feature…); imported together, the one imported last overwrites the others. Choose what to import:",
+    "部分 unitypackage 会写入同一批文件（不同版本、左右手、带或不带某个功能等），都导入时后导入的会覆盖前面的": "Some of the unitypackages write the same files (versions, left and right hand, with or without a feature…); imported together, the one imported last overwrites the others",
+    "请选择要导入的：": "Choose what to import:",
+    "与其他包写入同一批文件": "Writes the same files as another package",
+    "需要时可将它们直接拖入 Unity 导入": "Drag them into Unity to import them when needed",
+    "未导入：": "Not imported:",
+    "重复": "Duplicate",
+    "Quest 版本": "Quest version",
+    "Quest 版本，已有 PC 版本": "Quest version; the PC version is here",
+    "正在检查 unitypackage": "Checking the unitypackages",
+    "分卷不完整，可能缺少分卷，请把全部分卷下载到同一个文件夹后再解压": "The volumes are incomplete; a volume may be missing. Download all volumes into one folder, then unpack again",
+    "请把全部分卷下载到同一个文件夹后再解压": "Download all volumes into one folder, then unpack again",
+    "压缩包数据校验失败：可能有分卷没下载完整或缺少分卷，请重新下载有问题的分卷": "The archive failed its data check: a volume may be incomplete or missing. Download the faulty volume again",
+    "压缩包数据校验失败：文件可能没下载完整，请重新下载": "The archive failed its data check: the file may not have downloaded completely. Download it again",
+    "分卷不完整，可能缺少最后的分卷": "The volumes are incomplete; the last volume may be missing",
+    "在设置的「素体识别规则」中添加后，素材库也能按它筛选和核对素体": "add it to the base recognition rules in the settings, and the Library can filter and check by it too",
     // --- the AI's cost guard (a limit per run, the expected usage, DeepSeek's peak hours); UnitySkills in a new project (1.7.12) ---
     "工程已通过 Git 安装 UnitySkills，沿用该版本": "The project has UnitySkills installed through Git; that version is kept",
     "AI 整理菜单方案": "The AI sorts out the menus",
@@ -2428,6 +2455,33 @@ I18N.add("en", {
     "成人向": "Adult"
   },
   "patterns": [
+    // files that could not be read are kept, never written over; UnitySkills only while the AI uses it; a yes for one operation; Quest projects; the browser's debugging address (1.7.14)
+    ["素材库文件暂时无法读取（{e}），已用 {t} 的备份启动", "The library file can't be read right now ({e|raw}); the app started from the backup made {t|raw}"],
+    ["素材库文件暂时无法读取（{e}）", "The library file can't be read right now ({e|raw})"],
+    ["{w}，且没有可用的备份，已按全新素材库启动", "{w}, and there is no usable backup, so the app started with a new library"],
+    ["{w}，已从备份恢复（备份时间 {t}）；该时间之后的改动未能保留；{x}", "{w}; restored from the backup made {t|raw}. Changes after that time are lost; {x}"],
+    ["{w}，已从备份恢复（备份时间 {t}）", "{w}; restored from the backup made {t|raw}"],
+    ["损坏的文件保留在数据文件夹中（文件名以 .broken-{s} 结尾）", "The damaged file is kept in the data folder (its name ends in .broken-{s|raw})"],
+    ["原文件已改名保留为 {f}，如需找回其中的内容，请先关闭本程序，再将它改名为 library.json", "The original file is kept as {f|raw}. To get back what is in it, close the app first, then rename it to library.json"],
+    ["原文件已改名保留为 {f}", "The original file is kept as {f|raw}"],
+    ["原素材库文件无法改名保留，为免覆盖暂不保存：{e}", "The original library file couldn't be renamed to keep it, so nothing is saved for now rather than overwrite it: {e|raw}"],
+    ["无法读取愿望单文件 wishlist.json：{e}", "Couldn't read the wish list file wishlist.json: {e|raw}"],
+    ["无法读取关注店铺文件 follows.json：{e}", "Couldn't read the followed shops file follows.json: {e|raw}"],
+    ["无法读取导入记录文件 transfer.json：{e}", "Couldn't read the import record file transfer.json: {e|raw}"],
+    // an import's packages; split archives; a base body into another's project; base bodies the table did not know (1.7.13)
+    ["缺少第一卷，无法解压 {x}", "The first volume is missing; {x|raw} can't be unpacked"],
+    ["缺少 {x}：.z01、.z02 这样的分卷要和同名的 .zip 放在同一个文件夹，解压从 .zip 开始（.zip 是最后一卷）", "{x|raw} is missing: volumes like .z01 and .z02 need the .zip of the same name in the same folder, and are unpacked from the .zip (the .zip is the last volume)"],
+    ["缺少分卷：{x}（共 {#n} 卷，找到 {#m} 卷），请把全部分卷下载到同一个文件夹后再解压", "Missing volumes: {x|list} ({n} in all, {m} found). Download all volumes into one folder, then unpack again"],
+    ["缺少分卷：{x}（找到 {#m} 卷），请把全部分卷下载到同一个文件夹后再解压", "Missing volumes: {x|list} ({m} found). Download all volumes into one folder, then unpack again"],
+    ["缺少后面的分卷：从 {x} 起（找到 {#m} 卷），请把全部分卷下载到同一个文件夹后再解压", "The later volumes are missing, from {x|raw} on ({m} found). Download all volumes into one folder, then unpack again"],
+    ["解压出错：无法合并分卷（{x}）", "Unpacking failed: the volumes couldn't be joined ({x|raw})"],
+    ["旧版本，已有 {x}", "Older version; {x|raw} is here"],
+    ["与「{x}」写入同一批文件，只导入一个", "Writes the same files as “{x|raw}”; only one of them is imported"],
+    ["与「{x}」内容相同", "Same content as “{x|raw}”"],
+    ["会改写「{x}」的 {#n} 个文件，在它之后导入", "Changes {n} file{n|s} of “{x|raw}”; imported after it"],
+    ["「{a}」是 {b} 的素体，目标工程「{p}」用的是 {c} 素体。仍要导入到这个工程吗？", "“{a|raw}” is a base for {b|raw}, and the project “{p|raw}” is built on {c|raw}. Import it into this project anyway?"],
+    ["{#n} 个旧版本、重复或会互相覆盖的 unitypackage 未导入", "{n} older, duplicate or overlapping unitypackage{n|s} not imported"],
+    ["素体识别规则中没有「{x}」，已按模型名称只装配素材中「{y}」的版本", "The base recognition rules have no “{x|raw}”; going by the avatar's name, only the “{y|raw}” versions in the assets were fitted"],
     // the AI's cost guard; UnitySkills in a new project; an object path written a little off (1.7.12)
     ["无法创建样本文件夹：{x}", "Couldn't create the samples folder: {x|raw}"],
     ["AI 未给出方案（{x}），已使用按网格名称分组的方案", "The AI gave no plan ({x}); the menus were grouped by mesh names instead"],

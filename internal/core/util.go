@@ -3,11 +3,13 @@ package core
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 func TrimErr(err error) string {
@@ -111,6 +113,28 @@ func FileExists(p string) bool {
 }
 
 func LowerExt(name string) string { return strings.ToLower(filepath.Ext(name)) }
+
+// ShellChars: nothing in an address could end it on the command line Windows puts it into to open it (OpenURL:
+// the program registered for its scheme gets it, between quotes or not) — no control character, no space of any
+// kind, no double quote, no backslash (how a quote is escaped there).
+func ShellChars(u string) bool {
+	for _, r := range u {
+		if unicode.IsControl(r) || unicode.IsSpace(r) || r == '"' || r == '\\' {
+			return false
+		}
+	}
+	return u != ""
+}
+
+// shellAddress: u as OpenURL hands it to Windows. Refused when something in it could end it on that command line
+// (ShellChars); a single quote, which a page's address may hold, goes as %27 — the same to a browser and to a
+// mail program.
+func shellAddress(u string) (string, error) {
+	if !ShellChars(u) {
+		return "", errors.New("网址无效")
+	}
+	return strings.ReplaceAll(u, "'", "%27"), nil
+}
 
 func StripArchiveExt(name string) string {
 	l := strings.ToLower(name)

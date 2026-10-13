@@ -64,8 +64,8 @@ func extractZip(zipPath, parent string) (string, error) {
 		base := strings.TrimSuffix(target, fmt.Sprintf(" (%d)", i-1))
 		target = fmt.Sprintf("%s (%d)", base, i)
 	}
-	tmp := filepath.Join(parent, "."+filepath.Base(target)+".extracting")
-	_ = os.RemoveAll(tmp)
+	tmp, done := workDir(parent, filepath.Base(target), "extracting") // (made with what is written into it)
+	defer done()
 	fail := func(err error) (string, error) {
 		_ = os.RemoveAll(tmp)
 		return "", err

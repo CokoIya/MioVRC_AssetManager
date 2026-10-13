@@ -113,11 +113,15 @@ func TestAIKitInstall(t *testing.T) {
 	for _, f := range []string{
 		"Packages/" + unity.PipePkg + "/Editor/Bridge.cs", "Packages/" + unity.PipePkg + "/Editor/MenuBuilder.cs.meta",
 		"Packages/" + unity.SkillsPkg + "/package.json", "Packages/" + unity.SkillsPkg + "/Editor/Skills/SkillsHttpServer.cs", "Packages/" + unity.SkillsPkg + "/LICENSE.md",
-		"Packages/" + unity.SkillsPkg + "/" + unity.KitMarker, "UserSettings/MioVRCA/bridge/want_skills",
+		"Packages/" + unity.SkillsPkg + "/" + unity.KitMarker,
 	} {
 		if !core.StatOK(filepath.Join(proj, filepath.FromSlash(f))) {
 			t.Errorf("missing %s", f)
 		}
+	}
+	// the UnitySkills server is not asked for by the install: the AI asks for it while it needs it
+	if core.StatOK(filepath.Join(unity.BridgeDir(proj), "want_skills")) {
+		t.Error("the install asks for the UnitySkills server")
 	}
 	if core.StatOK(filepath.Join(proj, "Packages", unity.SkillsPkg, "Tests")) {
 		t.Error("UnitySkills' tests were bundled")
@@ -170,6 +174,72 @@ func TestAIKitInstall(t *testing.T) {
 	}
 	if err = unity.RemoveAIKit(proj); err == nil || !core.StatOK(foreign) {
 		t.Error("foreign package removed")
+	}
+}
+
+// A folder under the name of one of the program's packages that the program did not put there is never replaced
+// or removed: UnitySkills' is the project's own copy (and said so), the plugin's stops the install.
+func TestAIKitLeavesFoldersNotItsOwn(t *testing.T) {
+	proj := t.TempDir()
+	for _, d := range []string{"Assets", "ProjectSettings", "Packages"} {
+		_ = os.MkdirAll(filepath.Join(proj, d), 0755)
+	}
+	_ = os.WriteFile(filepath.Join(proj, "ProjectSettings", "ProjectVersion.txt"), []byte("m_EditorVersion: 2022.3.22f1\n"), 0644)
+	t.Setenv("VRCLIB_UNITY_DIRS", t.TempDir())
+	t.Setenv("APPDATA", t.TempDir())
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", os.Getenv("HOME"))
+	unity.EdMu.Lock()
+	unity.EdCache = nil
+	unity.EdMu.Unlock()
+	mine := func(dir, packageJSON string) string {
+		_ = os.RemoveAll(dir)
+		_ = os.MkdirAll(filepath.Join(dir, "Editor"), 0755)
+		_ = os.WriteFile(filepath.Join(dir, "Editor", "Mine.cs"), []byte("// the player's"), 0644)
+		if packageJSON != "" {
+			_ = os.WriteFile(filepath.Join(dir, "package.json"), []byte(packageJSON), 0644)
+		}
+		return filepath.Join(dir, "Editor", "Mine.cs")
+	}
+	// another package under UnitySkills' name, and a folder with no package.json (the repository cloned whole)
+	sk := filepath.Join(proj, "Packages", unity.SkillsPkg)
+	for _, pj := range []string{`{"name":"com.someone.tools","version":"1.0.0"}`, ""} {
+		kept := mine(sk, pj)
+		note, err := unity.InstallAIKit(proj)
+		if err != nil || !strings.HasPrefix(note, "工程的 Packages 中已存在 com.besty.unity-skills，但不是由本软件安装，未作改动。") {
+			t.Errorf("%q: %q %v", pj, note, err)
+		}
+		if !core.StatOK(kept) || core.StatOK(filepath.Join(sk, unity.KitMarker)) || core.StatOK(sk+".old~") || core.StatOK(sk+".miovrca-old~") {
+			t.Errorf("%q: the folder was replaced", pj)
+		}
+		if k := unity.AIKitStatus(proj); !k.Pipeline || k.Skills != "own" || k.SkillsVer != "" {
+			t.Errorf("%q: status %+v", pj, k)
+		}
+		if err := unity.RemoveAIKit(proj); err != nil || !core.StatOK(kept) {
+			t.Errorf("%q: removed with the plugin (%v)", pj, err)
+		}
+	}
+	// a copy the player set aside under "<name>~" survives the install of the program's own
+	_ = os.RemoveAll(sk)
+	aside := mine(sk+"~", `{"name":"com.besty.unity-skills","version":"2.7.0"}`)
+	if _, err := unity.InstallAIKit(proj); err != nil || !core.StatOK(aside) {
+		t.Errorf("the copy set aside: %v", err)
+	}
+	if k := unity.AIKitStatus(proj); k.Skills != "ours" {
+		t.Errorf("status %+v", k)
+	}
+	// the plugin's name: somebody else's package, or no package.json — the install stops, nothing is removed
+	_ = unity.RemoveAIKit(proj)
+	pipe := filepath.Join(proj, "Packages", unity.PipePkg)
+	for _, pj := range []string{`{"name":"com.other.pipeline"}`, ""} {
+		kept := mine(pipe, pj)
+		if _, err := unity.InstallAIKit(proj); err == nil || !core.StatOK(kept) {
+			t.Errorf("%q: installed over it (%v)", pj, err)
+		}
+		if err := unity.RemoveAIKit(proj); err == nil || !core.StatOK(kept) {
+			t.Errorf("%q: removed (%v)", pj, err)
+		}
 	}
 }
 

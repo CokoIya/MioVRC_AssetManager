@@ -112,11 +112,18 @@ func main() {
 		os.Exit(0)
 	}()
 
-	// first run waits for the setup screen; afterwards refresh in the background on every start
-	if st.Settings.SetupDone && (st.LastScan == 0 || !st.Settings.ManualRescan) {
+	// first run waits for the setup screen; afterwards refresh in the background on every start. (The server
+	// is up from here on: the settings are read under the lock, as /api/settings writes them.)
+	st.Mu.RLock()
+	rescan := st.Settings.SetupDone && (st.LastScan == 0 || !st.Settings.ManualRescan)
+	st.Mu.RUnlock()
+	if rescan {
 		go func() {
 			time.Sleep(1200 * time.Millisecond)
-			library.StartPipeline(st, true, true, st.Settings.AutoBooth, false, nil)
+			st.Mu.RLock()
+			auto := st.Settings.AutoBooth
+			st.Mu.RUnlock()
+			library.StartPipeline(st, true, true, auto, false, nil)
 		}()
 	}
 
@@ -146,8 +153,11 @@ func main() {
 		}
 	}()
 	if !*noWindow {
+		st.Mu.RLock()
+		tab := st.Settings.WindowMode == "tab"
+		st.Mu.RUnlock()
 		// the app's own window runs on this (main) thread and returns when it is closed
-		showUI(url, st.Settings.WindowMode == "tab", stop)
+		showUI(url, tab, stop)
 	}
 	<-quit
 	// downloads end here (the window asked first): a moment for them to let go of their files

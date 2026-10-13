@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"context"
 	"errors"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -25,7 +26,9 @@ type Set struct {
 func Sets(files []string) []Set {
 	var out []Set
 	for _, s := range groupArchives(append([]string{}, files...)) {
-		out = append(out, Set{Main: s.Main, Parts: s.Parts, Name: s.Name, Size: s.Size})
+		if s.Main != "" {
+			out = append(out, Set{Main: s.Main, Parts: s.Parts, Name: s.Name, Size: s.Size})
+		}
 	}
 	return out
 }
@@ -121,10 +124,16 @@ func parse7zList(s string) []Entry {
 
 // UnpackAgain unpacks an archive whose folder is there already — a newer file that came under the name of
 // an earlier one — into a folder of its own ("Dress (2)"); the earlier folder stays as it is. again false:
-// there is no earlier folder, and nothing was done (the archive is unpacked the usual way).
+// there is no earlier folder, and nothing was done (the archive is unpacked the usual way). Another unpack of
+// it at the same time goes first: what that one made of it is taken, and an archive gone meanwhile is left.
 func UnpackAgain(s Set, pwd string) (dir string, again bool, err error) {
 	as := archiveSet{Main: s.Main, Parts: s.Parts, Name: s.Name, Size: s.Size}
-	if alreadyUnpacked(as) == "" {
+	done, unlock := lockArchive(as.Main)
+	defer func() { unlock(dir) }()
+	if done != "" && core.IsDir(done) {
+		return done, true, nil
+	}
+	if _, err := os.Stat(as.Main); os.IsNotExist(err) || alreadyUnpacked(as) == "" {
 		return "", false, nil
 	}
 	dir, err = extractArchive(as, pwd)

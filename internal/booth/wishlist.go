@@ -109,7 +109,8 @@ func init() {
 var (
 	wishMu      sync.Mutex
 	wishData    wishFile
-	wishFrom    string // the file wishData was read from (the data folder can change between tests)
+	wishFrom    string // the file wishData was read from (the data folder can change between tests); "" while it cannot be
+	wishBad     string // why it could not be read, as logged (once)
 	wishRunMu   sync.Mutex
 	wishRunning bool
 	wishBrokeAt string // the item the last round was turned away at
@@ -117,23 +118,35 @@ var (
 
 func wishPath() string { return filepath.Join(core.DataDir, "wishlist.json") }
 
-// wishLoad reads the file once. Caller holds wishMu.
-func wishLoad() {
+// wishLoad reads the file once. Caller holds wishMu. A file that is there but cannot be read (held by another
+// program, no access) is not an empty list: the list is not taken as read, nothing is written over the file,
+// and the next use tries again.
+func wishLoad() error {
 	p := wishPath()
 	if wishFrom == p {
-		return
+		return nil
 	}
-	wishFrom, wishData = p, wishFile{Ver: 1}
-	b, err := os.ReadFile(p)
-	if err != nil {
-		return
+	wishFrom, wishData = "", wishFile{Ver: 1}
+	b, err := core.ReadDataFileAgain(p, wishBad != "")
+	switch {
+	case os.IsNotExist(err):
+		wishFrom, wishBad = p, ""
+		return nil
+	case err != nil:
+		return wishUnread(err, nil)
 	}
 	var f wishFile
 	if err := json.Unmarshal(b, &f); err != nil {
-		// not thrown away: the next save would write an empty list over it
-		_ = os.Rename(p, p+".broken")
-		core.Logf("wishlist.json 无法读取，已另存为 wishlist.json.broken: %v", err)
-		return
+		// not thrown away: out of the way before the next save writes an empty list in its place
+		kept, kerr := core.KeepBroken(p, b)
+		if kerr != nil {
+			return wishUnread(kerr, err)
+		}
+		if kept != "" {
+			core.Logf("wishlist.json 无法读取，已另存为 %s: %v", filepath.Base(kept), err)
+		}
+		wishFrom, wishBad = p, ""
+		return nil
 	}
 	f.Ver = 1
 	keep := f.Items[:0]
@@ -143,11 +156,30 @@ func wishLoad() {
 		}
 	}
 	f.Items = keep
-	wishData = f
+	wishFrom, wishBad, wishData = p, "", f
+	return nil
 }
 
-// wishSave writes the file whole: to a temporary file that then takes its place. Caller holds wishMu.
+// wishUnread: wishlist.json is there but could not be read (err), or was read damaged (bad) and could not be
+// kept either. Logged once; the error is what the window is told.
+func wishUnread(err, bad error) error {
+	if why := core.TrimErr(err); wishBad != why {
+		wishBad = why
+		if bad != nil {
+			core.Logf("wishlist.json 已损坏（%v），也未能另存，暂不使用也不覆盖: %v", bad, err)
+		} else {
+			core.Logf("wishlist.json 无法读取，暂不使用也不覆盖: %v", err)
+		}
+	}
+	return errors.New("无法读取愿望单文件 wishlist.json：" + core.TrimErr(err))
+}
+
+// wishSave writes the file whole: to a temporary file that then takes its place. Caller holds wishMu. Never
+// over a file that was not read.
 func wishSave() {
+	if wishFrom != wishPath() {
+		return
+	}
 	b, err := json.MarshalIndent(&wishData, "", " ")
 	if err != nil {
 		return
@@ -252,7 +284,10 @@ func WishAdd(st *core.Store, seed WishSeed) (*WishItem, error) {
 		return nil, errors.New("请输入 Booth 商品页链接或商品编号")
 	}
 	wishMu.Lock()
-	wishLoad()
+	if err := wishLoad(); err != nil {
+		wishMu.Unlock()
+		return nil, err
+	}
 	if it := wishFind("booth:" + id); it != nil {
 		c := *it
 		wishMu.Unlock()
@@ -288,6 +323,10 @@ func WishAdd(st *core.Store, seed WishSeed) (*WishItem, error) {
 		it.Hist = []WishPoint{{At: now, Price: it.Price}}
 	}
 	wishMu.Lock()
+	if err := wishLoad(); err != nil { // (the file may have been replaced meanwhile: WishReload)
+		wishMu.Unlock()
+		return nil, err
+	}
 	if old := wishFind(it.Key()); old != nil { // added twice at once
 		c := *old
 		wishMu.Unlock()
@@ -322,8 +361,8 @@ func wishFirstLook(st *core.Store, key string) {
 		return
 	}
 	wishMu.Lock()
-	wishLoad() // (the file may have been replaced meanwhile: WishReload)
-	if it := wishFind(key); it != nil && it.Checked == 0 {
+	read := wishLoad() == nil // (the file may have been replaced meanwhile: WishReload)
+	if it := wishFind(key); read && it != nil && it.Checked == 0 {
 		it.Tried = now
 		if err != nil {
 			it.Err = core.FriendlyNetErr(err)
@@ -340,7 +379,9 @@ func wishFirstLook(st *core.Store, key string) {
 func WishRemove(key string) bool {
 	wishMu.Lock()
 	defer wishMu.Unlock()
-	wishLoad()
+	if wishLoad() != nil {
+		return false
+	}
 	for i, it := range wishData.Items {
 		if it.Key() == key {
 			wishData.Items = append(wishData.Items[:i], wishData.Items[i+1:]...)
@@ -352,31 +393,37 @@ func WishRemove(key string) bool {
 	return false
 }
 
-func WishNote(key, note string) bool {
+var errWishGone = errors.New("该商品已不在愿望单中")
+
+func WishNote(key, note string) error {
 	note = strings.TrimSpace(note)
 	if r := []rune(note); len(r) > wishNoteMax {
 		note = string(r[:wishNoteMax])
 	}
 	wishMu.Lock()
 	defer wishMu.Unlock()
-	wishLoad()
+	if err := wishLoad(); err != nil {
+		return err
+	}
 	it := wishFind(key)
 	if it == nil {
-		return false
+		return errWishGone
 	}
 	if it.Note != note {
 		it.Note = note
 		wishSave()
 		core.BumpRev()
 	}
-	return true
+	return nil
 }
 
 // WishSeen: the player has the list open: the dot on its entry goes.
 func WishSeen() {
 	wishMu.Lock()
 	defer wishMu.Unlock()
-	wishLoad()
+	if wishLoad() != nil {
+		return
+	}
 	n := 0
 	for _, it := range wishData.Items {
 		if it.Unseen {
@@ -394,7 +441,9 @@ func WishSeen() {
 func WishTold(at map[string]int64) {
 	wishMu.Lock()
 	defer wishMu.Unlock()
-	wishLoad()
+	if wishLoad() != nil {
+		return
+	}
 	n := 0
 	for key, t := range at {
 		if it := wishFind(key); it != nil && it.Change != nil && !it.Change.Told && it.Change.At == t {
@@ -410,7 +459,9 @@ func WishTold(at map[string]int64) {
 func WishSetWatch(on bool) {
 	wishMu.Lock()
 	defer wishMu.Unlock()
-	wishLoad()
+	if wishLoad() != nil {
+		return
+	}
 	if wishData.NoWatch == on {
 		wishData.NoWatch = !on
 		wishSave()
@@ -527,7 +578,7 @@ func WishSnapshot(st *core.Store) WishState {
 	wishRunMu.Unlock()
 	wishMu.Lock()
 	defer wishMu.Unlock()
-	wishLoad()
+	_ = wishLoad() // (one that cannot be read shows as empty, and is not written over)
 	s := WishState{Items: make([]WishView, 0, len(wishData.Items)), Watch: !wishData.NoWatch, Paused: boothPaused(), Busy: busy}
 	changed := false
 	for _, it := range wishData.Items {
@@ -755,7 +806,10 @@ func WishRound(st *core.Store, byHand bool) (int, error) {
 	}
 	st.Mu.RUnlock()
 	wishMu.Lock()
-	wishLoad()
+	if err := wishLoad(); err != nil {
+		wishMu.Unlock()
+		return 0, err
+	}
 	if wishData.NoWatch && !byHand {
 		wishMu.Unlock()
 		return 0, nil
@@ -804,7 +858,12 @@ func WishRound(st *core.Store, byHand bool) (int, error) {
 			}
 		}
 		wishMu.Lock()
-		wishLoad() // the file may have been replaced since the round began (a library import): never the old list over it
+		// the file may have been replaced since the round began (a library import): never the old list over it,
+		// and nothing over one that cannot be read (the rest waits for the next round)
+		if wishLoad() != nil {
+			wishMu.Unlock()
+			break
+		}
 		it := wishFind(key)
 		if it == nil { // removed meanwhile
 			wishMu.Unlock()
@@ -847,7 +906,10 @@ func WishStartRound(st *core.Store) (int, error) {
 		return 0, errors.New("Booth 暂时限制了访问，请稍后重试")
 	}
 	wishMu.Lock()
-	wishLoad()
+	if err := wishLoad(); err != nil {
+		wishMu.Unlock()
+		return 0, err
+	}
 	n := len(wishDue(time.Now(), true))
 	wishMu.Unlock()
 	if n > 0 {

@@ -17,6 +17,7 @@ type SavedCookie struct {
 type DLRecord struct {
 	Item string `json:"item"`
 	Path string `json:"path"`
+	File string `json:"file,omitempty"` // the file as it was downloaded (Path is the folder an archive went into)
 	At   int64  `json:"at"`
 }
 
