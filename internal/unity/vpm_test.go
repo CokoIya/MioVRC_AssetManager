@@ -228,6 +228,10 @@ func TestVPMResolve(t *testing.T) {
 
 func TestNewProject(t *testing.T) {
 	st := testkit.NewStore(t)
+	notices := make(chan core.Notice, 8) // (what the player hears of it: its end, core.Notify)
+	oldHook, oldLong := core.NoticeHook, core.NoticeLongEnough
+	core.NoticeHook, core.NoticeLongEnough = func(n core.Notice) { notices <- n }, 0
+	defer func() { core.NoticeHook, core.NoticeLongEnough = oldHook, oldLong }()
 	f := newFakeVPM(t)
 	useFakeVPM(t, f)
 	vcc := t.TempDir()
@@ -268,6 +272,14 @@ func TestNewProject(t *testing.T) {
 	}
 	if j == nil || j.Stage != "done" {
 		t.Fatalf("job %+v", j)
+	}
+	select {
+	case n := <-notices:
+		if n != (core.Notice{Kind: "done", What: "newproj", Name: "My Avatar"}) {
+			t.Errorf("told %+v", n)
+		}
+	case <-time.After(3 * time.Second):
+		t.Error("the player was not told the project is made")
 	}
 	p := filepath.Join(parent, "My Avatar")
 	for _, n := range []string{"com.vrchat.avatars", "com.vrchat.base", vpmResolverPkg, "nadena.dev.modular-avatar", "nadena.dev.ndmf", "jp.lilxyzw.liltoon"} {

@@ -95,6 +95,8 @@ func main() {
 	}
 	url := "http://" + ln.Addr().String() + "/"
 	core.Logf("服务地址 %s", url)
+	appStore = st
+	startNotices(st) // the sounds (and the tray's part, once the window is open) of what core.Notify tells
 	srv := &http.Server{Handler: server.LocalOnly(ln.Addr(), server.NewMux(st))}
 	go func() { _ = srv.Serve(ln) }()
 	go update.AutoCheckUpdate(st)
@@ -109,6 +111,7 @@ func main() {
 		webpane.Pane.KeepLogins()
 		_ = st.Save()
 		core.Logf("退出（更新）")
+		trayGone()
 		os.Exit(0)
 	}()
 

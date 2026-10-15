@@ -230,7 +230,7 @@ async def crawl(b, lang):
     await snap('lib')
     await js("S.cat = '衣服'; renderSide(); renderGrid()", 'lib outfits')
     await js("S.fold.cat = true; S.fold.cloth = true; S.fold.bases = true; renderSide()", 'lib side folded')
-    await js("S.fold.cat = S.fold.cloth = S.fold.bases = false; S.cat = '全部'; S.q = 'zzzz-nothing'; renderSide(); renderGrid()", 'lib no match')
+    await js("S.fold.cat = S.fold.cloth = S.fold.bases = false; S.cat = '全部'; S.q = 'zzzz /yyyy /xxxx -nothing'; renderSide(); renderGrid()", 'lib no match')  # (how the search was read, and its tips)
     await js("S.q = ''; S.purchase = 'missing'; renderSide(); renderGrid()", 'lib not downloaded')
     await js("S.purchase = 'bought'; renderSide(); renderGrid()", 'lib purchased', shot=False)
     await js("S.purchase = 'all'; S.share = 'panonly'; renderSide(); renderGrid()", 'lib netdisk only', shot=False)

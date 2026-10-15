@@ -25,7 +25,9 @@ var (
 	ReBracketNum = regexp.MustCompile(`[【\[]\s*[0-9]{1,5}\s*[】\]]`)
 	reDupSuffix  = regexp.MustCompile(`\s*[\(（][0-9]{1,2}[\)）]\s*$`)
 	reYYMMDD     = regexp.MustCompile(`^2[0-9](0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])$`)
-	ReBoothURL   = regexp.MustCompile(`booth\.pm/(?:[a-z]{2}/)?items/([0-9]{5,9})`)
+	// an item's page on Booth, in whatever language the browser showed it: booth.pm/ja/items/…, booth.pm/zh-cn/items/…,
+	// shop.booth.pm/items/…
+	ReBoothURL   = regexp.MustCompile(`(?i)booth\.pm/(?:[a-z]{2}(?:[-_][a-z]{2,4})?/)?items/([0-9]{5,10})(?:[^0-9]|$)`)
 	reNonKey     = regexp.MustCompile(`[\s_\-\.\(\)（）\[\]【】'"+&,，!！~～・]+`)
 	ReGenericKey = regexp.MustCompile(`^(材质|材料|道具|衣服|服装|衣装|头发|发型|配饰|饰品|素体|模型|插件|系统|动作|音效|字体|其他|其它|贴图|纹理|妆容|素材|资源|新建文件夹|新しいフォルダー|newfolder|备份|测试|更新|归总|合集|整合|特典|bonus|dlc|materials?|textures?|psd|fbx|prefabs?|unitypackages?|readme|tools?|hair|clothe?s?|outfits?|accessor(y|ies)|props?|plugins?|others?|misc|assets?|new|update[sd]?|fix(ed)?|最新|修复|版|年|月|日|号)+$`)
 	ReStructural = regexp.MustCompile(`^(fbx|blend|textures?|tex|materials?|mat|psd|prefabs?|unitypackages?|readme|docs?|documents?|説明書|说明|manual|uv|uvmap|animations?|anim|meshe?s?|models?|images?|画像|samples?|preview|thumbnails?|サムネ|その他|others?|extra|bonus|特典|terms|规约|利用規約|shaders?|scripts?|editor|sounds?|audio|icons?|menu|expressions?|fx|data|source|src|assets|resources|png|tga|masks?|normal(map)?|emission|matcap|spec|liltoon|body|face|costume|kaihen_tips)$`)

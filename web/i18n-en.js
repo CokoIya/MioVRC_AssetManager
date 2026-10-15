@@ -16,6 +16,28 @@
 //   Sentence case; no full stop on labels, buttons and one-line notices.
 I18N.add("en", {
   "exact": {
+    // --- the search's words (贴图 /发型 -眼睛); the tray and the sounds ---
+    "需包含": "Has",
+    "包含其一": "Any of",
+    "不含": "Without",
+    "搜索技巧": "Search tips",
+    "搜索技巧：空格分隔的词需同时包含；在词前加 / 表示包含其一即可，如 /发型 /服装；加 - 表示排除，如 -眼睛；用引号搜索完整词组，如 \"moon dress\"": "Search tips: words separated by spaces must all be found; a / before words means any one of them is enough, as in /hair /outfit; a - before a word leaves out what has it, as in -eyes; quotes search for a whole phrase, as in \"moon dress\"",
+    "贴图 发型": "texture hair",
+    "同时包含": "Has all of them",
+    "/发型 /服装": "/hair /outfit",
+    "包含其一即可": "Has any one of them",
+    "贴图 /发型 /服装": "texture /hair /outfit",
+    "包含贴图，且包含发型或服装": "Has texture, and hair or outfit",
+    "贴图 -眼睛": "texture -eyes",
+    "包含贴图，不包含眼睛": "Has texture, but not eyes",
+    "搜索完整词组": "The whole phrase",
+    "关闭窗口时最小化到托盘": "Close button: keep running in the tray",
+    "关闭窗口时退出程序": "Close button: quit",
+    "独立窗口的关闭按钮": "What the close button of the program's own window does",
+    "提醒": "Alerts",
+    "流水线完成、导入完成或需要你确认时播放提示音": "Play a sound when the pipeline or an import finishes, or when your confirmation is needed",
+    "试听": "Preview",
+    "依次播放：完成、需要你确认、中断": "Playing in turn: finished, confirmation needed, stopped",
     // --- the player's スキ！ on Booth onto the wish list ---
     "同步 Booth 上的スキ时也不会再加入": "Syncing likes from Booth won't add it again either",
     "同步 Booth 上的スキ": "Sync likes from Booth",

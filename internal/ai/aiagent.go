@@ -150,6 +150,7 @@ func (s *aiSession) ask(ctx context.Context, text, opts, op string) bool {
 	s.askCh, s.askAllow = ch, op
 	s.mu.Unlock()
 	s.add(AIStep{Kind: "ask", Text: text, Busy: true, Opts: opts})
+	core.Notify(core.Notice{Kind: "ask", What: "pipe", Name: filepath.Base(s.project)}) // (a player looking at Unity hears it)
 	ok := false
 	select {
 	case ok = <-ch:
@@ -1321,6 +1322,19 @@ func keepSkills(ctx context.Context, p string) (leave func()) {
 	}
 }
 
+// runEnded tells the player of a run that has ended by itself, after long enough for the player to have looked
+// elsewhere (core.Notify); not of one the player stopped.
+func runEnded(project string, err error, stopped bool, began time.Time) {
+	if stopped || time.Since(began) < core.NoticeLongEnough {
+		return
+	}
+	kind := "done"
+	if err != nil {
+		kind = "fail"
+	}
+	core.Notify(core.Notice{Kind: kind, What: "pipe", Name: filepath.Base(project)})
+}
+
 func startAIRun(st *core.Store, req aiRunReq) error {
 	s := aiSessionFor(req.Project)
 	s.mu.Lock()
@@ -1408,6 +1422,7 @@ func startAIRun(st *core.Store, req aiRunReq) error {
 			s.mu.Lock()
 			s.busy, s.cancel = false, nil
 			s.mu.Unlock()
+			runEnded(s.project, err, stopped, began)
 		}()
 		if skills {
 			leave = keepSkills(ctx, req.Project)

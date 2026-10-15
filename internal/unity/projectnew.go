@@ -215,12 +215,22 @@ func StartNewProject(st *core.Store, req NewProjectReq) error {
 	npJob = &NewProjectJob{ID: time.Now().UnixNano(), Stage: "prepare", Msg: "正在准备", Path: path, Name: name, At: time.Now().Unix(), cancel: cancel}
 	npMu.Unlock()
 	core.BumpRev()
+	began := time.Now()
 	go core.RunTask(TaskNP, func() {
 		defer cancel()
-		if err := runNewProject(ctx, st, req, path); err != nil {
+		err := runNewProject(ctx, st, req, path)
+		if err != nil {
 			setNP(func(j *NewProjectJob) { j.Stage, j.Err, j.Msg = "failed", err.Error(), err.Error() })
 			TaskNP.Set(0, 0, err.Error())
 			core.Logf("创建工程失败：%v", err)
+		}
+		// (it takes minutes: the player hears of its end — not of one the player cancelled)
+		if ctx.Err() == nil && time.Since(began) >= core.NoticeLongEnough {
+			kind := "done"
+			if err != nil {
+				kind = "fail"
+			}
+			core.Notify(core.Notice{Kind: kind, What: "newproj", Name: name})
 		}
 	})
 	return nil
@@ -463,7 +473,7 @@ func runNewProject(ctx context.Context, st *core.Store, req NewProjectReq, path 
 		if a == nil {
 			return errors.New("素体已不在素材库中")
 		}
-		if err := StartImport(st, ImportReq{Key: a.Key, Project: path, Recycle: false}); err != nil {
+		if err := StartImport(st, ImportReq{Key: a.Key, Project: path, Recycle: false, Quiet: true}); err != nil {
 			return errors.New("无法开始导入素体：" + err.Error())
 		}
 		for {

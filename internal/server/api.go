@@ -495,6 +495,7 @@ func NewMux(st *core.Store) *http.ServeMux {
 		// (how 闲鱼's pages open is set through /api/xy/prefs only: the page's copy of the settings may be an older one)
 		s.XyExternal, s.XyNoticed, s.NoXyClip = st.Settings.XyExternal, st.Settings.XyNoticed, st.Settings.NoXyClip
 		s.HiddenProjects = st.Settings.HiddenProjects // (set through /api/project/hide only, for the same reason)
+		s.TrayNoticed = st.Settings.TrayNoticed       // (the program's own mark)
 		st.Settings = s
 		st.Mu.Unlock()
 		core.ProxyChanged()
@@ -507,6 +508,11 @@ func NewMux(st *core.Store) *http.ServeMux {
 		}
 		ok := library.StartPipeline(st, true, true, s.AutoBooth, false, nil)
 		core.WriteJSON(w, map[string]any{"ok": true, "started": ok})
+	})
+	// 「试听」 in the settings: the three sounds of core.Notify, one after the other
+	post("/api/notice/test", func(w http.ResponseWriter, b map[string]json.RawMessage) {
+		core.Notify(core.Notice{Kind: "test", What: "test"})
+		core.WriteJSON(w, map[string]any{"ok": true})
 	})
 	// ---------- feedback ----------
 	post("/api/feedback/info", func(w http.ResponseWriter, b map[string]json.RawMessage) {

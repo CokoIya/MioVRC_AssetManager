@@ -1340,17 +1340,22 @@ func StartRecipeRun(st *core.Store, project, id string) error {
 	}
 	s.mu.Unlock()
 	s.add(AIStep{Kind: "user", Text: "应用装配方案「" + r.Name + "」"})
+	began := time.Now()
 	go func() {
+		var err error
 		defer func() {
 			if x := recover(); x != nil {
 				s.add(AIStep{Kind: "error", Text: fmt.Sprint("程序内部错误：", x)})
+				err = fmt.Errorf("程序内部错误：%v", x)
 			}
+			stopped := ctx.Err() != nil
 			cancel()
 			s.mu.Lock()
 			s.busy, s.cancel = false, nil
 			s.mu.Unlock()
+			runEnded(s.project, err, stopped, began)
 		}()
-		if err := applyRecipe(ctx, st, s, r); err != nil {
+		if err = applyRecipe(ctx, st, s, r); err != nil {
 			s.finishStep(false, "已中断")
 			s.add(AIStep{Kind: "error", Text: s.abortText(err), Code: aiErrCode(err)})
 		}

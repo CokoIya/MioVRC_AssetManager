@@ -309,6 +309,7 @@ func worker(st *core.Store) {
 }
 
 func run(st *core.Store, j *Job) {
+	began := time.Now()
 	end := func(stage, msg, errText string) {
 		set(j, func(j *Job) {
 			j.Stage, j.Msg, j.Err, j.Ended, j.Login = stage, msg, errText, time.Now().Unix(), ""
@@ -321,6 +322,15 @@ func run(st *core.Store, j *Job) {
 				}
 			}
 		})
+		// the download and the imports take a while: the player hears of the end (not of one the player cancelled);
+		// an update that left some project out ended, but not as it should
+		if stage != "cancelled" && time.Since(began) >= core.NoticeLongEnough {
+			kind := "done"
+			if stage == "failed" || projectsFailed(j) {
+				kind = "fail"
+			}
+			core.Notify(core.Notice{Kind: kind, What: "update", Name: j.Name})
+		}
 	}
 	if !j.retry {
 		before := payloads(watchDirs(st, j))
@@ -360,7 +370,7 @@ func run(st *core.Store, j *Job) {
 			continue
 		}
 		set(j, func(j *Job) { j.Projects[i].Status, j.Msg = "running", "正在更新工程 "+p.Name })
-		res, err := importInto(j.ctx, st, unity.ImportReq{Key: j.Key, Paths: j.Packages, Project: p.Path}, func(ij unity.ImportJob) {
+		res, err := importInto(j.ctx, st, unity.ImportReq{Key: j.Key, Paths: j.Packages, Project: p.Path, Quiet: true}, func(ij unity.ImportJob) {
 			set(j, func(j *Job) {
 				j.Projects[i].Msg = ij.Msg
 				if ij.Stage == "choose" {
@@ -413,6 +423,18 @@ func run(st *core.Store, j *Job) {
 		}
 	}
 	end("done", "更新完成", "")
+}
+
+// projectsFailed: a project of the job could not be updated
+func projectsFailed(j *Job) bool {
+	mu.Lock()
+	defer mu.Unlock()
+	for _, p := range j.Projects {
+		if p.Status == "failed" {
+			return true
+		}
+	}
+	return false
 }
 
 // download has the new files fetched and waits for them. It returns where they are.

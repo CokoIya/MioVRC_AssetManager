@@ -41,6 +41,10 @@ type Settings struct {
 	NoXyClip   bool `json:"noXyClip"`   // do not offer the 闲鱼, Booth and netdisk links the player copies (named when it was the 闲鱼 tab's alone)
 	// projects the player hid on the 工程 page and in the pipeline (backups, copies hardly used): their paths
 	HiddenProjects []string `json:"hiddenProjects,omitempty"`
+	// the window's close button: false (the default) puts the window in the tray, the program goes on; true ends it
+	CloseQuit   bool `json:"closeQuit"`
+	TrayNoticed bool `json:"trayNoticed"` // the note on the window being in the tray has been shown (the program's to set)
+	NoSound     bool `json:"noSound"`     // no sound when the pipeline ends or waits for the player (core.Notify)
 }
 
 type Location struct {

@@ -2,7 +2,10 @@
 
 package main
 
-import "vrclib/internal/webpane"
+import (
+	"vrclib/internal/core"
+	"vrclib/internal/webpane"
+)
 
 // Outside Windows (tests) there is no native window: the UI opens in a browser.
 func focusExistingWindow() bool       { return false }
@@ -12,3 +15,7 @@ func runNativeWindow(url string) bool { return false }
 func init() { webpane.FakeNative() }
 
 func refreshShellIcon() {}
+
+// (no sounds and no tray: core.Notify writes its line in the log)
+func startNotices(*core.Store) {}
+func trayGone()                {}

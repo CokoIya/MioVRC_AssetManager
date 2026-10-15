@@ -423,6 +423,7 @@ type ImportJob struct {
 	within  string // ImportReq.Within
 	pwd     string
 	recycle bool
+	quiet   bool // ImportReq.Quiet
 	chosen  chan []string
 }
 
@@ -455,15 +456,46 @@ func setImp(f func(j *ImportJob)) {
 	impMu.Lock()
 	stage := ""
 	changed := false
+	var n core.Notice
 	if impJob != nil {
 		stage = impJob.Stage
 		f(impJob)
 		changed = impJob.Stage != stage
+		if changed {
+			n = importNotice(impJob, time.Now().Unix())
+		}
 	}
 	impMu.Unlock()
 	if changed {
 		core.BumpRev()
 	}
+	if n.Kind != "" {
+		core.Notify(n)
+	}
+}
+
+// importNotice: what the player is told of the stage an import has come to (core.Notify) — a choice it waits for;
+// its end, after long enough for the player to have looked elsewhere, not when the player cancelled it. Not of a
+// split alone, nor the end of an import that is part of a bigger piece of work (a new project, an update into
+// several projects: that work's end is told).
+func importNotice(j *ImportJob, now int64) core.Notice {
+	if j.Split {
+		return core.Notice{}
+	}
+	name := ""
+	if j.Project != "" {
+		name = filepath.Base(j.Project)
+	}
+	switch {
+	case j.Stage == "choose":
+		return core.Notice{Kind: "ask", What: "import", Name: name}
+	case j.quiet || now-j.At < int64(core.NoticeLongEnough/time.Second) || j.Msg == "已取消":
+	case j.Stage == "done":
+		return core.Notice{Kind: "done", What: "import", Name: name}
+	case j.Stage == "failed":
+		return core.Notice{Kind: "fail", What: "import", Name: name}
+	}
+	return core.Notice{}
 }
 
 type ImportReq struct {
@@ -479,6 +511,9 @@ type ImportReq struct {
 	// check for a collection of products looks at it, as at a card's folder — a folder unpacked inside it is
 	// one of the item's parts, not a collection of its own (never from the window)
 	Within string `json:"-"`
+	// the import is part of a bigger piece of work (a new project's base body, an update into several projects):
+	// its end is not told to the player by itself (core.Notify), that work's is
+	Quiet bool `json:"-"`
 }
 
 // importPlaces: what an asset brings along — its own files, and the downloads of the same product
@@ -677,7 +712,7 @@ func StartImport(st *core.Store, req ImportReq) error {
 		return errImportBusy
 	}
 	impJob = &ImportJob{ID: time.Now().UnixNano(), Key: req.Key, Project: req.Project, Split: req.Split, Stage: "unpack", At: time.Now().Unix(),
-		places: places, within: req.Within, pwd: req.Pwd, recycle: req.Recycle, chosen: make(chan []string, 1)}
+		places: places, within: req.Within, pwd: req.Pwd, recycle: req.Recycle, quiet: req.Quiet, chosen: make(chan []string, 1)}
 	id := impJob.ID
 	impMu.Unlock()
 	core.BumpRev()
