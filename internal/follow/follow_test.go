@@ -548,3 +548,61 @@ func TestReplacedArchivesOfOneName(t *testing.T) {
 		t.Errorf("the zip was not unpacked next to the earlier folder: %q", b)
 	}
 }
+
+// The player hears of an update's end — the download and the imports take a while —, as having gone wrong when a
+// project could not be updated; not of each import into each project, nor of an update the player cancelled.
+func TestUpdateNotice(t *testing.T) {
+	f, st := setup(t)
+	a, b := project(t, st, "ProjA"), project(t, st, "ProjB")
+	f.failProj = "ProjB"
+	got := make(chan core.Notice, 8)
+	oldHook, oldLong := core.NoticeHook, core.NoticeLongEnough
+	core.NoticeHook, core.NoticeLongEnough = func(n core.Notice) { got <- n }, 0
+	t.Cleanup(func() { core.NoticeHook, core.NoticeLongEnough = oldHook, oldLong })
+	quiet := true
+	imp := importInto
+	importInto = func(ctx context.Context, st *core.Store, req unity.ImportReq, on func(unity.ImportJob)) (unity.ImportJob, error) {
+		f.mu.Lock()
+		quiet = quiet && req.Quiet
+		f.mu.Unlock()
+		return imp(ctx, st, req, on)
+	}
+	next := func() core.Notice {
+		select {
+		case n := <-got:
+			return n
+		case <-time.After(3 * time.Second):
+			return core.Notice{}
+		}
+	}
+	j, err := Start(st, "booth:9000001", []string{a, b}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitJob(t, j.ID, downloading)
+	f.arrive(t)
+	waitJob(t, j.ID, ended)
+	if n := next(); n != (core.Notice{Kind: "fail", What: "update", Name: "Kaguya"}) {
+		t.Errorf("a project not updated: %+v", n)
+	}
+	f.failProj = ""
+	r, err := Retry(st, j.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitJob(t, r.ID, ended)
+	if n := next(); n != (core.Notice{Kind: "done", What: "update", Name: "Kaguya"}) {
+		t.Errorf("all updated: %+v", n)
+	}
+	f.mu.Lock()
+	q := quiet
+	f.mu.Unlock()
+	if !q {
+		t.Error("an import of the update told its own end")
+	}
+	select {
+	case n := <-got:
+		t.Errorf("told more: %+v", n)
+	case <-time.After(200 * time.Millisecond):
+	}
+}

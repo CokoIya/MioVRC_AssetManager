@@ -4,6 +4,8 @@ Local changes for vrclib (marked "vrclib patch"):
 - no log.Fatal when WebView2 cannot start: the window is destroyed and New returns nil
 - MoveHook: called when the window moves, for a second web view inside it
 - CloseHook: asked on WM_CLOSE, false keeps the window open (downloads under way)
+- MsgHook: sees every message of the window first and may take it (the tray icon's messages, the close button
+  that puts the window in the tray)
 - edge.Chromium.Plain and pkg/edge/vrclib_plain.go: a web view that only shows a site (nothing put into its
   pages, no script run in them, no handler of the host's on it), with its address, title and history asked for
   from the host side

@@ -88,6 +88,16 @@ select, .btn {
 .resultbar b { color: var(--text); font-size: 15px; }
 .resultbar .clear { color: var(--accent); background: none; border: 0; cursor: pointer; padding: 0; }
 .warnline { color: var(--warn); }
+/* how a search with "/", "-" or quotes was read */
+.qsense { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; cursor: help; }
+.qpart { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.qpart > span { color: var(--faint); font-size: 12px; }
+.qsense q { quotes: none; color: var(--text); background: var(--raised); border-radius: 4px; padding: 0 6px; font-size: 12px; line-height: 20px; white-space: pre; }
+.qpart.none q { color: var(--muted); text-decoration: line-through; }
+.qhelp { display: inline-grid; grid-template-columns: auto auto; gap: 6px 14px; margin-top: 14px; text-align: left; font-size: 13px; }
+.qhelp b { grid-column: 1 / -1; color: var(--text); font-weight: 600; }
+.qhelp div { display: contents; }
+.qhelp code { color: var(--text); background: var(--raised); border-radius: 4px; padding: 1px 7px; font-family: inherit; white-space: pre; justify-self: start; }
 
 /* grid */
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 18px 16px; }
@@ -472,6 +482,9 @@ select, .btn {
 
 /* v1.6: settings options, update notices */
 .modal .row > label.check.opt { padding: 3px 0; }
+.modal .row .soundrow { display: flex; align-items: center; gap: 12px; }
+.modal .row .soundrow > label.check.opt { padding: 3px 0; flex: 0 1 auto; }
+.modal .row .soundrow .btn { flex: none; }
 .optsel { margin-top: 6px; }
 .status .right { display: flex; gap: 14px; }
 .uphead { display: flex; align-items: baseline; gap: 10px; margin: 0 0 10px; font-size: 15px; }

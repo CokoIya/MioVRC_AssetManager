@@ -249,7 +249,58 @@ function qHit(a) {
     a.nameZh, a.booth && (a.booth.tags || []).join(" "), panNames(a)]
     .join(" ").toLowerCase();
   a._q = S.q;
-  return (a._qok = S.q.toLowerCase().split(/\s+/).filter(Boolean).every(tok => a._hay.includes(tok)));
+  return (a._qok = qMatch(a._hay, qParsed(S.q)));
+}
+// ---------- what is typed in a search box ----------
+// Words apart (贴图 发型) must all be found. A word with "/" before it is one of several of which one is enough:
+// /发型 /服装 finds either, 贴图 /发型 /服装 finds 贴图 with either of the others. One with "-" before it must
+// not be found: 贴图 -眼睛. Words in quotes go together: "moon dress". The full-width ／ and － count too, and so
+// does 、 — what a Chinese input method types for "/".
+function parseQuery(q) {
+  const out = { all: [], any: [], none: [], quoted: false }, s = String(q || "").toLowerCase();
+  let i = 0;
+  while (i < s.length) {
+    while (i < s.length && /\s/.test(s[i])) i++;
+    if (i >= s.length) break;
+    let kind = "all";
+    if ("-－".includes(s[i])) { kind = "none"; i++; } else if ("/／、".includes(s[i])) { kind = "any"; i++; }
+    let w;
+    if ("\"“”".includes(s[i] || " ")) {
+      const end = s.slice(i + 1).search(/["“”]/);
+      w = end < 0 ? s.slice(i + 1) : s.slice(i + 1, i + 1 + end);
+      i = end < 0 ? s.length : i + 2 + end; out.quoted = true;
+    } else {
+      const end = s.slice(i).search(/\s/);
+      w = end < 0 ? s.slice(i) : s.slice(i, i + end);
+      i = end < 0 ? s.length : i + end;
+    }
+    w = w.trim();
+    if (w) out[kind].push(w);
+  }
+  return out;
+}
+let QPARSED = null; // (the last query, parsed: asked for every card, again and again)
+function qParsed(q) { if (!QPARSED || QPARSED.q !== q) QPARSED = Object.assign(parseQuery(q), { q }); return QPARSED; }
+// hay: the text searched, in lower case
+function qMatch(hay, p) {
+  return p.all.every(w => hay.includes(w)) && (!p.any.length || p.any.some(w => hay.includes(w))) && !p.none.some(w => hay.includes(w));
+}
+// how a search with "/", "-" or quotes was read, for the bar above the cards: "" for words that are simply all looked for
+function qSenseHTML(q) {
+  const p = qParsed(q);
+  if (!p.any.length && !p.none.length && !p.quoted) return "";
+  const words = ws => ws.map(w => `<q data-i18n="off">${esc(w)}</q>`).join("");
+  const part = (cls, label, ws) => ws.length ? `<span class="qpart ${cls}"><span>${label}</span>${words(ws)}</span>` : "";
+  return `<span class="qsense" title="${esc(Q_HELP)}">${part("all", "需包含", p.all)}${part("any", "包含其一", p.any)}${part("none", "不含", p.none)}</span>`;
+}
+const Q_HELP = "搜索技巧：空格分隔的词需同时包含；在词前加 / 表示包含其一即可，如 /发型 /服装；加 - 表示排除，如 -眼睛；用引号搜索完整词组，如 \"moon dress\"";
+function qHelpHTML() {
+  return `<div class="qhelp"><b>搜索技巧</b>
+    <div><code>贴图 发型</code><span>同时包含</span></div>
+    <div><code>/发型 /服装</code><span>包含其一即可</span></div>
+    <div><code>贴图 /发型 /服装</code><span>包含贴图，且包含发型或服装</span></div>
+    <div><code>贴图 -眼睛</code><span>包含贴图，不包含眼睛</span></div>
+    <div><code>"moon dress"</code><span>搜索完整词组</span></div></div>`;
 }
 // ---------- same product, several downloads ----------
 // Downloads of one product (one per base body, a PSD pack …) share a.group and show as one card.
@@ -502,6 +553,7 @@ function renderGrid() {
   const total = countUnits((d.assets || []).filter(a => (S.showHidden || !a.hidden) && !a.virtual));
   const filtered = S.q || S.cat !== "全部" || S.style || S.recent || S.bases.size || S.usage !== "all" || S.share !== "all" || S.root !== "all" || S.purchase !== "all" || S.link !== "all";
   let rb = `<b>${list.length}</b><span>个${S.purchase === "missing" || S.purchase === "bought" ? "商品" : "素材"}${filtered ? `（共 ${total} 个）` : ""}</span>`;
+  if (S.q && !S.bulk) rb += qSenseHTML(S.q);
   if (filtered) rb += `<button class="clear" id="clearFilters">清除筛选</button>`;
   if (S.purchase === "missing" && list.length) rb += `<button class="btn small" id="btnDLMissing">${ICON.download}<span>全部下载</span></button>`;
   if (S.bulk) rb = bulkBarHTML(list);
@@ -517,7 +569,7 @@ function renderGrid() {
       ? (scanning ? `<h2>正在扫描…</h2><p>首次扫描耗时较长，请稍候。</p>`
         : `<h2>暂无素材</h2><p>请先在设置中添加素材文件夹。</p><button class="btn primary" id="emptySettings">打开设置</button>`)
       : S.purchase === "missing" && !(d.assets || []).some(a => a.virtual) ? `<h2>已购商品均已下载</h2>`
-      : `<h2>未找到符合条件的素材</h2>`}</div>`);
+      : `<h2>未找到符合条件的素材</h2>${S.q ? qHelpHTML() : ""}`}</div>`);
     return;
   }
   const keys = list.map(u => u.key), html = list.map(unitHTML), was = GRID;
@@ -639,6 +691,7 @@ function applyView() {
     $(id).classList.toggle("on", v === name); $(id).setAttribute("aria-selected", String(v === name));
   }
   $("#q").placeholder = shop ? "搜索 Booth 商品（可留空）" : xy ? (window.xyPlaceholder ? xyPlaceholder() : "搜索闲鱼，按 Enter 确认") : proj || pipe ? "搜索工程" : "搜索名称、店铺、标签、路径";
+  $("#q").title = v === "lib" ? Q_HELP : ""; // (the same words in the projects' search work alike, but there is little to combine)
   $("#sort").hidden = v !== "lib"; $("#shopSort").hidden = !shop;
   $("#btnPanAdd").hidden = shop || proj || pipe; $("#btnScan").hidden = v !== "lib";
   const sn = { lib: "筛选与分类", shop: "筛选与分类", proj: "工程选项", pipe: "工程列表", xianyu: "闲鱼导航" }[v];
@@ -1166,7 +1219,7 @@ function renderProjGrid() {
   const all = S.projs, q = S.pq.toLowerCase();
   if (!all) { put($("#resultbar"), ""); gridPut(`<div class="empty"><h2>正在加载工程…</h2></div>`); return; }
   const nHid = all.filter(projHidden).length;
-  const list = all.filter(p => (S.showHiddenProj || !projHidden(p)) && (!q || (p.name + " " + p.path).toLowerCase().includes(q)))
+  const list = all.filter(p => (S.showHiddenProj || !projHidden(p)) && (!q || qMatch((p.name + " " + p.path).toLowerCase(), qParsed(q))))
     .sort((a, b) => (b.running - a.running) || (b.opened || 0) - (a.opened || 0) || a.name.localeCompare(b.name));
   put($("#resultbar"), `<b>${list.length}</b><span>个工程${q ? `（共 ${all.length} 个）` : ""}</span>${nHid && !S.showHiddenProj ? `<button class="clear" id="showHidProj">已隐藏 ${nHid} 个</button>` : ""}<span class="muted small">按最近打开排序</span>`);
   gridPut(list.length ? list.map(projCardHTML).join("")
@@ -2410,7 +2463,10 @@ function openSettings(focusId) {
       ${chk("s_upd", !s.noUpdateCheck, "自动检查软件更新")}</div>
     <div class="row"><label>显示</label>
       ${chk("s_zh", !s.hideZh, "显示中文译名")}
-      <select id="s_win" class="optsel"><option value="">以独立窗口运行</option><option value="tab"${s.windowMode === "tab" ? " selected" : ""}>在浏览器标签页中运行</option></select></div>
+      <select id="s_win" class="optsel"><option value="">以独立窗口运行</option><option value="tab"${s.windowMode === "tab" ? " selected" : ""}>在浏览器标签页中运行</option></select>
+      <select id="s_close" class="optsel" title="独立窗口的关闭按钮"><option value="">关闭窗口时最小化到托盘</option><option value="quit"${s.closeQuit ? " selected" : ""}>关闭窗口时退出程序</option></select></div>
+    <div class="row"><label>提醒</label>
+      <div class="soundrow">${chk("s_sound", !s.noSound, "流水线完成、导入完成或需要你确认时播放提示音")}<button class="btn small" data-m="soundtest">试听</button></div></div>
     <div class="row"><label>下载位置（Booth 已购、网盘分享）</label>
       <div class="inline"><input id="s_dldir" value="${esc(s.downloadDir || "")}" placeholder="${esc("自动：" + (S.data.dlDir || "剩余空间最大的非系统盘"))}"><button class="btn small" data-pickone="s_dldir">${ICON.folder}<span>选择…</span></button></div>
       ${chk("s_extract", !s.noExtract, "下载后自动解压")}
@@ -2677,7 +2733,7 @@ function renderPipeSide() {
   const cur = AI.proj ? AI.proj.path : "", ps = projsToPick(cur);
   const q = (S.pq || "").toLowerCase();
   const t = PIPE.tool, c = AI.cfg || {};
-  const list = ps.filter(p => !q || (p.name + " " + p.path).toLowerCase().includes(q));
+  const list = ps.filter(p => !q || qMatch((p.name + " " + p.path).toLowerCase(), qParsed(q)));
   const tool = (ok, name, val, btn) => `<div class="toolrow"><i class="dot ${ok ? "ok" : "warn"}"></i><span class="k">${name}</span><span class="v">${val}</span>${btn || ""}</div>`;
   let tools = "";
   if (t) {
@@ -3679,6 +3735,7 @@ document.addEventListener("click", async e => {
       await api("/api/baidu/logout", {}); toast("已退出百度网盘登录"); await load(); return openSettings("s_baidu");
     }
     if (b.dataset.m === "shortcut") { const r = await api("/api/shortcut", {}); toast(r.ok ? "已创建桌面快捷方式" : "创建失败：" + (r.err || ""), 3500); return; }
+    if (b.dataset.m === "soundtest") { await api("/api/notice/test", {}); toast("依次播放：完成、需要你确认、中断", 4000); return; }
     if (b.dataset.m === "gumsync") { closeModal(); return gumSync(); }
     if (b.dataset.m === "gumlogout" || b.dataset.m === "gumclear") {
       const clear = b.dataset.m === "gumclear";
@@ -3699,7 +3756,8 @@ document.addEventListener("click", async e => {
         autoBooth: $("#s_auto").checked, manualRescan: !$("#s_rescan").checked, bases: lines("#s_bases"),
         hideZh: !$("#s_zh").checked, noAutoMatch: !$("#s_match").checked, windowMode: $("#s_win").value, styles: lines("#s_styles"),
         noUpdateCheck: !$("#s_upd").checked, noWatch: !$("#s_watch").checked, noSync: !$("#s_sync").checked,
-        downloadDir: $("#s_dldir").value.trim(), noExtract: !$("#s_extract").checked, keepZip: $("#s_keepzip").checked });
+        downloadDir: $("#s_dldir").value.trim(), noExtract: !$("#s_extract").checked, keepZip: $("#s_keepzip").checked,
+        closeQuit: $("#s_close").value === "quit", noSound: !$("#s_sound").checked });
       const o = S.data.settings, same = (x, y) => JSON.stringify(x || []) === JSON.stringify(y || []);
       const noRescan = same(s.roots, o.roots) && same(s.projectRoots, o.projectRoots) && same(s.bases, o.bases) && s.autoBooth === o.autoBooth;
       const clip = $("#s_clip").checked;

@@ -287,3 +287,38 @@ func TestPageLangIsOneOfOurs(t *testing.T) {
 		t.Error("a fresh install does not ask the page to go by the system's language")
 	}
 }
+
+// 关闭窗口时 and 提示音 are the page's to set; whether the note on the tray has been shown is the program's, and a
+// settings save from the page keeps it. 「试听」 asks for the sounds.
+func TestSettingsTrayAndSound(t *testing.T) {
+	core.DataDir = t.TempDir()
+	st := core.LoadStore(filepath.Join(core.DataDir, "library.json"))
+	st.Settings.TrayNoticed = true
+	apiToken = "t"
+	srv := httptest.NewServer(NewMux(st))
+	defer srv.Close()
+	if r := postJSON(t, srv, "/api/settings", map[string]any{"settings": map[string]any{"roots": []string{}, "closeQuit": true, "noSound": true, "trayNoticed": false}, "noRescan": true}); r["ok"] != true {
+		t.Fatalf("settings: %v", r)
+	}
+	st.Mu.RLock()
+	s := st.Settings
+	st.Mu.RUnlock()
+	if !s.CloseQuit || !s.NoSound || !s.TrayNoticed {
+		t.Errorf("saved: closeQuit %v, noSound %v, trayNoticed %v", s.CloseQuit, s.NoSound, s.TrayNoticed)
+	}
+	got := make(chan core.Notice, 1)
+	old := core.NoticeHook
+	core.NoticeHook = func(n core.Notice) { got <- n }
+	defer func() { core.NoticeHook = old }()
+	if r := postJSON(t, srv, "/api/notice/test", map[string]any{}); r["ok"] != true {
+		t.Fatalf("test: %v", r)
+	}
+	select {
+	case n := <-got:
+		if n != (core.Notice{Kind: "test", What: "test"}) {
+			t.Errorf("asked for %+v", n)
+		}
+	case <-time.After(3 * time.Second):
+		t.Error("the sounds were not asked for")
+	}
+}

@@ -150,3 +150,7 @@ text web/app.js {}月{}日 {}:{} # fmtTime: i18n.js reads times itself
 # ---- written into the player's own notes, in the window's language; never the page's own text ----
 text internal/library/konoasset.go 依赖素材： # the dependencies line of a KonoAsset memo (Chinese window)
 text internal/library/konoasset.go 依存アセット： # the same line for a Japanese window
+
+# ---- said outside the page, in the interface's language, by the program itself (the tray, its notifications) ----
+file internal/core/notice.go # the tray's notifications: their three languages stand there (core.NoticeText)
+file cmd/miovrca/traytext.go # the tray's first note and menu: their three languages stand there

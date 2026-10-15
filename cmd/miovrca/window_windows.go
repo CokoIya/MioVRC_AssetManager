@@ -43,10 +43,17 @@ func focusExistingWindow() bool {
 	if h == 0 {
 		return false
 	}
+	if vis, _, _ := procIsWindowVisible.Call(h); vis == 0 { // in the tray: it comes back by itself, and takes its icon away
+		var r uintptr
+		procSendMessageTimeoutW.Call(h, showWindowMsg(), 0, 0, 0x2, 3000, uintptr(unsafe.Pointer(&r))) // SMTO_ABORTIFHUNG
+		if vis, _, _ := procIsWindowVisible.Call(h); vis == 0 {
+			procShowWindow.Call(h, 5) // SW_SHOW: it did not answer
+		}
+	}
 	if min, _, _ := procIsIconic.Call(h); min != 0 {
 		procShowWindow.Call(h, 9) // SW_RESTORE
 	}
-	procSetForegroundWindow.Call(h)
+	procSetForegroundWindow.Call(h) // (this copy was just started by the player: it may bring a window to the front)
 	return true
 }
 
@@ -74,8 +81,8 @@ func windowSize() (uint, uint, int) {
 	return uint(w), uint(h), int(dpi)
 }
 
-// confirmClose: closing the window ends the program and the downloads under way with it, so that is asked
-// first (否 is the default button). True: close.
+// confirmClose: ending the program ends the downloads under way with it, so that is asked first (否 is the
+// default button). True: close. (The close button itself puts the window in the tray: tray_windows.go.)
 func confirmClose(hwnd uintptr) bool {
 	n := core.Downloading.Load()
 	if n <= 0 {
@@ -143,6 +150,7 @@ func runNativeWindow(url string) bool {
 		defer func() { asking = false }()
 		return confirmClose(hwnd)
 	}
+	startTray(wv, hwnd) // the close button puts the window there (tray_windows.go)
 	minW, minH := minWindowSize(int(w), int(h), dpi)
 	wv.SetSize(minW, minH, webview2.HintMin)
 	wv.Navigate(url)

@@ -45,6 +45,10 @@ var CloseHook func() bool
 // IconLoaded says whether the window's icon was found in the exe's resources (vrclib patch).
 var IconLoaded bool
 
+// MsgHook sees every message of the window first; handled: the message is the hook's, and r is its result
+// (vrclib patch: the tray icon's messages, and the close button that puts the window in the tray).
+var MsgHook func(hwnd, msg, wp, lp uintptr) (r uintptr, handled bool)
+
 type browser interface {
 	Embed(hwnd uintptr) bool
 	Resize()
@@ -237,6 +241,11 @@ func (w *webview) callbinding(d rpcMessage) (interface{}, error) {
 
 func wndproc(hwnd, msg, wp, lp uintptr) uintptr {
 	if w, ok := getWindowContext(hwnd).(*webview); ok {
+		if MsgHook != nil {
+			if r, handled := MsgHook(hwnd, msg, wp, lp); handled {
+				return r
+			}
+		}
 		switch msg {
 		case w32.WMMove, w32.WMMoving:
 			_ = w.browser.NotifyParentWindowPositionChanged()

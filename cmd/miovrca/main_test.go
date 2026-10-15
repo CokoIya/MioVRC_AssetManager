@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf16"
 
 	"vrclib/internal/core"
 	"vrclib/internal/server"
@@ -123,5 +124,20 @@ func TestWaitForPort(t *testing.T) {
 	ln.Close()
 	if d := time.Since(start); d > 3*time.Second {
 		t.Errorf("took %v", d)
+	}
+}
+
+// What the tray says, in each language, fits the tray's fields (a title of 63 characters, a text of 255, a menu
+// item of any length but short), and is in that language.
+func TestTrayText(t *testing.T) {
+	for _, lang := range []string{"", "en", "ja"} {
+		title, text := trayNote(lang)
+		open, quit := trayMenuText(lang)
+		if len([]rune(title)) > 63 || len(utf16.Encode([]rune(text))) > 255 || title == "" || text == "" || open == "" || quit == "" {
+			t.Errorf("%q: %q / %q (%d) / %q / %q", lang, title, text, len(utf16.Encode([]rune(text))), open, quit)
+		}
+		if lang != "" && strings.ContainsAny(title+text+open+quit, "运窗盘开击") { // (simplified forms only: Japanese has 実行, 終了)
+			t.Errorf("%q: Chinese left in %q / %q / %q / %q", lang, title, text, open, quit)
+		}
 	}
 }

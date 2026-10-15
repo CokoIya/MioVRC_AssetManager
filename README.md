@@ -33,8 +33,10 @@ Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth �
 - 下载位置：默认是 C 盘以外剩余空间最大的盘的 `MioVRCdownload`（优先素材文件夹所在的盘），设置里可以改
 - 新素材自动整理：软件开着时，素材文件夹里新放入的素材会自动扫描归类
 - 更新提示：网盘分享每天、Booth 商品页每周检查一次变化
+- 搜索：名称、店铺、标签、路径、备注里找；空格分开的词要同时包含，词前加 `/` 是「包含其一即可」，加 `-` 是「不包含」，可以混用（`贴图 /发型 /服装 -眼睛`），带空格的词组用引号括起来；搜索栏下方显示软件是怎么理解这次搜索的
 - 中文名：素材名下面显示中文翻译，可以手动改
 - 检查更新：从本仓库的 Releases 下载并替换，更新后显示这一版的更新内容
+- 托盘和提示音：点窗口的 × 收到托盘，导入、下载、流水线继续进行（设置里可以改成直接退出）；流水线或 AI 运行结束、需要你确认或选择、新建工程和「下载并更新到工程」完成时响提示音，窗口不在前面时任务栏闪烁，收在托盘里时弹出通知
 - 反馈与建议：经 [FormSubmit](https://formsubmit.co) 发到作者邮箱
 
 ## 安装
@@ -130,8 +132,8 @@ third_party/      依赖库的副本
 
 | 位置 | 内容 |
 | --- | --- |
-| `cmd/miovrca/` | 启动、本地服务（`127.0.0.1:47821`）、独立窗口（WebView2）。图标、版本信息和清单（`app.rc`、`app.ico`、`app.manifest`、`rsrc_windows_amd64.syso`）也在这里 |
-| `internal/core/` | 所有包共用的底座：`library.json` 的数据和读写（`store.go`、`model.go`）、设置、后台任务（`tasks.go`）、日志、版本号（`version.go`）、各网站的地址（`sites.go`）、默认浏览器和其他系统相关功能（`sys_*.go`） |
+| `cmd/miovrca/` | 启动、本地服务（`127.0.0.1:47821`）、独立窗口（WebView2）、托盘和提示音（`tray_windows.go`）。图标、版本信息和清单（`app.rc`、`app.ico`、`app.manifest`、`rsrc_windows_amd64.syso`）也在这里 |
+| `internal/core/` | 所有包共用的底座：`library.json` 的数据和读写（`store.go`、`model.go`）、设置、后台任务（`tasks.go`）、日志、版本号（`version.go`）、提醒玩家的事和提示音（`notice.go`）、各网站的地址（`sites.go`）、默认浏览器和其他系统相关功能（`sys_*.go`） |
 | `internal/naming/` | 从文件名、文件夹名里认东西：显示名、分类、「For_X」素体识别、Booth 编号 |
 | `internal/semver/` | 版本号和版本范围的比较 |
 | `internal/archive/` | 压缩包：解压 zip（含 Shift-JIS 文件名）、分卷识别和缺卷检查（`volumes.go`：7-Zip 式 .001、ZIP 的 .z01 + .zip、RAR；zip 和 unitypackage 的分卷自己合并）、嵌套解压、优先调用电脑上默认的解压软件（7-Zip / Bandizip / WinRAR / 好压 / NanaZip / PeaZip），移到回收站 |
