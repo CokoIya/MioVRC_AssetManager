@@ -10,15 +10,6 @@ Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth �
 
 从 1.8.0 起，本仓库发布安装版、便携版和版本说明，不再发布完整的应用源码。本次没有上传 1.8.0 的应用源码，公开目录仅保留部分参考代码。
 
-以下实现及对应测试已从当前公开目录移除：
-
-- `internal/ai/`：AI、流水线编排、菜单方案和验收决策。
-- `internal/library/`：素材识别、分类、匹配、合集拆分与素材库管理。
-- `internal/unity/` 中的素材导入、unitypackage 选包、VPM 安装和新建工程实现（`unityimport.go`、`pkgpick.go`、`importwait.go`、`vpm.go`、`projectnew.go`）。
-- `internal/pandl/`、`internal/netdisk/`、`internal/purchases/`：网盘读取与下载、已购读取与下载。
-
-当前公开目录不是可完整构建的源码包。下方的构建、代码结构和测试内容是历史说明，不适用于构建当前发行版；使用软件请下载 [Releases](https://github.com/CokoIya/MioVRC_AssetManager/releases/latest) 中的安装版或便携版。
-
 ## 功能
 
 - 扫描素材文件夹：识别解压后的文件夹、`.unitypackage` 和压缩包，判断分类（素体、衣服、头发、配饰……）和适配素体（文件名，加上 Booth 商品页的标题、标签和「対応アバター」段落）；素材旁边同名的图片当封面，散放着多个「包 + 同名图片」的文件夹按多个素材收录（同一素材的各配色、各素体版本除外）；素材里按配色、眼睛颜色分开的包或文件夹，以及只装图片、材质的部件文件夹，算作素材的一部分；「批量整理」可以一次给多个素材改分类、隐藏、不再收录
