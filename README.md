@@ -6,6 +6,19 @@ Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth �
 
 作者：天川澪（VRC 同名）。QQ 交流群：<https://qm.qq.com/q/5d1fxbkYhy>　Discord：<https://discord.gg/CD8NVJwBA>
 
+## 公开仓库说明
+
+从 1.8.0 起，本仓库发布安装版、便携版和版本说明，不再发布完整的应用源码。本次没有上传 1.8.0 的应用源码，公开目录仅保留部分参考代码。
+
+以下实现及对应测试已从当前公开目录移除：
+
+- `internal/ai/`：AI、流水线编排、菜单方案和验收决策。
+- `internal/library/`：素材识别、分类、匹配、合集拆分与素材库管理。
+- `internal/unity/` 中的素材导入、unitypackage 选包、VPM 安装和新建工程实现（`unityimport.go`、`pkgpick.go`、`importwait.go`、`vpm.go`、`projectnew.go`）。
+- `internal/pandl/`、`internal/netdisk/`、`internal/purchases/`：网盘读取与下载、已购读取与下载。
+
+当前公开目录不是可完整构建的源码包。下方的构建、代码结构和测试内容是历史说明，不适用于构建当前发行版；使用软件请下载 [Releases](https://github.com/CokoIya/MioVRC_AssetManager/releases/latest) 中的安装版或便携版。
+
 ## 功能
 
 - 扫描素材文件夹：识别解压后的文件夹、`.unitypackage` 和压缩包，判断分类（素体、衣服、头发、配饰……）和适配素体（文件名，加上 Booth 商品页的标题、标签和「対応アバター」段落）；素材旁边同名的图片当封面，散放着多个「包 + 同名图片」的文件夹按多个素材收录（同一素材的各配色、各素体版本除外）；素材里按配色、眼睛颜色分开的包或文件夹，以及只装图片、材质的部件文件夹，算作素材的一部分；「批量整理」可以一次给多个素材改分类、隐藏、不再收录
@@ -79,7 +92,7 @@ Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth �
 
 流水线放进 Unity 工程的东西（点「移除」会删掉）：`Packages/com.miovrc.pipeline`、`Packages/com.besty.unity-skills`（工程自己已经有 UnitySkills 时不放也不删；新建工程时按官方链接装的只是 `Packages/manifest.json` 里的一行，由 Unity 从 GitHub 下载）、`UserSettings/MioVRCA/bridge`（软件和 Unity 之间传话用的文件）、`UserSettings/MioVRCA/shots`（拍照时的临时图片，软件读走就删）。生成的菜单图标在工程的 `Assets/MioVRCA/<头像名>/Icons`。
 
-## 从源码构建
+## 从源码构建（历史说明）
 
 需要 Go 1.24 或更新版本。第三方库已经放在 `third_party/` 里，构建时不需要联网下载依赖。
 
@@ -103,7 +116,7 @@ cd cmd/miovrca
 x86_64-w64-mingw32-windres --preprocessor=cat -c 65001 -O coff -i app.rc -o rsrc_windows_amd64.syso
 ```
 
-## 发布新版本
+## 发布新版本（历史说明）
 
 软件从本仓库的 Releases 检查更新（只看最新的正式版）：
 
@@ -114,7 +127,7 @@ x86_64-w64-mingw32-windres --preprocessor=cat -c 65001 -O coff -i app.rc -o rsrc
    - 软件下载便携版 zip，取出 exe 替换自己后重启；只有安装版时会下载并打开安装程序。
    - 附件名用英文，中文名在 GitHub 上可能被改掉。
 
-## 代码结构
+## 代码结构（历史说明）
 
 仓库按 Go 项目的常见布局组织：`cmd/` 是程序入口，`internal/` 是各个功能包，其余是编译进程序的资源、打包脚本和测试用的假服务。
 
@@ -157,7 +170,7 @@ third_party/      依赖库的副本
 
 包之间只从上往下引用，没有互相引用：`cmd/miovrca` → `server` → `ai`、`pandl` → `purchases` → `unity` → `library` → `booth` → `netdisk`、`translate`、`webpane`、`archive`、`update` → `naming` → `core`。下面的包需要通知上面的包时用回调变量（`webpane.PaneDownloadClicked`、`unity.AfterImport`），由上面的包在 `init` 里填上。
 
-## 测试
+## 测试（历史说明）
 
 ```sh
 go test ./...
