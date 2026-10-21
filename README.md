@@ -4,6 +4,8 @@ Windows 上的 VRChat 改模素材管理工具。把本地文件夹、Booth / Gu
 
 [官网](https://miovrc.com/vrca/) ・ [下载](https://github.com/CokoIya/MioVRC_AssetManager/releases) ・ [QQ 交流群](https://qm.qq.com/q/5d1fxbkYhy) ・ [Discord](https://discord.gg/CD8NVJwBA) ・ 作者：天川澪（VRC 同名）
 
+> 本公开仓库仅保留 `web/` 中的 UI 源码、许可文本和配套说明，不包含完整应用源码。完整软件请从 Releases 下载；以下功能介绍面向已发布的软件。
+
 ## 功能
 
 - **素材库**：扫描素材文件夹、unitypackage 和压缩包，自动分类、识别适配素体、关联 Booth 商品；同款合并、风格标签、搜索筛选；标出每个素材用在哪些 Unity 工程里。
@@ -19,44 +21,47 @@ Windows 上的 VRChat 改模素材管理工具。把本地文件夹、Booth / Gu
 
 在 [Releases](https://github.com/CokoIya/MioVRC_AssetManager/releases) 下载安装版 `MioVRC_AssetManager-setup-x.y.z.exe` 或便携版 `MioVRC_AssetManager-portable-x.y.z.zip`。需要 Windows 10 / 11（64 位）。软件会自动检查更新。
 
-## 从源码构建
+## UI 源码与公开范围
 
-需要 Go 1.24 或更新版本，第三方库已经放在 `third_party/` 里：
+本仓库公开 `web/` 下的 HTML、CSS、JavaScript 和多语言界面文件。UI 文件需要完整应用提供的本地服务，不能仅凭本仓库构建或运行完整的 MioVRCA。
 
-```bat
-go test ./...
-go build -trimpath -ldflags "-H windowsgui -s -w" -o dist\MioVRC_AssetManager.exe ./cmd/miovrca
-```
+后端业务逻辑、AI 流水线、素材识别、下载与已购读取、Unity 插件及导入逻辑、测试、安装器和构建脚本均不在当前公开范围内。完整应用的安装版和便携版继续通过 [Releases](https://github.com/CokoIya/MioVRC_AssetManager/releases) 提供。
 
-安装包、代码结构、测试和数据存放位置见 [开发说明](docs/开发说明.md)。
+### 历史源码获取声明
+
+**在适用法律、GitHub 服务条款或你已依法取得的许可证未授予相应权利的范围内，未经作者另行书面授权，禁止通过历史提交、旧标签、旧版源码归档、缓存或镜像获取、恢复、复制或再分发已撤回公开的非 UI 源码。**
+
+本声明不追溯撤销既有许可，不限制既有许可证或法律已授予的权利，也不是 GPL 的额外限制；如有冲突，以适用的许可证及法律为准。完整条款见 [LICENSE.md](LICENSE.md)。本次调整当前主分支的公开范围，不代表历史提交、缓存或他人副本已被技术清除。
 
 ## 说明
 
 - 本工具与 VRChat、BOOTH、pixiv、闲鱼、百度网盘均无关联，读取的是这些网站的网页和公开接口，网站改版后部分功能可能失效。
-- 素材库数据只保存在本机，登录信息加密保存。软件会连接哪些网站，见开发说明的「说明」一节。
+- 素材库数据只保存在本机，登录信息加密保存。
 - 网盘下载只使用你自己账号的正常权限，不绕过限速，验证码由你自己输入。
 
 ## 许可证
 
-由作者编写的代码和文件以 **GPL-3.0** 或 **PolyForm Noncommercial 1.0.0** 授权，任选其一，详见 [LICENSE.md](LICENSE.md)：
+本仓库当前公开的作者自有 UI 源码及配套说明文件以 **GPL-3.0** 或 **PolyForm Noncommercial 1.0.0** 授权，任选其一，详见 [LICENSE.md](LICENSE.md)。本说明不对未公开的非 UI 源码作新的授权：
 
 - 个人使用、学习、修改都可以；不收费地分享原版或修改版也可以，按所选许可证的条件来。
 - 商业使用（出售、收费分发、用在收费的产品或服务里）只能按 GPL-3.0，并且必须以 GPL-3.0 公开全部源码。不公开源码的商业使用，两种许可证都不允许。
 - 按 GPL-3.0 发布修改版时，界面里要保留「基于 MioVRCA（作者：天川澪）」和本项目的地址，标明是修改版，并换用自己的名称和图标（GPL-3.0 第 7 条的附加条款）。
 - 「MioVRCA」「MioVRC_AssetManager」这两个名称和软件图标不在授权范围内。第三方代码按各自的许可证，见下面的「第三方代码」。
 
-想提交代码的话，请先读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+本仓库仅接收公开 UI 范围内的贡献，请勿提交已撤回的非 UI 源码。
 
 ## 第三方代码
 
+当前公开仓库不再包含第三方组件的实现代码、DLL 或 UnitySkills 源码压缩包。以下记录用于保留已发布软件的组件来源和许可信息；现有第三方许可文本仍予保留，且不受上述历史源码声明限制。
+
 | 项目 | 许可证 |
 | --- | --- |
-| [jchv/go-webview2](https://github.com/jchv/go-webview2) | MIT（有少量修改，见 `third_party/go-webview2/VRCLIB_PATCHES.txt`） |
-| [jchv/go-winloader](https://github.com/jchv/go-winloader) | ISC |
-| [golang.org/x/sys](https://go.googlesource.com/sys) | BSD-3-Clause |
-| [ledongthuc/pdf](https://github.com/ledongthuc/pdf)（读取 PDF 说明书的文字） | BSD-3-Clause（有少量修改，见 `third_party/pdf/VRCLIB_PATCHES.txt`） |
-| WebView2Loader.dll（Microsoft WebView2 SDK） | 见 `third_party/go-webview2/webviewloader/sdk/LICENSE.txt` |
-| [UnitySkills](https://github.com/Besty0728/Unity-Skills) 2.8.4（`unitykit/`，原样打包，去掉了 Tests） | MIT，见 `unitykit/UnitySkills-LICENSE.txt` |
+| [jchv/go-webview2](https://github.com/jchv/go-webview2) | [MIT](third_party/go-webview2/LICENSE) |
+| [jchv/go-winloader](https://github.com/jchv/go-winloader) | [ISC](third_party/go-winloader/LICENSE.md) |
+| [golang.org/x/sys](https://go.googlesource.com/sys) | [BSD-3-Clause](third_party/sys/LICENSE)，另见 [PATENTS](third_party/sys/PATENTS) |
+| [ledongthuc/pdf](https://github.com/ledongthuc/pdf)（读取 PDF 说明书的文字） | BSD-3-Clause，见上游项目 |
+| WebView2Loader.dll（Microsoft WebView2 SDK） | [SDK 许可](third_party/go-webview2/webviewloader/sdk/LICENSE.txt) |
+| [UnitySkills](https://github.com/Besty0728/Unity-Skills) 2.8.4 | [MIT](unitykit/UnitySkills-LICENSE.txt) |
 
 Booth 已购页面的读取方式参考了 [BoothDownloader](https://github.com/Myrkie/BoothDownloader) 和 [booth-library-manager](https://github.com/yoshiki-0428/booth-library-manager)，百度网盘分享的读取方式参考了 [AList 的百度分享驱动](https://alistgo.com/guide/drivers/baidu.share.html)，穿戴和菜单靠玩家工程里的 [Modular Avatar](https://modular-avatar.nadena.dev/)（不随软件分发）。转存和下载参考了 [BaiduPCS-Go](https://github.com/qjfoidnh/BaiduPCS-Go) 和 [BaiduPCS-Py](https://github.com/PeterDing/BaiduPCS-Py)。
 
