@@ -1,5 +1,7 @@
 # MioVRCA（MioVRC_AssetManager）
 
+> 本公开仓库仅保留 `web/` 中的 UI 源码、许可文本和配套说明，不包含完整应用源码。完整软件请从 Releases 下载；以下功能介绍面向已发布的软件。
+
 Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth 已购和百度网盘分享，整理成可以浏览、筛选的素材库，标出哪些素材被 Unity 工程用到，并能一键导入工程。
 
 单个 exe，有自己的窗口，数据只保存在本机。网站：<https://miovrc.com/vrca/>
@@ -72,132 +74,17 @@ Windows 上的 VRChat 素材管理工具。扫描本地素材文件夹、Booth �
 
 摄影棚放进 Unity 工程的东西（工程详情里点「移除摄影棚」会删掉；摄影棚开着时不能移除，要先退出 Play 模式）：`Packages/com.miovrc.studio`、`UserSettings/MioVRCA/studio`（摄影棚的设置、保存的姿势和表情；摄影棚开着时每 5 秒刷新一次的 `running`，软件看它知道摄影棚开着；软件请 Unity 打开摄影棚时留下的 `open.json`，Unity 读到就删）。照片不在工程里，在「图片」文件夹的 `MioVRCA/<工程名>`，移除时不删。
 
-## 从源码构建
+## UI 源码与公开范围
 
-需要 Go 1.24 或更新版本。第三方库已经放在 `third_party/` 里，构建时不需要联网下载依赖。
+本仓库公开 `web/` 下的 HTML、CSS、JavaScript 和多语言界面文件。UI 文件需要完整应用提供的本地服务，不能仅凭本仓库构建或运行完整的 MioVRCA。
 
-**在 Windows 上**：双击 `packaging\build.bat`，或者在仓库根目录执行：
+后端业务逻辑、AI 流水线、素材识别、下载与已购读取、Unity 插件及导入逻辑、测试、安装器和构建脚本均不在当前公开范围内。完整应用的安装版和便携版继续通过 [Releases](https://github.com/CokoIya/MioVRC_AssetManager/releases) 提供。
 
-```bat
-go test ./...
-go build -trimpath -ldflags "-H windowsgui -s -w" -o dist\MioVRC_AssetManager.exe ./cmd/miovrca
-```
+### 历史源码获取声明
 
-**在 Linux / WSL 上交叉编译**，同时生成安装包和便携版（需要 NSIS 3 和 zip）：
+**在适用法律、GitHub 服务条款或你已依法取得的许可证未授予相应权利的范围内，未经作者另行书面授权，禁止通过历史提交、旧标签、旧版源码归档、缓存或镜像获取、恢复、复制或再分发已撤回公开的非 UI 源码。**
 
-```sh
-sh packaging/build.sh
-```
-
-`cmd/miovrca/rsrc_windows_amd64.syso` 里是图标、版本信息和高 DPI 清单，已经生成好了。改了同一个文件夹里的 `app.rc`、`app.ico` 或 `app.manifest` 之后，需要重新生成：
-
-```sh
-cd cmd/miovrca
-x86_64-w64-mingw32-windres --preprocessor=cat -c 65001 -O coff -i app.rc -o rsrc_windows_amd64.syso
-```
-
-## 发布新版本
-
-软件从本仓库的 Releases 检查更新（只看最新的正式版）：
-
-1. 改版本号：`internal/core/version.go` 的 `AppVersion`、`cmd/miovrca/app.rc`、`cmd/miovrca/app.manifest`、`packaging/installer.nsi`，重新生成 `rsrc_windows_amd64.syso`（命令见上）。
-2. 在 `CHANGELOG.md` 最上面写这一版的更新内容。它会编译进程序，更新后第一次打开时显示，也显示在「更新日志」里。不需要告诉玩家的版本可以不写新条目（1.7.4 就沿用 1.7.3 的）：从 1.7.3 升上来的不再弹出，从更早版本升上来的看到的是 1.7.3 的条目。
-3. `sh packaging/build.sh`，在 `dist/` 里得到 `MioVRC_AssetManager-setup-x.y.z.exe` 和 `MioVRC_AssetManager-portable-x.y.z.zip`。
-4. 新建 Release，标签写成 `v1.6.0` 这样的格式，上传这两个文件。Release 的说明会显示在软件的更新窗口里。
-   - 软件下载便携版 zip，取出 exe 替换自己后重启；只有安装版时会下载并打开安装程序。
-   - 附件名用英文，中文名在 GitHub 上可能被改掉。
-
-## 代码结构
-
-仓库按 Go 项目的常见布局组织：`cmd/` 是程序入口，`internal/` 是各个功能包，其余是编译进程序的资源、打包脚本和测试用的假服务。
-
-```text
-cmd/miovrca/      程序入口
-internal/         各功能包（见下表）
-web/              界面（HTML / CSS / JS）
-unityhelper/      自己写的 Unity 插件（C#）
-unitykit/         随软件带的 UnitySkills
-assets.go         把上面三个文件夹和 CHANGELOG.md 编译进 exe
-packaging/        构建脚本、安装包脚本、使用说明
-test/             本地测试用的假服务
-third_party/      依赖库的副本
-```
-
-| 位置 | 内容 |
-| --- | --- |
-| `cmd/miovrca/` | 启动、本地服务（`127.0.0.1:47821`）、独立窗口（WebView2）。图标、版本信息和清单（`app.rc`、`app.ico`、`app.manifest`、`rsrc_windows_amd64.syso`）也在这里 |
-| `internal/core/` | 所有包共用的底座：`library.json` 的数据和读写（`store.go`、`model.go`）、设置、后台任务（`tasks.go`）、日志、版本号（`version.go`）、各网站的地址（`sites.go`）、默认浏览器和其他系统相关功能（`sys_*.go`） |
-| `internal/naming/` | 从文件名、文件夹名里认东西：显示名、分类、「For_X」素体识别、Booth 编号 |
-| `internal/semver/` | 版本号和版本范围的比较 |
-| `internal/archive/` | 压缩包：解压 zip（含 Shift-JIS 文件名）、分卷识别、嵌套解压、优先调用电脑上默认的解压软件（7-Zip / Bandizip / WinRAR / 好压 / NanaZip / PeaZip），移到回收站 |
-| `internal/update/` | 检查更新、下载替换、重启；更新公告 |
-| `internal/webpane/` | 内置页面：窗口里的第二个 WebView2（没有时用单独的 Edge / Chrome 窗口），经 127.0.0.1 上的 DevTools 端口控制；浏览器驱动（Chromium 用 CDP，Firefox 用 WebDriver BiDi） |
-| `internal/translate/` | 中文翻译 |
-| `internal/netdisk/` | 百度网盘分享读取、合集拆分、分享内容分析、和上次相比的变化 |
-| `internal/booth/` | Booth 商品信息、搜索与匹配 |
-| `internal/library/` | 素材库本身：扫描素材（`scan.go`）、分析工程使用情况（`usage.go`）、封面（`thumbs.go`）、同款合并和衣服风格标签（`groups.go`）、PSD 统计、已购和网盘分享对上素材（`purchases.go`、`automatch.go`）、界面显示用的卡片数据（`views.go`）、Booth 页（`boothshop.go`：标签转成 Booth 分类和搜索词，标出已购、已有）、刷新流程（`refresh.go`：扫描 → 使用情况 → Booth）、定期检查变化（`sync.go`）、监视素材文件夹（`watch.go`） |
-| `internal/unity/` | Unity 工程：工程页（`projects.go`：Unity 版本、打开状态、找本机的 Unity 编辑器、工程封面插件）、摄影棚插件的安装、更新、移除和打开请求（`studio.go`）、一键导入（`unityimport.go`：读 unitypackage、按 GUID 写进工程、选素体版本）、自带的 VPM 解析器和一键创建基础工程（`vpm.go`、`projectnew.go`）、检测 ALCOM / VCC / Unity Hub（`toolchain_*.go`）、往工程里装 / 移除插件并和 Unity 传话（`unitybridge.go`） |
-| `internal/purchases/` | Booth 和 Gumroad 已购：在内置页面登录、同步已购（`purchases.go`、`boothpane.go`、`booth_scraper.js`）、下载（`boothdl.go`）；Gumroad 读的是它的 Inertia 页面数据，已购和 Booth 的放在一起，编号带 `gr_` 前缀（`gumroad.go`） |
-| `internal/pandl/` | 百度网盘登录（从内置页面取 Cookie）、转存到自己网盘（全部或勾选的部分）、断点续传下载 |
-| `internal/ai/` | 流水线：AI 服务（`ai.go`：DeepSeek / 通义千问 / 智谱 GLM / Kimi / OpenAI 兼容 / Anthropic 兼容的对话和工具调用，设置和 Key 的保存）、给 AI 看图（`aivision.go`）、对话循环和给 AI 的工具（`aiagent.go`）、不用 AI 时的流程（`pipeline.go`）、工程里的素材列表（`projassets.go`） |
-| `internal/server/` | 界面调用的接口（`api.go`、`pipeapi.go`）、反馈与建议（`feedback.go`） |
-| `internal/testkit/`、`internal/unity/unitytest/` | 几个包的测试共用的小工具、测试用的假 Unity |
-| `unityhelper/com.miovrc.pipeline` | Unity 这一侧（C#，只在编辑器里运行）：体检头像、把素体放进新场景、穿戴（Modular Avatar Setup Outfit）、生成菜单（MA Menu Item / Object Toggle / Material Setter；互斥组按参数分，独立开关用反转的 Object Toggle 做默认显示）、拍图标、给头像拍照。改动都走 Undo，不保存场景 |
-| `unityhelper/com.miovrc.projectcard` | 工程封面插件 |
-| `unityhelper/com.miovrc.studio` | 摄影棚插件（C#，只在编辑器里编译）：编辑器这一侧（`Editor/`）读软件留下的打开请求并进入 Play 模式，摄影棚开着时让 Game 视图暂时不用 Unity 自带的快捷键（Ctrl+Z 撤销的是姿势，不是 Unity 里的改动），关掉摄影棚就恢复；Play 模式里的摄影棚（`Runtime/`）用 IMGUI 画界面，拖骨骼摆姿势（IK）、手势、表情、视线、相机、灯光、背景和拍照。建的东西都不存进场景，退出时还原 |
-| `web/` | 界面（HTML / CSS / JS，编译时嵌进 exe） |
-| `packaging/` | 构建脚本（`build.sh`、`build.bat`）、安装包脚本和使用说明 |
-| `test/` | 本地测试用的假 Booth / Gumroad / 网盘 / Google Drive / Dropbox / 翻译服务、假 AI 服务（`mockllm.py`）、假 Unity（`fakeunity.py`） |
-
-包之间只从上往下引用，没有互相引用：`cmd/miovrca` → `server` → `ai`、`pandl` → `purchases` → `unity` → `library` → `booth` → `netdisk`、`translate`、`webpane`、`archive`、`update` → `naming` → `core`。下面的包需要通知上面的包时用回调变量（`webpane.PaneDownloadClicked`、`unity.AfterImport`），由上面的包在 `init` 里填上。
-
-## 测试
-
-```sh
-go test ./...
-```
-
-界面和联网功能可以接到 `test/` 里的假服务上测试，不碰真实账号：
-
-```sh
-python3 test/mockbooth.py 47990
-python3 test/mockweb.py 47991
-VRCLIB_BOOTH_BASE=http://127.0.0.1:47990 VRCLIB_BOOTH_DL=http://127.0.0.1:47990 \
-VRCLIB_PAN_BASE=http://127.0.0.1:47991 VRCLIB_BOOTH_WEB=http://127.0.0.1:47991 VRCLIB_BING_BASE=http://127.0.0.1:47991 \
-VRCLIB_XY_BASE=http://127.0.0.1:47991/xy VRCLIB_GUMROAD_BASE=http://127.0.0.1:47991/gum \
-VRCLIB_PCS_BASE=http://127.0.0.1:47991 VRCLIB_BAIDU_LOGIN=http://127.0.0.1:47991/mock/bdlogin \
-VRCLIB_BROWSER=<chrome 路径> VRCLIB_HEADLESS=1 \
-go run ./cmd/miovrca --no-window --data ./testdata
-```
-
-流水线可以接到假的 AI 服务、假的 Unity 和假的 VPM 仓库上测试：
-
-```sh
-python3 test/mockllm.py                 # 47992：OpenAI 兼容和 Anthropic 兼容，Key 是 sk-good-key-1234，模型 mio-large（看不了图）和 mio-vision（能看图）
-python3 test/fakeunity.py <工程文件夹>   # 扮演工程里的流水线插件（FAKE_EMPTY=1 时场景里没有头像）
-python3 test/fakevpm.py 47994           # 内置仓库的列表、zip 和工程模板；运行软件时设 VRCLIB_VPM_BASE=http://127.0.0.1:47994
-```
-
-其他店铺、愿望单和界面语言：
-
-```sh
-python3 test/mockjinxxy.py 47995        # 假的 Jinxxy；运行软件时设 VRCLIB_JINXXY_BASE=http://127.0.0.1:47995（mockweb 用 MOCK_JX 指过去）
-VRCLIB_WISH_FAST=1                      # 愿望单的价格检查按秒进行（只用于测试）
-python3 test/mockcloud.py 47993         # 假的 Google Drive 和 Dropbox；运行软件时设 VRCLIB_GDRIVE_BASE、VRCLIB_GDRIVE_API、VRCLIB_DROPBOX_BASE 为 http://127.0.0.1:47993
-python3 test/i18n_harvest.py            # 列出两个词典（web/i18n-en.js、web/i18n-ja.js）还没覆盖的中文文字
-python3 test/i18n_crawl.py --data <数据文件夹>   # 用英文和日文把每个界面走一遍，列出还留在屏幕上的中文
-```
-
-Google Drive 的分享默认按网页的方式读取，不需要 API Key；构建时设置 `cloudshare.GDriveAPIKey`（或运行时设 `VRCLIB_GDRIVE_KEY`）后改用 Drive API 列文件夹。
-
-新增界面文字的做法：源码里照常写中文，再把这句话加进两个词典的 `exact`（整句）或 `patterns`（带数值的句子），跑一遍 `i18n_harvest.py` 确认没有遗漏。
-
-
-### 流水线怎么和 Unity 传话
-
-流水线插件每两秒写一次 `UserSettings/MioVRCA/bridge/alive.json`（Unity 开着、在不在编译、UnitySkills 的端口）。软件要它做事时写一个 `req_<编号>.json`（`{"id", "cmd", "args"}`）；插件接手时把它改名成 `run_<编号>.json`，在编辑器主线程里执行，写回 `res_<编号>.json`。命令有 `inspect`、`inspect_object`、`prefabs`、`snapshot`（给头像拍照，图片写到 `UserSettings/MioVRCA/shots`，软件读走后删掉）、`refresh`、`dress`、`build_menu`、`icons`、`place_avatar`、`undo`、`select`。两分钟没人处理的请求会被丢弃，不会在以后打开 Unity 时突然执行。这条通道不开网络端口，也不依赖 UnitySkills 的权限模式；UnitySkills 只用于玩家在对话里要求的其他操作。穿戴和生成菜单各是 Unity 撤销记录里的一步；计划执行到一半出错时整步收回。
-
-调用 UnitySkills 的操作前，软件按它自己给每个操作标的信息（`/skills?full=1` 里的 `readOnly`、`mutatesAssets`、`riskLevel`、`operation` 等）决定要不要先问玩家：只读的、只改场景且能撤销的低风险操作直接执行，会删除、改工程文件、执行命令、重新编译或进 Play 模式的先问。
+本声明不追溯撤销既有许可，不限制既有许可证或法律已授予的权利，也不是 GPL 的额外限制；如有冲突，以适用的许可证及法律为准。完整条款见 [LICENSE.md](LICENSE.md)。本次调整当前分支的公开范围，不代表历史提交、缓存或他人副本已被技术清除。
 
 ## 说明
 
@@ -207,15 +94,29 @@ Google Drive 的分享默认按网页的方式读取，不需要 API Key；构�
 - 流水线用 AI 时的费用由你选的 AI 服务商按用量收取，软件不经手。AI 做的改动都走 Unity 的撤销，软件不会保存场景；会删除东西、保存场景、执行脚本的 UnitySkills 操作要你点「允许」才执行。
 - 内置页面开着时，会在 127.0.0.1 上开一个 DevTools 端口，软件靠它控制页面（后退、读取已购、下载按钮）。只有本机程序能连到它。
 
+## 许可证
+
+本仓库当前公开的作者自有 UI 源码及配套说明文件以 **GPL-3.0** 或 **PolyForm Noncommercial 1.0.0** 授权，任选其一，详见 [LICENSE.md](LICENSE.md)。本说明不对未公开的非 UI 源码作新的授权：
+
+- 个人使用、学习、修改都可以；不收费地分享原版或修改版也可以，按所选许可证的条件来。
+- 商业使用（出售、收费分发、用在收费的产品或服务里）只能按 GPL-3.0，并且必须以 GPL-3.0 公开全部源码。不公开源码的商业使用，两种许可证都不允许。
+- 按 GPL-3.0 发布修改版时，界面里要保留「基于 MioVRCA（作者：天川澪）」和本项目的地址，标明是修改版，并换用自己的名称和图标（GPL-3.0 第 7 条的附加条款）。
+- 「MioVRCA」「MioVRC_AssetManager」这两个名称和软件图标不在授权范围内。第三方代码按各自的许可证，见下面的「第三方代码」。
+
+本仓库仅接收公开 UI 范围内的贡献，请勿提交已撤回的非 UI 源码。
+
 ## 第三方代码
+
+当前公开仓库不再包含第三方组件的实现代码、DLL 或 UnitySkills 源码压缩包。以下记录用于保留已发布软件的组件来源和许可信息；现有第三方许可文本仍予保留，且不受上述历史源码声明限制。
 
 | 项目 | 许可证 |
 | --- | --- |
-| [jchv/go-webview2](https://github.com/jchv/go-webview2) | MIT（有少量修改，见 `third_party/go-webview2/VRCLIB_PATCHES.txt`） |
-| [jchv/go-winloader](https://github.com/jchv/go-winloader) | ISC |
-| [golang.org/x/sys](https://go.googlesource.com/sys) | BSD-3-Clause |
-| WebView2Loader.dll（Microsoft WebView2 SDK） | 见 `third_party/go-webview2/webviewloader/sdk/LICENSE.txt` |
-| [UnitySkills](https://github.com/Besty0728/Unity-Skills) 2.8.4（`unitykit/`，原样打包，去掉了 Tests） | MIT，见 `unitykit/UnitySkills-LICENSE.txt` |
+| [jchv/go-webview2](https://github.com/jchv/go-webview2) | [MIT](third_party/go-webview2/LICENSE) |
+| [jchv/go-winloader](https://github.com/jchv/go-winloader) | [ISC](third_party/go-winloader/LICENSE.md) |
+| [golang.org/x/sys](https://go.googlesource.com/sys) | [BSD-3-Clause](third_party/sys/LICENSE)，另见 [PATENTS](third_party/sys/PATENTS) |
+| [ledongthuc/pdf](https://github.com/ledongthuc/pdf)（读取 PDF 说明书的文字） | BSD-3-Clause，见上游项目 |
+| WebView2Loader.dll（Microsoft WebView2 SDK） | [SDK 许可](third_party/go-webview2/webviewloader/sdk/LICENSE.txt) |
+| [UnitySkills](https://github.com/Besty0728/Unity-Skills) 2.8.4 | [MIT](unitykit/UnitySkills-LICENSE.txt) |
 
 Booth 已购页面的读取方式参考了 [BoothDownloader](https://github.com/Myrkie/BoothDownloader) 和 [booth-library-manager](https://github.com/yoshiki-0428/booth-library-manager)，百度网盘分享的读取方式参考了 [AList 的百度分享驱动](https://alistgo.com/guide/drivers/baidu.share.html)，穿戴和菜单靠玩家工程里的 [Modular Avatar](https://modular-avatar.nadena.dev/)（不随软件分发）。转存和下载参考了 [BaiduPCS-Go](https://github.com/qjfoidnh/BaiduPCS-Go) 和 [BaiduPCS-Py](https://github.com/PeterDing/BaiduPCS-Py)。
 

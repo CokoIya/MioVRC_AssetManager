@@ -16,3 +16,18 @@ webview/
 
 # what running the tests leaves behind
 __pycache__/
+
+# Non-UI application implementation is maintained outside this public repository.
+/assets.go
+/go.mod
+/go.sum
+/cmd/
+/internal/
+/packaging/
+/test/
+/unityhelper/
+/unitykit/*.zip
+/third_party/**/*.go
+/third_party/**/go.mod
+/third_party/**/go.sum
+/third_party/**/*.dll
