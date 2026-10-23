@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only OR PolyForm-Noncommercial-1.0.0
+// Copyright (c) 2026 天川澪 (Coko_Iya). Part of MioVRCA: https://github.com/CokoIya/MioVRC_AssetManager (terms in LICENSE.md)
 // What the AI's answers took and cost: a line in the pipeline's status (this conversation, and today), and a
 // window with every model used — today, this month, since counting began — at the prices of the price list
 // (DeepSeek's own; for the others, what the player enters), and what is left on a DeepSeek or Kimi account.
@@ -66,9 +68,9 @@ async function aiUsageLoad() {
   aiEvalLoad();
 }
 // ---------- the evaluation set: the samples of the runs, asked again of the model set up now ----------
-async function aiEvalLoad(path) {
+async function aiEvalLoad(path, body) {
   let r;
-  try { r = await api(path || "/api/ai/eval", {}); } catch (e) { r = { ok: false, err: "程序无响应" }; }
+  try { r = await api(path || "/api/ai/eval", body || {}); } catch (e) { r = { ok: false, err: "程序无响应" }; }
   if (!r.ok) { toast(r.err || "操作失败", 5000); if (path) return; }
   else AIU.ev = r;
   if (!aiUsageOpenNow()) return;
@@ -81,15 +83,15 @@ function aiEvalHTML() {
   const runs = ev.runs || [], now = runs.find(x => x.running);
   const avg = (x, f) => x.done ? f(x) : "—";
   const pct = (n, x) => x.done ? Math.round(n / x.done * 100) + "%" : "—";
+  const thinkLabel = { standard: "标准", fast: "快速", deep: "深度", off: "不思考" };
   const rows = runs.map(x => `<tr><td>${esc(new Date(x.at * 1000).toLocaleString())}${x.stopped ? `<div class="sub">已停止</div>` : ""}</td>
-    <td><div data-i18n="off">${esc(x.model)}</div><div class="sub">${esc(x.label)}</div></td>
+    <td><div data-i18n="off">${esc(x.model)}</div><div class="sub">${esc(x.label)}</div>${x.think ? `<div class="sub"><span>思考强度</span> <span>${esc(thinkLabel[x.think] || x.think)}</span></div>` : ""}</td>
     <td class="r">${x.done}/${x.samples}</td><td class="r">${pct(x.first, x)}</td><td class="r">${pct(x.fixed, x)}</td><td class="r">${pct(x.failed + x.errors, x)}</td>
     <td class="r">${avg(x, x => fmtTok(Math.round(x.tokens / x.done)))}</td><td class="r">${avg(x, x => fmtMoney(Object.fromEntries(Object.entries(x.cost || {}).map(([k, v]) => [k, v / x.done]))) || "—")}</td>
     <td class="r">${avg(x, x => (x.seconds / x.done).toFixed(1) + " s")}</td></tr>`).join("");
   return `<div class="aieval"><div class="t"><b>评测</b> <span class="muted small"><span>已保存样本</span> ${ev.samples}</span></div>
-    <div class="hint2">每次用 AI 运行流水线时，自动保存发给 AI 的菜单请求（不含截图和 API Key），最多保留 60 个。评测用当前的 AI 服务和模型重新请求这些样本，比较方案的通过率、用量、花费和用时；只请求 AI，不改动任何工程。</div>
     <div class="btnrow">${now ? `<span class="muted"><span>正在评测</span> ${now.done}/${now.samples}…</span><button class="btn small" data-aiu="evalstop">停止</button>`
-      : `<button class="btn small" data-aiu="eval"${ev.samples ? "" : " disabled"}>用当前模型评测</button>`}<button class="btn small ghost" data-aiu="evalopen">打开样本文件夹</button>${ev.samples && !now ? `<button class="btn small ghost" data-aiu="evalclear">清除样本</button>` : ""}</div>
+      : `${(AIU.r || {}).provider === "deepseek" ? `<label class="evthink"><span>思考强度</span> <select id="aiu_think"><option value="set"${AIU.evThink === "set" || AIU.evThink == null ? " selected" : ""}>按 AI 服务的设置</option>${[["", "标准"], ["fast", "快速"], ["deep", "深度"], ["off", "不思考"]].map(([v, l]) => `<option value="${v}"${AIU.evThink === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>` : ""}<button class="btn small" data-aiu="eval"${ev.samples ? "" : " disabled"}>用当前模型评测</button>`}<button class="btn small ghost" data-aiu="evalopen">打开样本文件夹</button>${ev.samples && !now ? `<button class="btn small ghost" data-aiu="evalclear">清除样本</button>` : ""}</div>
     ${runs.length ? `<table class="atable evtable"><thead><tr><th>时间</th><th>模型</th><th class="r">样本</th><th class="r">直接通过</th><th class="r">修改后通过</th><th class="r">未通过</th><th class="r">平均 tokens</th><th class="r">平均花费</th><th class="r">平均用时</th></tr></thead><tbody>${rows}</tbody></table>` : ""}</div>`;
 }
 async function aiUsageBalance() {
@@ -138,8 +140,8 @@ function aiUsageDraw() {
     <div class="aibudget"><label for="aiu_budget"><span>单次运行上限</span></label><input id="aiu_budget" type="number" min="0" step="0.1" value="${r.budget ? +(r.budget / 1e6).toFixed(2) : 0}" inputmode="decimal"><span><span>百万 tokens</span></span>
       <button class="btn small" data-aiu="budget">保存</button><span class="hint2"><span>一次运行用到上限时先暂停，询问是否继续；0 表示不限。</span></span></div>
     ${aiEvalHTML()}
-    <p class="hint">金额按上表价格估算，仅供参考，以服务商的账单为准。DeepSeek 在北京时间工作日 9:00–12:00、14:00–18:00 为高峰时段，价格为其余时段的 2 倍，法定节假日也按高峰估算。其他服务商的价格请按其官网填写。</p>
-    ${ms.some(m => m.plan) ? `<p class="hint">「ChatGPT 账号」的用量计入你的 ChatGPT 套餐，不另外计费；此处的 tokens 仅为本软件的统计。</p>` : ""}
+    <p class="hint">费用仅为估算，以服务商账单为准。</p>
+    ${ms.some(m => m.plan) ? `` : ""}
     ${r.pricesNote ? `<p class="hint">${esc(r.pricesNote)}</p>` : ""}
     ${since ? `<p class="hint"><span>统计开始于</span> ${esc(since)}</p>` : ""}
   </div><div class="mfoot">${ms.length ? `<button class="btn ghost" data-aiu="clear">清零统计</button>` : ""}<span class="spacer"></span><button class="btn" data-m="close">关闭</button></div>`;
@@ -185,7 +187,11 @@ async function aiUsageAct(el) {
     AIU.r = r; aiUsageDraw(); toast(v ? "已保存上限" : "已取消上限");
     return;
   }
-  if (a === "eval") return aiEvalLoad("/api/ai/eval/run");
+  if (a === "eval") {
+    const sel = $("#aiu_think"), v = sel ? sel.value : "set";
+    AIU.evThink = v;
+    return aiEvalLoad("/api/ai/eval/run", v === "set" ? {} : { think: v });
+  }
   if (a === "evalstop") return aiEvalLoad("/api/ai/eval/stop");
   if (a === "evalopen") return aiEvalLoad("/api/ai/eval/open");
   if (a === "evalclear") {

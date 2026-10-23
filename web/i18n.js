@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only OR PolyForm-Noncommercial-1.0.0
+// Copyright (c) 2026 天川澪 (Coko_Iya). Part of MioVRCA: https://github.com/CokoIya/MioVRC_AssetManager (terms in LICENSE.md)
 // the interface in other languages
 "use strict";
 // The sources stay Chinese: the templates, the program's messages and the Unity plugin's all reach the page as

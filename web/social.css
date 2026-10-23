@@ -1,0 +1,714 @@
+/* SPDX-License-Identifier: GPL-3.0-only OR PolyForm-Noncommercial-1.0.0
+   Copyright (c) 2026 天川澪 (Coko_Iya). Part of MioVRCA: https://github.com/CokoIya/MioVRC_AssetManager (terms in LICENSE.md) */
+/* The community tab. */
+.soreference { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 12px 0; }
+.soshowitems { list-style: none; padding: 0; margin: 8px 0 16px; }
+.soshowitems li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.soshowname { flex: 1 1 140px; overflow-wrap: anywhere; }
+.soshowitems li > span, #sh_showcase_rows .check > span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+#sh_showcase_rows .check { display: flex; align-items: center; gap: 8px; padding: 6px 0; overflow-wrap: anywhere; }
+#sw_based_results, #sh_showcase_rows { max-height: 230px; overflow: auto; }
+#sh_showcase_picker[hidden] { display: none; }
+#so_newcomers, #so_remixes, .soshowcase { margin: 18px 0; }
+
+/* The tab's unread indicator. */
+#vSocial { position: relative; }
+#vSocial .vsico { display: none; width: 17px; height: 17px; vertical-align: -4px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+/* (social.js soTabFit: what the tab lets go of when the header has no room) */
+#vSocial[data-fit="1"] .vsx, #vSocial[data-fit="2"] .vsx, #vSocial[data-fit="3"] .vsx, #vSocial[data-fit="2"] .vsn, #vSocial[data-fit="3"] .vsn { display: none; }
+#vSocial[data-fit="2"] .vsico, #vSocial[data-fit="3"] .vsico { display: inline-block; }
+html .top .views.sotight button { padding: 0 3px; } /* (over i18n.css, which narrows the tabs too) */
+#vSocial.sodot::after { content: ""; position: absolute; top: 6px; right: 15px; width: 7px; height: 7px; border-radius: 50%; background: #e5484d; }
+/* the unread total on the tab, once the shell shows it (HOOKS_community_c34.md): it takes the dot's place */
+#vSocial .vsbadge { position: absolute; top: 3px; right: 9px; box-shadow: 0 0 0 2px var(--panel); min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: #e5484d; color: #fff; font-size: 10px; font-weight: 600; line-height: 16px; text-align: center; }
+#vSocial.sodot:has(.vsbadge)::after { display: none; }
+
+/* side bar */
+.sonav .navitem svg { width: 17px; height: 17px; }
+/* the side bar's two ways to publish: a post (the main one) and a work, the same width, apart */
+.soside { display: grid; gap: 8px; padding: 14px 6px 6px; }
+.soside .btn { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.soside .btn svg { width: 17px; height: 17px; }
+.sxnewwork { height: 36px; border-radius: 18px; background: transparent; border-color: var(--line-strong); color: var(--text); font-weight: 600; }
+.sxnewwork:hover { background: var(--hover-weak); }
+.sonote { margin: 22px 6px 0; font-size: 12px; color: var(--faint); line-height: 1.6; }
+
+/* the main area */
+.resultbar .spacer { flex: 1; }
+.sowrap { grid-column: 1 / -1; min-width: 0; max-width: 1180px; }
+.soh { display: flex; align-items: center; gap: 8px; margin: 26px 0 12px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.soh .n { color: var(--faint); font-weight: 400; }
+.soh .spacer { flex: 1; }
+.sogrid { grid-column: 1 / -1; display: grid; gap: 18px 16px; }
+.sogrid.works { grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); }
+.sogrid.creators { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+
+/* pictures of people: round */
+.soav { width: 40px; height: 40px; flex: none; border-radius: 50%; overflow: hidden; background: var(--raised); display: inline-grid; place-items: center; }
+.soav img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.soav i { font-style: normal; font-weight: 700; color: var(--muted); font-size: 15px; }
+.soav.xs { width: 20px; height: 20px; }
+.soav.xs i { font-size: 11px; }
+.soav.lg { width: 72px; height: 72px; }
+.soav.lg i { font-size: 26px; }
+.soav.xl { width: 96px; height: 96px; }
+.soav.xl i { font-size: 34px; }
+
+/* a work's card */
+.socard { contain-intrinsic-size: auto 232px auto 250px; }
+.socover { position: relative; aspect-ratio: 16 / 9; background: var(--raised); overflow: hidden; }
+.socover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.socover .ph, .socoverbig .ph {
+  position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 18px;
+  font-size: 18px; font-weight: 700; color: var(--ghost-text); line-height: 1.25; overflow-wrap: anywhere;
+}
+.socover .sbadges { position: absolute; left: 8px; top: 8px; display: flex; gap: 5px; }
+.sobadge { display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; color: #e3e5f2; background: rgba(20, 21, 31, .82); }
+.sobadge svg { width: 11px; height: 11px; fill: currentColor; stroke: none; }
+.soby { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.soby .sub { min-width: 0; }
+.solikes { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; color: var(--muted); }
+.solikes svg { width: 14px; height: 14px; }
+
+/* a creator's card */
+.socreator {
+  background: var(--card); border: 1px solid transparent; border-radius: var(--r-card); padding: 16px 12px 14px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 5px; text-align: center; min-width: 0;
+}
+.socreator:hover { border-color: var(--line-strong); }
+.socreator .nm { font-weight: 600; margin-top: 4px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.socreator .sub { max-width: 100%; }
+.socreator .bases { justify-content: center; }
+.socreator .meta { margin-top: 2px; padding-top: 0; justify-content: center; flex-wrap: wrap; gap: 4px 10px; }
+.socreator .btn { margin-top: 6px; }
+.sofollow.on { background: transparent; color: var(--muted); }
+
+/* a creator, as a button with their name */
+.sochip {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 220px; padding: 1px 8px 1px 2px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--raised); color: var(--text); font: inherit; font-size: 12.5px; cursor: pointer;
+}
+.sochip:hover { border-color: var(--line-hover); }
+.sochip > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rcpinfo .meta .sochip { margin-right: 4px; }
+.sochip.plain { padding: 1px 8px; }
+.rcpby { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin: 4px 0 8px; }
+.rcpby .solinks { margin-top: 0; }
+
+/* links */
+.solinks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.solink { max-width: 260px; }
+.solink > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sopop {
+  position: fixed; z-index: 60; min-width: 160px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .45);
+}
+
+/* a creator's page */
+.sopage { padding-top: 4px; }
+.sohead { display: flex; gap: 20px; align-items: flex-start; padding: 18px; background: var(--card); border-radius: var(--r-card); min-width: 0; }
+.sohmain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.sohead h2 { margin: 0; font-size: 20px; line-height: 1.3; overflow-wrap: anywhere; }
+.sohead .sub { display: flex; flex-wrap: wrap; gap: 4px 14px; white-space: normal; }
+.sohead .btnrow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.sobio { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; color: var(--text-2); }
+.sooffer {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 10px; padding: 8px 10px 8px 14px; border-radius: 10px;
+  background: color-mix(in srgb, var(--ok) 8%, transparent); border: 1px solid color-mix(in srgb, var(--ok) 30%, transparent); font-size: 13px;
+}
+.sooffer .wb { margin-left: auto; }
+
+/* a work's dialog */
+.modal[data-kind="sowork"] { width: min(820px, 94vw); }
+.modal[data-kind="sowedit"] { width: min(1040px, 96vw); height: min(780px, 92vh); }
+.sowork h2 { margin: 14px 0 6px; font-size: 19px; line-height: 1.35; overflow-wrap: anywhere; }
+.socoverbig { aspect-ratio: 16 / 9; width: min(100%, calc(42vh * 16 / 9)); margin: 0 auto; border-radius: 10px; overflow: hidden; background: var(--raised); position: relative; }
+.socoverbig img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.soline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-bottom: 10px; }
+.soline .solikes { margin-left: 0; }
+.sovsite { opacity: .8; font-weight: 400; }
+.sovsite::before { content: "·"; margin-right: 6px; }
+.sowork .btnrow { margin-bottom: 12px; }
+.sowork .sobio { margin: 4px 0 6px; }
+.sowork .atable td.nm { max-width: 300px; }
+
+/* forms: 我的名片, 发布作品 */
+.soform .row > label:not(.check) { display: block; margin-bottom: 5px; color: var(--muted); font-size: 13px; }
+.soform input:not([type=checkbox]), .soform textarea, .soform select {
+  background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-ctl); padding: 7px 10px; outline: none; width: 100%;
+}
+.soform select { height: 34px; width: auto; }
+.soform input:focus, .soform textarea:focus { border-color: var(--accent); }
+.soform textarea { min-height: 76px; resize: vertical; font-size: 13px; }
+.soform .row { margin-bottom: 14px; }
+.soform .btnrow { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.soform .addrow { display: flex; gap: 8px; align-items: center; }
+.soform .addrow input { flex: 1; }
+.solone { max-width: 560px; margin: 30px auto; padding: 24px; background: var(--card); border-radius: var(--r-card); }
+.solone h2 { margin: 0 0 8px; font-size: 18px; }
+.sometop { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 14px; font-size: 13px; }
+.someedit { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 380px); gap: 24px; align-items: start; }
+.someedit > .soform { padding: 18px; background: var(--card); border-radius: var(--r-card); }
+.sopreview { position: sticky; top: 0; display: flex; flex-direction: column; gap: 6px; }
+.sopreview .sohead { flex-direction: column; align-items: center; text-align: center; border: 1px solid var(--line); }
+.sopreview .sohead .sub, .sopreview .sohead .btnrow, .sopreview .bases, .sopreview .solinks { justify-content: center; }
+.soavrow { display: flex; align-items: center; gap: 14px; }
+.solangs { padding: 0; gap: 2px 4px; }
+.solangs .check { padding: 4px 6px; }
+.sobd { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.sonotice { margin: 6px 0 12px; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; line-height: 1.55;
+  background: color-mix(in srgb, var(--warn) 8%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 28%, transparent); }
+.solinkrows { display: flex; flex-direction: column; gap: 6px; }
+.solinkrow, .soasset { display: flex; align-items: center; gap: 6px; }
+.solinkrow .solu { flex: 3; min-width: 0; }
+.solinkrow .soll { flex: 1.3; min-width: 0; }
+.solinkrow .tag { flex: none; min-width: 64px; text-align: center; margin: 0; }
+.solinkrows > .btn { align-self: flex-start; }
+#sw_assets { display: flex; flex-direction: column; gap: 6px; }
+.soasset .soan { flex: 2; min-width: 0; }
+.soasset .soas { flex: 1.2; min-width: 0; }
+.soasset .soau { flex: 3; min-width: 0; }
+.socoverpick { width: 320px; max-width: 100%; aspect-ratio: 16 / 9; border-radius: 8px; overflow: hidden; background: var(--raised); display: grid; place-items: center; }
+.socoverpick img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sopicpick { display: flex; flex-wrap: wrap; gap: 8px; }
+.sopic { position: relative; width: 112px; aspect-ratio: 16 / 9; border-radius: 6px; overflow: hidden; background: var(--raised); display: block; }
+.sopic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sopic .tag { position: absolute; left: 4px; top: 4px; margin: 0; }
+.sopic .wb { position: absolute; right: 3px; top: 3px; width: 20px; height: 20px; padding: 0; display: grid; place-items: center; }
+.solib { margin-top: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.solibrows { max-height: 220px; overflow-y: auto; margin-top: 6px; }
+.sohide { display: none !important; }
+.sonotes { margin: 0; padding-left: 20px; line-height: 1.75; color: var(--text-2); }
+.sonotes li + li { margin-top: 4px; }
+
+/* Likes and the local account. */
+[data-so="like"][aria-pressed="true"] svg { fill: currentColor; }
+.soaccount { padding: 18px; margin: 0 0 20px; border: 1px solid var(--line); border-radius: var(--r-card); }
+.soaccount h3 { margin: 0; }
+.soaccount b { overflow-wrap: anywhere; min-width: 0; }
+.soaccount > button { margin-top: 12px; }
+.sodevicecode { display: block; font-size: 24px; letter-spacing: 3px; padding-top: 12px; }
+#modal[data-kind="soaccount"], #modal[data-kind="soreport"] { width: 460px; max-width: calc(100vw - 32px); }
+@media (max-width: 1080px) {
+  .someedit { grid-template-columns: minmax(0, 1fr); }
+  .sopreview { position: static; }
+}
+@media (max-width: 640px) {
+  .sohead { flex-direction: column; align-items: center; text-align: center; }
+  .sohead .sub, .sohead .btnrow, .sohead .bases, .sohead .solinks { justify-content: center; }
+}
+/* Discovery controls wrap beside the existing refresh button on narrow windows. */
+.soworkcontrols { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.soassettitle { overflow-wrap: anywhere; }
+.socreatornumbers { display: flex; flex-wrap: wrap; gap: 18px; margin: 16px 0; }
+.soowned { margin-bottom: 4px; }
+.sowork .atable .r { white-space: normal; }
+.sowork .atable .r .btn { margin: 3px; }
+
+.somailcode { display:flex; gap:8px; flex-wrap:wrap; }
+.somailcode input { flex:1; min-width:100px; }
+.soemail { overflow-wrap:anywhere; }
+#so_nickname_row[hidden] { display:none; }
+
+.modal[data-kind="sopost"] { width: min(720px, 96vw); }
+.modal[data-kind="sopostedit"] { width: min(640px, 94vw); }
+.modal[data-kind="sxviewer"] { width: min(1040px, 96vw); }
+
+/* Composer pictures. */
+.socomposeform .sopicpick { min-height: 40px; align-items: center; }
+.socomposeform .sopic { width: 96px; aspect-ratio: 1 / 1; cursor: grab; }
+.socomposeform .sopic:active { cursor: grabbing; }
+.sopicacts {
+  position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: flex-end; gap: 2px; padding: 3px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, .6)); opacity: 0; transition: opacity .12s;
+}
+.sopic:hover .sopicacts, .sopic:focus-within .sopicacts { opacity: 1; }
+.sopic .sopicacts .wb { position: static; width: 20px; height: 20px; font-size: 13px; }
+.sopic .sopicacts .wb svg { width: 12px; height: 12px; }
+.socomposeform select { max-width: 100%; }
+
+/* Explore keeps the waterfall of posts and works. */
+.sohwrap { grid-column: 1 / -1; min-width: 0; max-width: 1180px; }
+.sohtabs { display: flex; align-items: center; gap: 6px; }
+.sohtab { cursor: pointer; }
+.sohgrid { columns: 4 232px; column-gap: 16px; }
+.sohcard {
+  display: inline-block; width: 100%; margin: 0 0 16px; break-inside: avoid; overflow: hidden; cursor: pointer;
+  background: var(--card); border: 1px solid transparent; border-radius: var(--r-card); vertical-align: top;
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+.sohcard:hover, .sohcard:focus-visible { transform: translateY(-3px); border-color: var(--line-strong); box-shadow: 0 10px 24px rgba(0, 0, 0, .34); }
+.sohcard:focus-visible { outline: none; }
+.sohcover { background: var(--raised); overflow: hidden; }
+.sohcover img { display: block; width: 100%; height: auto; }
+.sohbody { padding: 10px 11px 11px; min-width: 0; }
+.sohtitle {
+  font-size: 13.5px; font-weight: 600; line-height: 1.45; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.sohfoot { display: flex; align-items: center; gap: 6px; margin-top: 9px; min-width: 0; }
+.sohnm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--muted); }
+.sohtag { flex: none; padding: 0 6px; border-radius: 5px; font-size: 11px; line-height: 18px; color: var(--muted); background: var(--raised); }
+.sohlike {
+  flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px; border: 0;
+  background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer;
+}
+.sohlike svg { width: 15px; height: 15px; }
+.sohlike:hover { color: var(--text); }
+.sohlike.on { color: #ff5a6a; }
+.sohlike.on svg { fill: currentColor; }
+.sohskeleton {
+  display: inline-block; width: 100%; margin: 0 0 16px; break-inside: avoid; border-radius: var(--r-card); vertical-align: top;
+  background: linear-gradient(100deg, var(--card) 30%, var(--raised) 50%, var(--card) 70%); background-size: 220% 100%;
+  animation: sohshimmer 1.3s ease-in-out infinite;
+}
+@keyframes sohshimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.sohmore { display: flex; justify-content: center; padding: 8px 0 4px; min-height: 24px; }
+.sohend { margin: 18px 0 4px; text-align: center; font-size: 12.5px; color: var(--faint); }
+@media (max-width: 620px) { .sohgrid { columns: 2 150px; } }
+
+/* The timeline shares the app palette and keeps its reading column narrow. */
+.sxnavicon { width: 24px; text-align: center; font-size: 24px; }
+.sonav .navitem { min-height: 48px; font-size: 16px; border-radius: 24px; }
+.sxpublish { width: 100%; height: 40px; border-radius: 20px; font-size: 15px; }
+.sxbadge { border-radius: 20px; padding: 1px 7px; background: var(--accent); color: white; font-size: 11px; }
+/* the unread counts of 「通知」 and 「私信」: red, whatever the accent */
+.sonav .sxbadge { margin-left: auto; min-width: 20px; text-align: center; background: #e5484d; font-weight: 600; }
+.sxaccount { display: flex; align-items: center; gap: 9px; width: calc(100% - 20px); margin: auto 10px 12px; padding: 12px 8px; border: 0; border-radius: 24px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.sxaccount b, .sxaccount small { display: block; overflow-wrap: anywhere; }
+.sxaccount small { color: var(--muted); }
+.sxaccount:hover { background: var(--raised); }
+#side:has(.sonav) { display: flex; flex-direction: column; }
+.sxexplore { display: flex; gap: 5px; flex-wrap: wrap; }
+.sxtimeline { grid-column: 1 / -1; width: min(100%, 720px); min-width: 0; margin: 0 auto; border-inline: 1px solid var(--line); }
+.sxtabs { display: flex; width: min(100%, 720px); margin: auto; }
+.resultbar:has(.sxtabs) { position: relative; display: block; }
+.resultbar:has(.sxtabs) > .btn { position: absolute; right: 0; top: 8px; }
+.sxauthor { font-size: 11px; color: var(--muted); }
+@media (max-width: 1100px) { .resultbar:has(.sxtabs) > .btn { position: static; display: block; margin-left: auto; } }
+.sxtabs button { flex: 1; background: transparent; color: var(--muted); border: 0; border-bottom: 3px solid transparent; padding: 14px; font: inherit; cursor: pointer; }
+.sxtabs [aria-selected=true] { color: var(--text); font-weight: 600; border-bottom-color: var(--accent); }
+.sxpost { position: relative; padding: 16px 16px 16px 66px; border-bottom: 1px solid var(--line); cursor: pointer; min-width: 0; }
+.sxpost:hover { background: var(--hover-weak); }
+.sxpost:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.sxposthead { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
+.sxposthead .sochip { max-width: 65%; padding: 0; border: 0; background: none; border-radius: 0; font-weight: 600; }
+.sxposthead .soav.xs { position: absolute; left: 16px; top: 16px; width: 40px; height: 40px; }
+.sxhandle, .sxwhen { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.sxmenu { margin-left: auto; }
+.sxtext { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.65; margin: 9px 0; }
+.sxtext .linkbtn { padding: 0; display: inline; font: inherit; white-space: inherit; overflow-wrap: anywhere; vertical-align: baseline; }
+.sxpost.large > .sxtext { font-size: 19px; }
+.sxmedia { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; border-radius: 16px; overflow: hidden; margin: 10px 0; max-height: 440px; }
+.sxmedia button { padding: 0; border: 0; background: var(--raised); overflow: hidden; min-height: 0; cursor: pointer; }
+.sxmedia img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.sxmedia.n1 { grid-template-columns: 1fr; }
+.sxmedia.n1 img { max-height: 440px; object-fit: contain; }
+.sxmedia.n2 { height: 300px; }
+.sxmedia.n3, .sxmedia.n4 { grid-template-rows: repeat(2, minmax(0, 1fr)); height: 320px; }
+.sxmedia.n3 button:first-child { grid-row: span 2; }
+/* A sensitive post's pictures, blurred behind 「敏感内容」 and 「显示」 (social.js soSensWrap). */
+.sxsens { position: relative; overflow: hidden; border-radius: 16px; margin: 10px 0; }
+.sxsens > .sxsensblur { filter: blur(24px) saturate(.6); }
+.socover > .sxsens, .socoverbig > .sxsens { margin: 0; border-radius: 0; height: 100%; }
+.socover .sxsensblur, .socoverbig .sxsensblur { height: 100%; }
+.sxsens > .sxsensblur > .sxmedia { margin: 0; border-radius: 0; }
+.sxsenscover { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; padding: 8px; background: #11121a80; color: #fff; font-size: 13px; text-align: center; }
+.sxsens.tile, .sxsens.card { margin: 0; border-radius: 0; }
+.sxsens.tile { aspect-ratio: 1; }
+.sxsens.tile > .sxsensblur, .sxsens.tile > .sxsensblur > button { width: 100%; height: 100%; }
+.sxsens.tile .sxsenscover { flex-direction: column; gap: 6px; font-size: 12px; }
+.sxsens.card .sohcover { min-height: 120px; }
+.sxsens.sxsensbar { display: flex; align-items: center; gap: 10px; margin: 8px 0 0; padding: 6px 10px; border-radius: 10px; background: var(--raised); color: var(--muted); font-size: 12px; }
+img.sxsensimg { filter: blur(10px) saturate(.6); }
+.sxcomposer .sxsenstoggle { cursor: pointer; }
+/* what the picture check said (web/nsfw.js), under the pictures */
+.sxsensnote { margin: 6px 0 0; color: var(--muted); }
+/* the composer's bottom line: add pictures (with their count) and the sensitive mark on the left, the length and
+   「发布」 on the right */
+.sxtools { display: flex; align-items: center; gap: 10px; margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
+.sxtool { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px; border: 0; border-radius: 17px; background: none;
+  color: var(--accent); font-size: 12.5px; cursor: pointer; transition: background-color var(--dur-fast) var(--ease); }
+.sxtool:hover:not(:disabled) { background: var(--accent-soft); }
+.sxtool:disabled { color: var(--faint); cursor: default; }
+.sxtool svg { width: 20px; height: 20px; }
+.sxcnt { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.sxcnt.near { color: var(--warn); }
+.sxcnt.over { color: var(--err); font-weight: 600; }
+.sxtools .spacer { flex: 1; }
+.sxsend { height: 34px; padding: 0 20px; border-radius: 17px; }
+.sxactions { display: flex; align-items: center; justify-content: space-between; gap: 5px; flex-wrap: wrap; margin-top: 14px; color: var(--muted); font-size: 12px; }
+.sxactions > span { padding: 5px; }
+.sxactions button { border: 0; border-radius: 14px; padding: 5px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.sxactions button:hover, .sxactions [aria-pressed=true] { color: var(--accent); background: var(--accent-soft); }
+.sxactions [data-so=xlike][aria-pressed=true] { color: #e0245e; }
+.sxquote, .sxwork { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; margin-top: 12px; }
+.sxquote .sxpost { border: 0; padding: 12px 12px 12px 56px; }
+.sxquote .sxposthead .soav.xs { width: 32px; height: 32px; top: 12px; left: 12px; }
+.sxquote .sxquote { display: none; }
+.sxwork { padding: 12px; }
+.sxworkhead { display: flex; gap: 12px; text-align: left; width: 100%; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.sxworkhead img { width: 96px; height: 72px; object-fit: cover; border-radius: 8px; }
+.sxworkhead b, .sxworkhead small { display: block; overflow-wrap: anywhere; }
+.sxwork p { color: var(--muted); font-size: 12px; }
+/* a work card's 「已拥有 n/m」, its missing items (each a link to its Booth page) and 「N 人做了同款」 */
+.sxwork .sxowned, .sxwork .sxmissing, .sxwork .sxclones { margin: 8px 0 0; }
+.sxwork .sxmissing { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; }
+.sxwork .sxmissing .linkbtn { font-size: 12px; overflow-wrap: anywhere; text-align: left; }
+/* the composer's work card (发布到社区) */
+.sxworkdraft { position: relative; }
+.sxworkdraft input { width: 100%; padding-right: 36px; font-weight: 600; }
+.sxworkdraft .sxworkdrop { position: absolute; top: 16px; right: 16px; }
+/* 换素体克隆's bases, and what a clone could not put into the basket */
+.soclonebases { display: grid; gap: 2px; }
+.soclonebases .navitem img, .soclonebases .navitem .octh { width: 36px; height: 36px; flex: none; margin: 0; border-radius: 8px; object-fit: cover; }
+.socmissing { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.socmissing li { display: flex; align-items: center; justify-content: space-between; gap: 12px; overflow-wrap: anywhere; }
+.socclonepreview { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.socclonepreview li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.socclonepreview .nm { flex: 1 1 150px; }
+.sxdeleted { padding: 20px; color: var(--muted); background: var(--raised); }
+.sxreposted { padding: 12px 16px 0; color: var(--muted); font-size: 12px; }
+.sxdate { display: block; color: var(--muted); font-size: 12px; padding-top: 12px; }
+.sxcomposer { padding: 16px; border-bottom: 1px solid var(--line); }
+.sxcomposer textarea { display: block; width: 100%; resize: vertical; border: 0; background: transparent; color: var(--text); padding: 8px 0; font: inherit; font-size: 17px; line-height: 1.5; }
+.sxcomposer .sopicpick:empty { display: none; }
+.sxcomposer .sopic { width: 100px; height: 90px; }
+.sxcomposer .sopicacts { opacity: 1; }
+.sxcomposer .warnc:empty { display: none; }
+/* @: the accounts that match what follows the @, as a list under the box */
+.sxpeople { display: flex; flex-direction: column; max-width: 360px; margin: 4px 0; border: 1px solid var(--line-strong); border-radius: 12px; overflow: hidden; background: var(--panel); box-shadow: var(--shadow); }
+.sxpeople:empty { display: none; }
+.sxpeople button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--line-soft); background: transparent; color: var(--text); font: inherit; font-size: 13.5px; text-align: left; cursor: pointer; }
+.sxpeople button:last-child { border-bottom: 0; }
+.sxpeople button:hover, .sxpeople button:focus-visible { background: var(--raised); outline: none; }
+.sxpeople .soav.xs { width: 28px; height: 28px; }
+.sxreply { color: var(--muted); font-size: 13px; }
+.sxnew { width: 100%; padding: 14px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--accent); cursor: pointer; }
+.sxnew[hidden] { display: none; }
+.sxmore { display: block; margin: 20px auto; }
+.sxthread { padding: 0; }
+.sxnotice { padding: 20px; border-bottom: 1px solid var(--line); cursor: pointer; overflow-wrap: anywhere; }
+.sxviewer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sxviewer img { min-width: 0; max-width: calc(100% - 90px); max-height: 70vh; object-fit: contain; }
+.sxworkthread { margin-top: 20px; }
+.sxpagetitle { margin: 0; padding: 18px; font-size: 20px; }
+.sxtabs { overflow-x: auto; }
+.sxtabs button { white-space: nowrap; }
+.sxbanner { height: 160px; background: linear-gradient(125deg, #514471, #39566c 55%, #49635e); }
+.sxprofilehead { padding: 0 20px 18px; }
+.sxprofiletop { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.sxprofiletop .soav.xl { width: 120px; height: 120px; margin-top: -48px; border: 5px solid var(--bg); border-radius: 50%; flex: none; }
+.sxprofiletop .btnrow { padding-block: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.sxprofiletop .btn { border-radius: 22px; }
+.sxprofilehead h2 { margin: 12px 0 2px; overflow-wrap: anywhere; }
+.sxprofilehead .sub { display: flex; flex-wrap: wrap; gap: 12px; color: var(--muted); }
+.sxprofilehead .socreatornumbers { margin-top: 14px; }
+.sxprofilehead .sobio { margin: 10px 0 6px; font-size: 15px; color: var(--text); }
+.sxprofilehead .sobio:empty { display: none; }
+.sxprofilehead .bases { margin-top: 8px; }
+.sxprofilelinks { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.sxprofilelinks:empty { display: none; }
+.sxprofilelinks .solinks { display: contents; }
+.sxprofilelinks .btn.small { border-radius: 15px; }
+.sxcontactbtn { gap: 6px; }
+.sxcount { border: 0; background: transparent; color: var(--muted); padding: 0; font: inherit; }
+button.sxcount { cursor: pointer; }
+button.sxcount:hover { text-decoration: underline; }
+.sxcount b { color: var(--text); }
+.sofollowhover { display: none; }
+.sofollow.on:hover .sofollowlabel { display: none; }
+.sofollow.on:hover .sofollowhover { display: inline; }
+.sxprofileworks { padding: 16px; }
+.sxprofileworks .sogrid.works { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sxprofile > .soshowcase { margin: 16px; }
+.sxmediagrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; }
+.sxmediagrid button { padding: 0; background: var(--raised); border: 0; cursor: pointer; aspect-ratio: 1; overflow: hidden; }
+.sxmediagrid img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* Explore's search: one rounded field, the magnifier inside, Enter searches */
+.sxsearch { position: relative; display: flex; align-items: center; margin: 12px 16px 8px; }
+.sxsearchicon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; color: var(--muted); pointer-events: none; }
+.sxsearchicon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; }
+.sxsearch input { width: 100%; min-width: 0; height: 44px; border-radius: 22px; padding: 0 18px 0 44px !important; font-size: 15px; }
+.sxsearch input:focus { border-color: var(--accent); background: var(--bg); outline: none; }
+.sxtrend { display: flex; flex-direction: column; gap: 5px; padding: 18px; width: 100%; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
+.sxtrend span { color: var(--muted); font-size: 12px; }
+.sxtrend:hover, .sxdmrow:hover { background: var(--raised); }
+.sxexplorepage > section { padding: 16px; }
+.sxnotice.unread { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.sxnotice:has(> .sxpost) { padding: 0; }
+.sxactors { display: flex; gap: 8px; margin-bottom: 12px; }
+.sxactors .sochip span:not(.soav) { display: none; }
+.sxnoticepost { display: block; border: 0; padding: 0; background: transparent; color: var(--muted); text-align: left; width: 100%; cursor: pointer; }
+.sxperson { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 16px; border-bottom: 1px solid var(--line); }
+.sxperson > .btn { margin-left: auto; }
+/* 设置: sections of rows — what it is, what it is now (a note under it), what to do — and switches */
+.sxsettings { padding: 0 0 24px; }
+.sxsettings .sxpagetitle { padding: 20px 20px 8px; }
+.sxset { padding: 4px 20px 16px; border-bottom: 1px solid var(--line); }
+.sxset h3 { margin: 18px 0 6px; font-size: 15px; font-weight: 700; color: var(--text); }
+.sxsetrow { display: grid; grid-template-columns: 132px minmax(0, 1fr) auto; align-items: center; gap: 4px 16px; min-height: 52px; padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
+.sxset .sxsetrow:last-of-type { border-bottom: 0; }
+.sxsetk { color: var(--muted); font-size: 13.5px; }
+.sxsetk label { color: inherit; font: inherit; }
+.sxsetv { min-width: 0; display: flex; flex-direction: column; gap: 3px; font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+.sxsetv small { color: var(--faint); font-size: 12px; line-height: 1.5; }
+.sxseta { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.sxseta select { height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); color: var(--text); font: inherit; font-size: 13.5px; }
+.sxswitchrow { grid-template-columns: minmax(0, 1fr) auto; cursor: pointer; }
+.sxsetnote { margin: 0 0 10px; color: var(--faint); font-size: 12.5px; line-height: 1.6; }
+.sxsetstatus { margin: 4px 0 0; min-height: 0; color: var(--muted); font-size: 12px; }
+.sxsetstatus:empty { display: none; }
+.sxset #so_device:empty { display: none; }
+.sxset .soform { display: grid; gap: 10px; }
+.sxset .soform .btnrow { align-items: center; }
+.sxset #sx_booth_status:empty { display: none; }
+.sxset .soform input { height: 36px; }
+.sxsetend { display: flex; justify-content: flex-end; gap: 10px; padding-top: 18px; border-bottom: 0; }
+.btn.sxdanger { color: var(--err); border-color: color-mix(in srgb, var(--err) 45%, transparent); }
+.btn.sxdanger:hover:not(:disabled) { background: color-mix(in srgb, var(--err) 10%, transparent); }
+.sxcontact { display: inline-flex; align-items: center; gap: 6px; margin-right: 12px; }
+.sxcontactk { padding: 0 6px; border-radius: 5px; font-size: 11px; line-height: 18px; color: var(--muted); background: var(--raised); }
+.sxsetv:has(.sxcontact) { flex-direction: row; flex-wrap: wrap; align-items: center; }
+.sxsetv:has(.sxcontact) small { flex-basis: 100%; }
+/* a switch: a track and a knob, the accent when on */
+.sxswitch { appearance: none; -webkit-appearance: none; position: relative; flex: none; width: 40px; height: 22px; margin: 0; border-radius: 11px; background: var(--line-strong); cursor: pointer; transition: background-color var(--dur-fast) var(--ease); }
+.sxswitch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .3); transition: transform var(--dur-fast) var(--ease); }
+.sxswitch:checked { background: var(--accent-fill); }
+.sxswitch:checked::after { transform: translateX(18px); }
+.sxswitch:disabled { opacity: .5; cursor: default; }
+.sxswitch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 760px) { .sxsetrow { grid-template-columns: minmax(0, 1fr) auto; } .sxsetk { grid-column: 1 / -1; } }
+/* 私信: the list and the conversation side by side, as tall as the window */
+.sxdm { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(260px, 32%) minmax(0, 1fr); width: 100%; min-width: 0; height: calc(100vh - 168px); min-height: 460px; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--panel); }
+.sxdmlist { border-right: 1px solid var(--line); min-width: 0; overflow-y: auto; }
+.sxdmlist h2 { margin: 16px; }
+.sxdmrequests { display: block; width: 100%; text-align: left; padding: 16px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--text); cursor: pointer; font: inherit; }
+.sxdmrow { display: flex; position: relative; gap: 10px; width: 100%; padding: 16px; background: transparent; color: var(--text); border: 0; border-bottom: 1px solid var(--line); cursor: pointer; text-align: left; font: inherit; }
+.sxdmrow.selected { background: var(--raised); box-shadow: inset 3px 0 0 var(--accent); }
+.sxdmsummary { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; }
+.sxdmsummary b, .sxdmlast { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sxdmrow time, .sxdmlast { color: var(--muted); font-size: 12px; }
+.sxdmunread { position: absolute; right: 15px; bottom: 16px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.sxdmchat { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.sxdmchat > .empty { margin: auto; }
+.sxdmhead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 14px; border-bottom: 1px solid var(--line); }
+.sxdmhead > .btn { margin-left: auto; }
+.sxdmlog { flex: 1; min-height: 0; padding: 16px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.sxdmday { text-align: center; color: var(--muted); font-size: 12px; margin: 6px; }
+.sxdmbubble { align-self: flex-start; max-width: 72%; padding: 9px 14px; border-radius: 18px 18px 18px 4px; background: var(--raised); color: var(--text); }
+.sxdmbubble.mine { align-self: flex-end; border-radius: 18px 18px 4px 18px; background: var(--accent-fill); color: #fff; }
+.sxdmbubble.mine .sxdmmeta, .sxdmbubble.mine .sxdmmeta button { color: rgba(255, 255, 255, .78); }
+.sxdmtext { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.55; }
+.sxdmbubble img { display: block; max-width: 100%; max-height: 280px; border-radius: 10px; margin-top: 8px; object-fit: contain; }
+.sxdmbubble img[hidden] { display: none; }
+.sxdmmeta { display: flex; gap: 12px; justify-content: flex-end; margin-top: 4px; font-size: 11px; color: var(--muted); }
+.sxdmcompose, .sxdmrequestnote { padding: 14px; border-top: 1px solid var(--line); }
+.sxdmbox { display: flex; align-items: flex-end; gap: 4px; padding: 6px 6px 6px 8px; border-radius: 22px; background: var(--raised); }
+.sxdmbox .sxtool { flex: none; width: 36px; padding: 0; justify-content: center; }
+.sxdmcompose textarea { flex: 1; min-width: 0; height: 36px; max-height: 150px; resize: none; padding: 7px 8px; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 15px; line-height: 1.5; }
+.sxdmbox .sxcnt { flex: none; align-self: center; padding: 0 4px; }
+.sxdmbox .sxsend { flex: none; }
+.sxsearch input { padding: 10px 14px; border: 1px solid var(--line); background: var(--raised); color: var(--text); font: inherit; }
+.sxworknumbers { display: flex; gap: 16px; color: var(--muted); font-size: 12px; }
+.sxdmcompose { flex: none; }
+.sxdmcompose .warnc:empty { display: none; }
+.sxdmlimit { font-size: 12px; color: var(--muted); margin: 8px 14px; }
+.sxdmattachment img { height: 70px; max-width: 150px; object-fit: contain; }
+@media (max-width: 1000px) {
+  .sxdm { grid-template-columns: minmax(0, 1fr); }
+  .sxdmlist { max-height: 280px; overflow-y: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  .sxprofiletop .soav.xl { width: 96px; height: 96px; }
+}
+@media (max-width: 760px) {
+  .sxpost { padding: 12px 12px 12px 56px; }
+  .sxposthead .soav.xs { width: 32px; height: 32px; top: 12px; left: 12px; }
+  .sxposthead .sochip { max-width: 100%; }
+  .sxwhen { display: none; }
+  .sxactions { font-size: 11px; }
+  .sxmedia.n2, .sxmedia.n3, .sxmedia.n4 { height: 240px; }
+  .sxtools { flex-wrap: wrap; }
+}
+
+/* a verified Booth shop: the mark beside a name, 作者本人 on a work, the claim in the settings */
+.soverified { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 15px; height: 15px; margin-left: 3px; border-radius: 50%; background: var(--accent); color: #fff; vertical-align: -2px; }
+.soverified svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.sxposthead .soverified { margin-left: -3px; }
+.tag.sxownshop { display: inline-block; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); margin: 4px 0 0; }
+.soline .tag.sxownshop { margin: 0; }
+.sxboothshop { display: inline-flex; align-items: center; font-weight: 600; }
+.sxboothcode { font-size: 18px; letter-spacing: 1px; user-select: all; }
+#sx_booth_shop { flex: 1; min-width: 0; max-width: 320px; }
+/* 小组 (base groups), 每周主题 (the weekly theme) and 投票 (polls) */
+.sxgroup { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.sxgroup:hover { background: var(--raised); }
+.sxgroup:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.sxgroupcover { flex: none; display: grid; place-items: center; width: 52px; height: 52px; border-radius: 12px; overflow: hidden; background: var(--raised); color: var(--muted); font-weight: 600; }
+.sxgroupcover img { width: 100%; height: 100%; object-fit: cover; }
+.sxgroupinfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.sxgroupinfo b { overflow-wrap: anywhere; }
+.sxgroupinfo small { display: flex; flex-wrap: wrap; gap: 0 10px; color: var(--muted); font-size: 12px; }
+.sxgrouphead { margin: 18px 16px 6px; }
+.sxgroupbanner { overflow: hidden; }
+.sxgroupbanner img { display: block; width: 100%; height: 100%; object-fit: cover; opacity: .6; }
+.sxgrouptop { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 16px; }
+.sxgrouptop h2 { margin: 0; overflow-wrap: anywhere; }
+.sxgrouppage .sxprofilehead .sub { margin-top: 8px; align-items: center; }
+.sxmods .sochip { padding: 0; border: 0; background: none; }
+.sxpinned { border-bottom: 1px solid var(--line); }
+.sxpinned .sxpost { border-bottom: 0; }
+.sxpinmark { display: flex; align-items: center; gap: 6px; margin: 0; padding: 10px 16px 0 66px; color: var(--muted); font-size: 12px; }
+.sxpinmark svg { width: 14px; height: 14px; }
+.sxingroup { display: inline-flex; align-items: center; gap: 5px; margin: 0 0 6px; padding: 0; border: 0; background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.sxingroup:hover { color: var(--text); text-decoration: underline; }
+.sxingroup svg { width: 14px; height: 14px; }
+.sxtheme { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--accent-soft); font-size: 13px; }
+.sxthemelabel { color: var(--accent); font-size: 12px; font-weight: 600; }
+.sxthemetext { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; overflow-wrap: anywhere; }
+.sxthemetext span { color: var(--muted); }
+.sxthemes { border-bottom: 1px solid var(--line); }
+.sxthemes .soh { margin: 16px 16px 6px; }
+.sxthemerow { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; width: 100%; padding: 10px 16px; border: 0; background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
+.sxthemerow:hover, .sxthemerow.on { background: var(--raised); }
+.sxthemerow span, .sxthemerow time { color: var(--muted); font-size: 12px; }
+.sxpoll { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+.sxpollopt { padding: 8px 14px; border: 1px solid var(--accent); border-radius: 18px; background: transparent; color: var(--accent); font: inherit; font-weight: 600; text-align: center; overflow-wrap: anywhere; }
+button.sxpollopt { cursor: pointer; }
+button.sxpollopt:hover { background: var(--accent-soft); }
+.sxpollbar { position: relative; z-index: 0; display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 8px; overflow: hidden; }
+.sxpollbar::before { content: ""; position: absolute; inset: 0 auto 0 0; z-index: -1; width: var(--pct); border-radius: 8px; background: var(--raised); }
+.sxpollbar.lead::before { background: var(--accent-soft); }
+.sxpollbar.lead .sxpolllabel, .sxpollbar.lead .sxpollpct { font-weight: 600; }
+.sxpolllabel { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.sxpollpct { font-variant-numeric: tabular-nums; }
+.sxpollmine { color: var(--accent); font-weight: 600; }
+.sxpollmeta { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+.sxpolledit { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
+.sxpollrow { display: flex; align-items: center; gap: 6px; }
+.sxpollrow input { flex: 1; min-width: 0; }
+.sxpolltools { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.sxpolltools .spacer { flex: 1; }
+.sxpolltools label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+/* 求同款: an ask's marks (「求同款」, 「已解决」, the answer's 「就是这套」), a reply's Booth items, the asker's
+   「设为答案」, and the reply composer's 「用作品回答」 and 「附上 Booth 商品」 */
+.sxaskmarks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0 0; }
+.sxasklabel, .sxsolved, .sxthisone { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; line-height: 20px; }
+.sxasklabel { color: var(--accent); background: var(--accent-soft); }
+.sxasklabel svg { width: 14px; height: 14px; }
+.sxsolved, .sxthisone { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.sxitems { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 10px 0 0; }
+.sxitemshead { color: var(--muted); font-size: 12px; }
+.sxitem { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 3px 10px; border: 1px solid var(--line); border-radius: 14px; background: transparent; color: var(--text); font: inherit; font-size: 12.5px; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.sxitem:hover { background: var(--raised); }
+.sxitem .tag { margin: 0; }
+.sxanswerrow { display: flex; justify-content: flex-end; margin-top: 8px; }
+.sxcomposer.answering .sxtools { flex-wrap: wrap; }
+.sxtool.on { background: var(--accent-soft); }
+.sxanswerdraft { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
+.sxanswerwork { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; }
+.sxanswerwork > svg { stroke: var(--muted); }
+.sxanswertitle { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow-wrap: anywhere; }
+.sxanswertitle small { color: var(--muted); }
+.sxansweritems { display: flex; flex-wrap: wrap; gap: 6px; }
+.sxansweritem { display: inline-flex; align-items: center; gap: 2px; max-width: 100%; padding: 0 2px 0 10px; border: 1px solid var(--line); border-radius: 14px; font-size: 12.5px; overflow-wrap: anywhere; }
+.sxanswerpick { padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+.sxanswerpick input { width: 100%; }
+.sxanswerpick .navitem img { flex: none; width: 40px; height: 30px; margin: 0; border-radius: 6px; object-fit: cover; }
+.sxanswerbooth { display: flex; align-items: center; gap: 8px; }
+.sxanswerbooth input { flex: 1; min-width: 0; }
+
+/* 编辑资料: save at the top, the banner and the avatar (a click changes it), then the fields in one column */
+.sxedit { padding-bottom: 24px; }
+.sxedittop { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: color-mix(in srgb, var(--bg) 97%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+.sxedittop h2 { margin: 0; font-size: 18px; }
+.sxedittop .spacer { flex: 1; }
+.sxedittop .btn.primary { border-radius: 18px; padding: 0 20px; }
+.sxeditav { display: flex; align-items: flex-end; gap: 12px; padding: 0 20px; margin-top: -60px; }
+.sxavedit { position: relative; padding: 0; border: 0; background: none; border-radius: 50%; cursor: pointer; }
+.sxavedit .soav.xl { width: 120px; height: 120px; border: 5px solid var(--bg); }
+.sxavcam { position: absolute; inset: 5px; display: grid; place-items: center; border-radius: 50%; background: rgba(0, 0, 0, .38); color: #fff; opacity: .85; transition: opacity var(--dur-fast) var(--ease); }
+.sxavedit:hover .sxavcam, .sxavedit:focus-visible .sxavcam { opacity: 1; background: rgba(0, 0, 0, .5); }
+.sxavcam svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.sxeditav .btn { margin-bottom: 10px; }
+.sxeditform { display: flex; flex-direction: column; gap: 4px; padding: 14px 20px 0; }
+.sxeditform .sxfield { padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
+.sxfieldk { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; margin-bottom: 8px; color: var(--text); font-size: 14px; font-weight: 600; }
+.sxfieldk label { color: inherit; font: inherit; margin: 0 !important; }
+.sxfieldk small { flex-basis: 100%; color: var(--faint); font-size: 12px; font-weight: 400; }
+.sxfieldk .sxlen { margin-left: auto; color: var(--faint); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.sxfieldline { display: flex; align-items: center; gap: 12px; }
+.sxeditform input:not([type=checkbox]):not([type=range]), .sxeditform textarea { padding: 9px 12px; font-size: 14px; border-radius: 10px; }
+.sxeditform textarea { min-height: 84px; line-height: 1.6; }
+.sxeditform select { height: 36px; border-radius: 10px; }
+.sxchecks { display: flex; flex-wrap: wrap; gap: 8px; }
+.sxchecks .check { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 16px; cursor: pointer; }
+.sxchecks .check:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }
+.sxchecks input { accent-color: var(--accent-fill); }
+.sxeditworks { margin: 26px 20px 12px; }
+.sxeditworkgrid { padding: 0 20px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sxeditnone { padding: 0 20px; }
+.sxedit .solinkrow .tag { border-radius: 6px; }
+/* 裁剪头像 */
+#modal[data-kind="sxcrop"] { width: min(440px, 94vw); }
+.sxcrop { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.sxcropstage { position: relative; width: 360px; max-width: 100%; aspect-ratio: 1; border-radius: 12px; overflow: hidden; background: #000; touch-action: none; }
+.sxcropstage canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+.sxcropstage canvas:active { cursor: grabbing; }
+.sxcropring { position: absolute; inset: 0; pointer-events: none; border-radius: 50%; box-shadow: 0 0 0 999px rgba(0, 0, 0, .5); outline: 2px solid rgba(255, 255, 255, .85); outline-offset: -2px; }
+.sxcropzoom { display: flex; align-items: center; gap: 10px; width: 300px; max-width: 100%; color: var(--muted); }
+.sxcropzoom input { flex: 1; accent-color: var(--accent-fill); }
+
+/* a page's title with what applies to all of it (通知: 全部已读) */
+.sxpagehead { display: flex; align-items: center; gap: 12px; padding: 16px 16px 6px; }
+.sxpagehead h2 { margin: 0; flex: 1; font-size: 20px; }
+
+/* 表情 */
+.sxemoji { position: fixed; z-index: 80; display: grid; grid-template-columns: repeat(10, 34px); gap: 2px; max-height: 246px; overflow-y: auto; padding: 8px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--panel); box-shadow: var(--shadow); }
+.sxemoji button { width: 34px; height: 34px; padding: 0; border: 0; border-radius: 8px; background: none; font-size: 21px; line-height: 34px; cursor: pointer; }
+.sxemoji button:hover { background: var(--raised); }
+
+/* the composer's window: the title and a close button, the composer (its own 「发布」) below */
+.sxmhead { display: flex; align-items: center; justify-content: space-between; }
+.sxmclose { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; }
+.sxmclose svg { width: 16px; height: 16px; }
+.modal[data-kind="sopostedit"] .mbody { padding-top: 0; }
+.modal[data-kind="sopostedit"] .sxcomposer { border-bottom: 0; padding: 4px 0 0; }
+.sxworkpick { display: flex; align-items: center; gap: 10px; margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+.sxworkpick select { flex: 1; min-width: 0; max-width: 360px; height: 32px; }
+
+/* 发布作品: the pictures on the left (the cover first and larger), what the work is on the right */
+.modal .soform.sxworkform { max-width: none; display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 0 24px; flex: 1; min-height: 0; padding: 8px 24px 12px; }
+.sxworkpics { position: sticky; top: 0; align-self: start; }
+.sxworkfields { min-width: 0; }
+.sxworkfields .row { margin-bottom: 16px; }
+.sxworkfields input:not([type=checkbox]), .sxworkfields textarea, .sxworkfields select { font-size: 14px; }
+.sxworkfields #sw_desc { min-height: 96px; }
+.sxworkpicgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.sxworkpicgrid .sopic { width: auto; aspect-ratio: 1; border-radius: 10px; }
+.sxworkpicgrid .sopic.cover { grid-column: 1 / -1; aspect-ratio: 4 / 3; }
+.sxworkpicgrid .sopic .wb { width: 24px; height: 24px; border-radius: 50%; background: rgba(0, 0, 0, .55); color: #fff; }
+.sxpicadd { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; aspect-ratio: 1; border: 1.5px dashed var(--line-strong); border-radius: 10px; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; cursor: pointer; }
+.sxworkpicgrid .sxpicadd:first-child { grid-column: 1 / -1; aspect-ratio: 4 / 3; font-size: 14px; }
+.sxpicadd:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.sxpicadd svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 860px) { .modal .soform.sxworkform { grid-template-columns: minmax(0, 1fr); } .sxworkpics { position: static; margin-bottom: 16px; } }
+
+/* a username field: 「@」 before what is typed */
+.sxat { display: flex; align-items: center; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--bg); }
+.sxat:focus-within { border-color: var(--accent); }
+.sxat > span { padding: 0 2px 0 10px; color: var(--muted); }
+.modal .sxat input, .sxat input { border: 0 !important; background: transparent !important; padding-left: 2px !important; }
+#so_handle_row[hidden] { display: none; }
+
+/* a shared post's address in a post: the post as a card (a plain card while it is fetched) */
+.sxsharewait { display: flex; align-items: center; gap: 8px; width: 100%; padding: 12px 14px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.sxsharewait svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
+.sxmini { display: flex; align-items: stretch; gap: 10px; width: 100%; max-width: 460px; margin-top: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--text); font: inherit; text-align: left; cursor: pointer; overflow: hidden; }
+.sxmini:hover { border-color: var(--line-strong); background: var(--hover-weak); }
+.sxminibody { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.sxminihead { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; }
+.sxminihead b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sxminitext { font-size: 13.5px; line-height: 1.5; color: var(--text-2); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.sxmini > img { flex: none; width: 72px; height: 72px; border-radius: 10px; object-fit: cover; }
+.sxmini.sxsharewait { align-items: center; color: var(--muted); }
+.sxdmbubble .linkbtn { color: inherit; text-decoration: underline; }

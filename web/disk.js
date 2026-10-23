@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only OR PolyForm-Noncommercial-1.0.0
+// Copyright (c) 2026 天川澪 (Coko_Iya). Part of MioVRCA: https://github.com/CokoIya/MioVRC_AssetManager (terms in LICENSE.md)
 // The player's own Baidu netdisk: a folder (or a file) of it downloaded into the library — for what the player
 // saved there from a share with Baidu's own app or page (where a captcha is Baidu's to ask and the player's to
 // read). The dialog lists the netdisk's folders, and the downloads it started with their progress; the jobs
@@ -61,7 +63,7 @@ function diskJobsDraw() {
 function diskDraw() {
   if ($("#modal").dataset.kind !== "pandisk") return;
   const loggedIn = (S.data.baidu || {}).loggedIn && !DK.login;
-  let body = `<p class="muted small">在百度网盘客户端或网页中把分享「保存到网盘」后，可以在这里选择保存的文件夹，下载到素材库并自动解压，合集包同样会拆分。不会改动网盘中的文件。</p>`;
+  let body = ``;
   if (!loggedIn) {
     body += `<div class="news"><div class="t">需要先登录百度网盘。</div><div class="d">登录状态加密保存在本机。</div>
       <div class="btnrow"><button class="btn small primary" data-dk="login">登录百度网盘</button></div></div>`;

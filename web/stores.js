@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only OR PolyForm-Noncommercial-1.0.0
+// Copyright (c) 2026 天川澪 (Coko_Iya). Part of MioVRCA: https://github.com/CokoIya/MioVRC_AssetManager (terms in LICENSE.md)
 // the wish list with price watching, the followed shops, and other shops
 "use strict";
 
@@ -7,7 +9,10 @@
 // lower price. What it shows comes from /api/stores/state, asked for again whenever the state's revision moves.
 const W = { on: false, items: [], byKey: new Map(), unseen: 0, watch: true, paused: false, busy: false, sig: "",
   sort: "drop", paste: "", fresh: new Set(), histOpen: new Set(), adding: false, view: "list", // view: list (rows) or grid (cards, as Booth)
-  likes: { on: false } }; // the player's スキ！ on Booth: put on the list at each purchase sync (on), and what the last one found
+  likes: { on: false }, // the player's スキ！ on Booth: put on the list at each purchase sync (on), and what the last one found
+  // what the list shows: a category as the library's (the program files each item, booth/wishlist.go), base bodies
+  // (any of them), the words in the header's search box; allBases: every base body in the side bar, not the first few
+  cat: "全部", bases: new Set(), q: "", allBases: false };
 // Jinxxy lives in the 闲鱼 tab (a sixth tab does not fit the header at 720 px): site = whose pages that tab shows
 const JX = { site: "xianyu", base: "https://jinxxy.com", search: "", q: { xianyu: "", jinxxy: "" }, files: [], told: null, saved: "", fsig: "", lsig: "" };
 const WISH_ICON = '<svg viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.6a4.3 4.3 0 0 1 7.5 2.7c0 5.6-7.5 10.2-7.5 10.2z"/></svg>';
@@ -65,7 +70,57 @@ function wishHas(id) { return W.byKey.has("booth:" + id); }
 // asked by renderShopGrid(); the header's sort box is for the Booth results, so it goes while the list is shown
 function wishOn() { $("#shopSort").hidden = W.on; return W.on; }
 // told by shopSearch(): a search or a filter shows the Booth results again
-function wishLeave() { if (!W.on) return; W.on = false; if (S.view === "shop") renderShopSide(); }
+function wishLeave() { if (!W.on) return; W.on = false; wishQBack(); if (S.view === "shop") renderShopSide(); }
+// While the list is shown, the header's search box is the list's (app.js searches Booth with it otherwise): its
+// words, its hint, and the library's search tips, which it follows.
+function wishQBox() {
+  const q = $("#q"), t = s => window.I18N ? I18N.t(s) : s;
+  if (S.view !== "shop" || !W.on) return;
+  if (q.placeholder !== t("搜索愿望单")) q.placeholder = "搜索愿望单";
+  if (q.title !== t(Q_HELP)) q.title = Q_HELP;
+  if (document.activeElement !== q && q.value !== W.q) q.value = W.q;
+}
+// …and Booth's again once the list goes
+function wishQBack() {
+  if (S.view !== "shop") return;
+  applyView();
+  if (document.activeElement !== $("#q")) $("#q").value = S.shop.q;
+}
+// what is typed there, the list redrawn (Enter: at once, and the list in place of a Booth page over it)
+let wishQTimer;
+function wishQType(v, enter) {
+  clearTimeout(wishQTimer);
+  v = String(v || "").trim();
+  if (!enter) { wishQTimer = setTimeout(() => wishQSet(v), 120); return; }
+  if (S.web.open.shop) { S.web.back = null; closeWeb(); }
+  wishQSet(v);
+}
+function wishQSet(v) {
+  if (v === W.q || !W.on || S.view !== "shop") return;
+  W.q = v;
+  wishRefilter();
+}
+// a filter changed: the counts in the side bar, and the list from its top
+function wishRefilter() {
+  if (S.web.open.shop) { S.web.back = null; closeWeb(); }
+  S.scrollAt["shop:wish"] = 0;
+  renderShopSide(); renderShopGrid();
+  if (!webVisible()) $(".main").scrollTop = 0;
+}
+// an item passes the filters (skip: the one whose counts are being made, as the library's side bar does)
+function wishMatch(x, skip) {
+  if (skip !== "cat" && W.cat !== "全部" && (x.category || "其他") !== W.cat) return false;
+  if (skip !== "bases" && W.bases.size && !(x.bases || []).some(b => W.bases.has(b))) return false;
+  if (!W.q) return true;
+  // an item's number (5 digits and more), "booth:<number>" or its address: that item, when it is on the list
+  const id = boothNum(W.q, true);
+  if (id && W.byKey.has("booth:" + id)) return x.id === id;
+  if (x._q !== W.q) {
+    if (x._hay === undefined) x._hay = [x.title, x.shop, x.note, x.id, x.category, (x.bases || []).join(" "), (x.vars || []).map(v => v.name).join(" ")].join(" ").toLowerCase();
+    x._q = W.q; x._qok = qMatch(x._hay, qParsed(W.q));
+  }
+  return x._qok;
+}
 function wishSeen() {
   for (const x of W.items) if (x.unseen) { W.fresh.add(x.key); x.unseen = false; }
   W.unseen = 0;
@@ -79,7 +134,7 @@ function wishOpen() {
   closeDrawer(); sideOpen(false);
   renderShopSide(); renderShopGrid(); backToScroll();
 }
-function wishClose() { keepScroll(); W.on = false; renderShopSide(); renderShopGrid(); backToScroll(); }
+function wishClose() { keepScroll(); W.on = false; wishQBack(); renderShopSide(); renderShopGrid(); backToScroll(); }
 // a purchase sync for the スキ: the Booth page is shown while it runs (its login, when needed), and the wish list
 // again when it is over — unless the player has gone elsewhere meanwhile
 async function wishLikeSync() {
@@ -102,9 +157,26 @@ function wishSyncTick(busy, flip) {
   if (flip) wishLikesRedraw(); // 「立即同步」 / 「正在同步…」
 }
 
-// the entry at the top of the Booth tab's side bar
+// the entry at the top of the Booth tab's side bar; under it, while the list is open, the list's filters
 function wishSideHTML() {
-  return `<div class="sidelinks wlnav"><button class="navitem${W.on ? " on" : ""}" data-wl="nav" aria-pressed="${W.on}">${WISH_ICON}<span class="nm">愿望单</span>${W.unseen ? `<span class="wldot" title="有新的价格变化"></span>` : ""}<span class="n">${esc(W.items.length)}</span></button></div>`;
+  return `<div class="sidelinks wlnav"><button class="navitem${W.on ? " on" : ""}" data-wl="nav" aria-pressed="${W.on}">${WISH_ICON}<span class="nm">愿望单</span>${W.unseen ? `<span class="wldot" title="有新的价格变化"></span>` : ""}<span class="n">${esc(W.items.length)}</span></button></div>${
+    W.on && W.items.length ? wishFilterHTML() : ""}`;
+}
+// 分类 and 适配素体 as in the library's side bar, each count with the other filters applied. (The Booth search's
+// own filters below are hidden meanwhile: app.css, .wlfilt.)
+function wishFilterHTML() {
+  const inCat = W.items.filter(x => wishMatch(x, "cat")), cc = {};
+  for (const x of inCat) { const c = x.category || "其他"; cc[c] = (cc[c] || 0) + 1; }
+  let h = `<div class="wlfilt"><h3>分类</h3>` + navItem("全部", inCat.length, W.cat === "全部", `data-wl="cat" data-cat="全部"`);
+  for (const c of S.data.categories || []) if (cc[c] || W.cat === c) h += navItem(c, cc[c] || 0, W.cat === c, `data-wl="cat" data-cat="${esc(c)}"`, CAT_COLOR[c]);
+  const bc = {};
+  for (const x of W.items) if (wishMatch(x, "bases")) for (const b of x.bases || []) bc[b] = (bc[b] || 0) + 1;
+  const names = Object.keys(bc).sort((a, b) => bc[b] - bc[a] || a.localeCompare(b));
+  for (const b of W.bases) if (!bc[b]) names.push(b); // (picked, and none left with it under the other filters)
+  const more = names.length > 12 && !W.allBases, shown = more ? names.filter((b, i) => i < 12 || W.bases.has(b)) : names;
+  if (names.length) h += `<h3>适配素体</h3><div class="chips">${shown.map(b => `<button class="chip${W.bases.has(b) ? " on" : ""}" data-wl="base" data-base="${esc(b)}" aria-pressed="${W.bases.has(b)}">${esc(b)}<span class="n">${bc[b] || 0}</span></button>`).join("")}${
+    more ? `<button class="chip more" data-wl="allbases">更多…</button>` : ""}</div>`;
+  return h + `</div>`;
 }
 // the other shops, at the end of it
 function storesSideHTML() {
@@ -134,7 +206,7 @@ function wishLikesHTML() {
   const L = W.likes, syncing = !!(S.data && S.data.purchaseBusy);
   const last = L.err ? `<span class="err">未能读取 Booth 上的スキ：${esc(L.err)}</span>`
     : L.at ? `<span>${esc(`上次同步：${fmtTime(L.at)}，Booth 上共 ${L.n} 件スキ，加入愿望单 ${L.added} 件`)}</span>${L.full ? `<span>${esc(`（愿望单已满，${L.full} 件未加入）`)}</span>` : ""}`
-    : L.on ? `<span>尚未同步。点击「立即同步」，登录 Booth 后读取</span>` : `<span>勾选后，在 Booth 点了「スキ！」的商品会在同步已购时自动加入愿望单</span>`;
+    : L.on ? `<span>尚未同步</span>` : ``;
   return `<label class="check" title="每次同步 Booth 已购时，读取你在 Booth 点了「スキ！」的商品并加入愿望单。已购买的、已在素材库中的，以及你从愿望单移除过的商品不会加入。"><input type="checkbox" id="wl_likes"${L.on ? " checked" : ""}> 同步 Booth 上的スキ</label>
     ${L.on ? `<button class="btn small" data-wl="likesync"${syncing ? " disabled" : ""}>${syncing ? "正在同步…" : "立即同步"}</button>` : ""}<span class="muted small wllast">${last}</span>`;
 }
@@ -180,6 +252,7 @@ function wishRowHTML(x) {
     </div>
     <div class="wlstate">${wishState(x)}</div>
     <div class="wlacts">
+      ${x.site === "booth" && typeof ocbButton === "function" ? ocbButton(x.id, true) : ""}
       <button class="btn small" data-wl="open" data-id="${esc(x.id)}">在 Booth 中打开</button>
       <button class="wb" data-wl="note" data-id="${esc(x.id)}" title="编辑备注" aria-label="编辑备注">${ICON.edit}</button>
       <button class="wb" data-wl="remove" data-id="${esc(x.id)}" title="从愿望单移除" aria-label="从愿望单移除">${ICON.x}</button>
@@ -198,17 +271,18 @@ function wishCardHTML(x) {
     <div class="wgfoot">
       <span class="wgprice" title="${x.checked ? "上次检查：" + esc(fmtTime(x.checked)) : "尚未检查"}"><b>${esc(x.price || "—")}</b>${x.from ? `<span class="from">起</span>` : ""}${
         x.diffDir ? `<span class="wgdiff ${x.diffDir < 0 ? "down" : "up"}">${x.diffDir < 0 ? "−" : "+"}${esc(x.diff)}</span>` : ""}</span>
-      <span class="wgacts"><button class="wb" data-wl="open" data-id="${esc(x.id)}" title="在 Booth 中打开" aria-label="在 Booth 中打开">${ICON.bag}</button><button class="wb" data-wl="note" data-id="${esc(x.id)}" title="编辑备注" aria-label="编辑备注">${ICON.edit}</button><button class="wb" data-wl="remove" data-id="${esc(x.id)}" title="从愿望单移除" aria-label="从愿望单移除">${ICON.x}</button></span>
+      <span class="wgacts">${x.site === "booth" && typeof ocbIconButton === "function" ? ocbIconButton(x.id) : ""}<button class="wb" data-wl="open" data-id="${esc(x.id)}" title="在 Booth 中打开" aria-label="在 Booth 中打开">${ICON.bag}</button><button class="wb" data-wl="note" data-id="${esc(x.id)}" title="编辑备注" aria-label="编辑备注">${ICON.edit}</button><button class="wb" data-wl="remove" data-id="${esc(x.id)}" title="从愿望单移除" aria-label="从愿望单移除">${ICON.x}</button></span>
     </div>${x.err ? `<div class="wlerr small err" title="${esc(x.err)}">价格检查失败</div>` : ""}</article>`;
 }
 // drawn in place of the Booth results. The paste field and the list are separate parts: a refresh in the
 // background redraws the list only when it changed, and never the field being typed into.
 function renderWish() {
   if (W.unseen && !S.web.open.shop) { wishSeen(); renderShopSide(); } // the list is in view: what changed is seen
-  const n = W.items.length;
+  wishQBox();
+  const n = W.items.length, shown = wishSorted().filter(x => wishMatch(x)), filtered = W.cat !== "全部" || W.bases.size > 0 || !!W.q;
   const opt = (v, label) => `<option value="${v}"${W.sort === v ? " selected" : ""}>${label}</option>`;
   const vb = (v, label) => `<button class="btn small${W.view === v ? " on" : ""}" data-wl="view" data-v="${v}" aria-pressed="${W.view === v}">${label}</button>`;
-  put($("#resultbar"), `<b>${esc(n)}</b><span>件愿望单商品</span>
+  put($("#resultbar"), `<b>${esc(n && filtered ? shown.length : n)}</b><span>件愿望单商品</span>${n && filtered ? `<button class="clear" data-wl="clear">清除筛选</button>` : ""}
     <span class="wlbar"><span class="wlview" role="group" aria-label="显示方式">${vb("list", "列表视图")}${vb("grid", "网格视图")}</span>
       <label class="wlsort">排序<select id="wl_sort">${opt("drop", "降幅")}${opt("added", "加入时间")}${opt("price", "价格")}</select></label>
     <label class="check"><input type="checkbox" id="wl_watch"${W.watch ? " checked" : ""}> 每天检查价格</label>
@@ -225,11 +299,12 @@ function renderWish() {
   }
   put($("#wl_likes_row"), wishLikesHTML());
   put($("#wl_top"), W.paused ? `<p class="wlpause">Booth 暂时限制了访问，价格检查将稍后自动继续。</p>` : !W.watch && n ? `<p class="wlpause">已关闭每天的价格检查，价格不会自动更新。</p>` : "");
-  const list = $("#wl_list"), grid = W.view === "grid" && n > 0;
+  const list = $("#wl_list"), grid = W.view === "grid" && shown.length > 0;
   list.classList.toggle("wlgrid", grid);
-  if (!n) { put(list, `<div class="empty"><h2>愿望单为空</h2><p>在此收藏想购买的 Booth 商品，软件每天检查一次价格，降价时提醒。</p>${W.likes.on ? "" : `<p>也可以勾选上方的「同步 Booth 上的スキ」，把在 Booth 点了「スキ！」的商品一次加入。</p>`}</div>`); return; }
+  if (!n) { put(list, `<div class="empty"><h2>愿望单为空</h2>${W.likes.on ? "" : ``}</div>`); return; }
+  if (!shown.length) { put(list, `<div class="empty"><h2>未找到商品</h2><button class="btn" data-wl="clear">清除筛选</button></div>`); return; }
   // row by row: one item's price being looked at does not redraw the others (nor the one a button is being pressed in)
-  const rows = wishSorted().map(x => [x.key, grid ? wishCardHTML(x) : wishRowHTML(x)]), kids = [...list.children], refocus = focusMark(list);
+  const rows = shown.map(x => [x.key, grid ? wishCardHTML(x) : wishRowHTML(x)]), kids = [...list.children], refocus = focusMark(list);
   if (kids.length === rows.length && kids.every((k, i) => k.dataset.wlkey === rows[i][0])) {
     rows.forEach(([, html], i) => {
       if (kids[i]._h === html) return;
@@ -261,7 +336,7 @@ async function wishRemove(key) {
 function wishSeed(id) {
   const d = S.shopOpen === id ? (S.shop.detail || {}) : {}, it = d.item, hit = S.shop.items.find(x => x.id === id) || d.hit || {};
   return { id, title: (it && it.name) || hit.name || "", shop: (it && it.shop) || hit.shop || hit.shopSub || "",
-    thumb: hit.thumb || (it && (it.images || [])[0]) || "", price: (it && it.price) || hit.price || "" };
+    thumb: hit.thumb || (it && (it.images || [])[0]) || "", price: (it && it.price) || hit.price || "", category: (it && it.category) || hit.category || "" };
 }
 function wishNoteOpen(key) {
   const x = W.byKey.get(key); if (!x) return;
@@ -296,6 +371,13 @@ async function wishAction(b) {
       return;
     }
     case "detail": return openShopItem(id);
+    case "cat": W.cat = b.dataset.cat || "全部"; return wishRefilter();
+    case "base": { const v = b.dataset.base || ""; if (!W.bases.delete(v)) W.bases.add(v); return wishRefilter(); }
+    case "allbases": W.allBases = true; return renderShopSide();
+    case "clear": {
+      W.cat = "全部"; W.bases.clear(); W.q = ""; clearTimeout(wishQTimer); $("#q").value = "";
+      return wishRefilter();
+    }
     case "view": { const v = b.dataset.v === "grid" ? "grid" : "list"; if (W.view === v) return; W.view = v; storesSave(); return renderWish(); }
     case "open": return openWeb(boothItemURL(id), "booth");
     case "note": return wishNoteOpen(key);
@@ -366,7 +448,8 @@ function followOpen(sub) {
   if (S.view !== "shop") setView("shop");
   if (S.web.open.shop) { S.web.back = null; closeWeb(); }
   keepScroll();
-  F.on = true; F.open = sub && F.bySub.has(sub) ? sub : ""; W.on = false;
+  F.on = true; F.open = sub && F.bySub.has(sub) ? sub : "";
+  if (W.on) { W.on = false; wishQBack(); }
   closeDrawer(); sideOpen(false);
   renderShopSide(); renderShopGrid(); backToScroll();
 }
@@ -434,7 +517,7 @@ function renderFollow() {
   }
   put($("#fl_top"), F.paused ? `<p class="wlpause">Booth 暂时限制了访问，上新检查将稍后自动继续。</p>` : !F.watch && n ? `<p class="wlpause">已关闭每天的上新检查，不会再提醒新商品。</p>` : "");
   const list = $("#fl_list");
-  if (!n) { put(list, `<div class="empty"><h2>尚未关注店铺</h2><p>关注 Booth 店铺后，软件每天查看一次店铺的商品列表，有新商品时提醒。</p></div>`); return; }
+  if (!n) { put(list, `<div class="empty"><h2>尚未关注店铺</h2></div>`); return; }
   // row by row: one shop being looked at does not redraw the others (nor the one a button is being pressed in)
   const rows = F.shops.map(x => [x.sub, followRowHTML(x)]), kids = [...list.children], refocus = focusMark(list);
   if (kids.length === rows.length && kids.every((k, i) => k.dataset.flsub === rows[i][0])) {
@@ -469,7 +552,7 @@ function renderFollowShop(s) {
     </div></div>`);
   put($("#fl_top"), F.paused ? `<p class="wlpause">Booth 暂时限制了访问，上新检查将稍后自动继续。</p>` : !s.watch ? `<p class="wlpause">已关闭此店铺的上新检查。</p>` : !F.watch ? `<p class="wlpause">已关闭每天的上新检查，不会再提醒新商品。</p>` : "");
   const grid = $("#fl_news");
-  if (!news.length) { grid.classList.add("none"); put(grid, `<div class="empty"><h2>暂无上新</h2><p>关注后出现的新商品会显示在这里，每天检查一次。</p></div>`); return; }
+  if (!news.length) { grid.classList.add("none"); put(grid, `<div class="empty"><h2>暂无上新</h2></div>`); return; }
   grid.classList.remove("none");
   const refocus = focusMark(grid);
   if (put(grid, news.map(x => followCardHTML(s, x)).join(""))) refocus();
@@ -623,22 +706,13 @@ function renderJxSide() {
   // live numbers come with the page area's own state, asked for every second while it is in view
   const live = new Map(((S.web.st || {}).files || []).map(f => [f.id, f]));
   const files = JX.files.map(f => live.get(f.id) || f).slice(-5).reverse();
-  put($("#side"), `${xySwitchHTML()}
+  put($("#side"), `${typeof shopSwitchHTML === "function" ? shopSwitchHTML() : ""}${xySwitchHTML()}
     <h3>Jinxxy</h3><div class="sidelinks two">${link("首页", "/")}${link("登录", "/login")}</div>
     <h3>商品分类</h3><div class="sidelinks two">${JX_CATS.map(c => link(c[0], c[1])).join("")}</div>
     ${files.length ? `<h3>下载记录</h3><div class="jxfiles">${files.map(f => `<div class="jxfile"><span class="fn" title="${esc(f.name)}">${esc(f.name || "下载中")}</span>${
       f.status === "done" && f.path ? `<button class="h4act" data-jx="reveal" data-path="${esc(f.path)}">打开位置</button>` : `<span class="st${f.status === "failed" ? " err" : ""}" title="${esc(f.err || "")}">${esc(jxFileStatus(f))}</span>`}</div>`).join("")}</div>` : ""}
-    <h3>使用说明</h3>
-    ${S.data.paneMode ? `<p class="sidenote">Jinxxy 是海外 VRChat 创作者常用的商品市场。登录、购买和下载均在此页面内完成，登录状态保存在本机。</p>
-    <p class="sidenote">请使用邮箱密码或 Discord 登录；通过邮件链接登录时，链接会在默认浏览器中打开，无法登录到此页面。</p>
-    <p class="sidenote">顶部搜索框通过必应（Bing）在 jinxxy.com 范围内搜索；也可以直接使用页面内的搜索框。</p>
-    <p class="sidenote">前往其他网站（Payhip、Gumroad 等）的商品链接将在默认浏览器中打开。</p>
-    <h3>下载</h3>
-    <p class="sidenote">登录后点击页面右上角的「My Purchases」进入已购列表。在此页面下载的文件将保存到软件的下载文件夹，并自动解压、收录到素材库。只收录 Jinxxy 页面发起的下载，在搜索结果等其他网站的页面上发起的下载会被取消。如下载后未出现在「下载记录」中，文件已由浏览器保存到系统的「下载」文件夹。</p>`
-    : `<p class="sidenote">Jinxxy 是海外 VRChat 创作者常用的商品市场。本机没有内置浏览器，Jinxxy 页面在默认浏览器中打开，下载的文件由浏览器保存。</p>
-    <p class="sidenote">顶部搜索框通过必应（Bing）在 jinxxy.com 范围内搜索。</p>`}
-    <h3>愿望单</h3>
-    <p class="sidenote">愿望单与降价提醒目前仅支持 Booth 商品；Jinxxy 商品可使用网站自带的 Wishlist。</p>`);
+    ${S.data.paneMode ? `<p class="sidenote">请使用邮箱密码或 Discord 登录。</p>` : ""}
+    `);
 }
 // in the page area's toolbar, where 闲鱼 has 「收录网盘链接」
 function jxBarHTML() {
@@ -688,8 +762,13 @@ document.addEventListener("keydown", e => {
   if (id === "fl_note" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); const b = $('#modal [data-fl="notesave"]'); if (b) b.click(); return; }
   if (e.target.classList && e.target.classList.contains("flcard") && e.target.dataset.flitem) { e.preventDefault(); e.stopPropagation(); openWeb(boothItemURL(e.target.dataset.flitem), "booth"); return; }
   if (id === "q" && jxOn()) { e.stopPropagation(); jxSearch(e.target.value.trim()); }
+  if (id === "q" && S.view === "shop" && W.on) { e.stopPropagation(); wishQType(e.target.value, true); } // (not a Booth search: wishQBox)
 }, true);
-document.addEventListener("input", e => { if (e.target.id === "wl_paste") W.paste = e.target.value; if (e.target.id === "fl_paste") F.paste = e.target.value; }, true);
+document.addEventListener("input", e => {
+  if (e.target.id === "wl_paste") W.paste = e.target.value;
+  if (e.target.id === "fl_paste") F.paste = e.target.value;
+  if (e.target.id === "q" && S.view === "shop" && W.on) { e.stopPropagation(); wishQType(e.target.value); }
+}, true);
 document.addEventListener("change", e => {
   if (e.target.id === "wl_sort") { W.sort = e.target.value; storesSave(); renderWish(); }
   if (e.target.id === "wl_likes") {

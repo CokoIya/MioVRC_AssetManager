@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only OR PolyForm-Noncommercial-1.0.0
+// Copyright (c) 2026 天川澪 (Coko_Iya). Part of MioVRCA: https://github.com/CokoIya/MioVRC_AssetManager (terms in LICENSE.md)
 // 合集包: a card that holds a collection of products — a seller's share that is one archive with the archives
 // of many products in it, downloaded and unpacked into one folder. One-click import would put every one of
 // them into the Unity project, so such a card says what it is (a.bundle: how many products; a.bundlePacked:

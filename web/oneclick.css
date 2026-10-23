@@ -1,0 +1,92 @@
+/* SPDX-License-Identifier: GPL-3.0-only OR PolyForm-Noncommercial-1.0.0 */
+/* Copyright (c) 2026 天川澪 (Coko_Iya). Part of MioVRCA: https://github.com/CokoIya/MioVRC_AssetManager (terms in LICENSE.md) */
+
+/* the round pick button on library cards */
+.ocpick { position: absolute; top: 8px; left: 8px; z-index: 3; width: 28px; height: 28px; border-radius: 50%;
+  border: 1px solid var(--line); background: var(--panel); color: var(--text); font-size: 16px; line-height: 26px;
+  text-align: center; cursor: pointer; opacity: 0; transition: opacity .15s, background .15s; }
+.card:hover .ocpick, .card:focus-within .ocpick, .ocpick.on { opacity: 1; }
+.ocpick.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ocpick:focus-visible { opacity: 1; outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* the basket, docked at the bottom of the library */
+.ocdock { position: sticky; bottom: 0; z-index: 5; margin: 16px 0 0; border: 1px solid var(--line);
+  border-radius: var(--r-card); background: var(--panel); box-shadow: 0 -8px 24px rgba(0, 0, 0, .18); }
+.ocbar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; }
+.ocbar .ocsum { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.octhumbs { display: flex; align-items: center; min-width: 0; overflow: hidden; padding-left: 6px; }
+.octh { width: 30px; height: 30px; flex: none; margin-left: -6px; border-radius: 50%; border: 2px solid var(--panel); background: var(--raised);
+  object-fit: cover; display: inline-grid; place-items: center; font-size: 12px; font-weight: 700; color: var(--muted);
+  animation: ocpop var(--dur) var(--ease-spring) both; }
+.octh.more { font-size: 11px; }
+@keyframes ocpop { from { transform: scale(.4); opacity: 0; } }
+.ocbar .ocbits { font-variant-numeric: tabular-nums; }
+.ocbar .ocbits.over { color: var(--warn); font-weight: 600; }
+.ocbar .grow { flex: 1; }
+.ocpanel { max-height: 36vh; overflow: auto; padding: 0 16px 16px; border-top: 1px solid var(--line); }
+.ocpanel .ochint, .ocneed .ochint, .ocresult .ochint { color: var(--muted); margin: 12px 0 0; }
+.ocpanel .warnc { margin: 12px 0 0; }
+.ocgroup { margin-top: 16px; }
+.ocgroup h4 { display: flex; gap: 8px; align-items: baseline; margin: 0 0 8px; font-size: 13px; }
+.ocitem { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.ocitem:last-child { border-bottom: 0; }
+.ocitem .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ocitem .bits { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ocitem select { max-width: 120px; }
+.tag.bad { color: var(--warn); background: rgba(255, 122, 122, .12); }
+
+/* the creation window */
+#modal.ocwin { width: min(640px, calc(100vw - 32px)); }
+.ocsteps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.ocstep { display: grid; grid-template-columns: 20px 1fr; column-gap: 12px; align-items: center; color: var(--muted); }
+.ocstep > i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); }
+.ocstep .msg, .ocstep .ocprog { grid-column: 2; font-size: 12px; }
+.ocstep.running { color: var(--text); }
+.ocstep.running > i { border-color: var(--accent); border-top-color: transparent; animation: ocspin 1s linear infinite; }
+.ocstep.done { color: var(--text); }
+.ocstep.done > i { background: var(--ok); border-color: var(--ok); }
+.ocstep.need_player { color: var(--text); }
+.ocstep.need_player > i { background: var(--warn); border-color: var(--warn); }
+.ocstep.failed > i { background: #ff7a7a; border-color: #ff7a7a; }
+.ocstep.failed .msg { color: var(--warn); }
+.ocaction { justify-self: start; }
+.ocstep .ocaction { grid-column: 2; margin-top: 6px; }
+.ocprog { display: block; height: 4px; border-radius: 2px; background: var(--raised); overflow: hidden; }
+.ocprog i { display: block; height: 100%; background: var(--accent); }
+@keyframes ocspin { to { transform: rotate(360deg); } }
+.ocneed { margin-top: 20px; padding: 16px; border-radius: var(--r-card); background: var(--raised); }
+.ocneed > p { margin: 0 0 12px; }
+.occhoices { display: grid; gap: 8px; max-height: 32vh; overflow: auto; margin-bottom: 12px; }
+.ocmg { display: flex; align-items: center; gap: 12px; }
+.ocmg .check { flex: 1; min-width: 0; }
+.ocmsubs { display: grid; gap: 8px; padding-left: 28px; }
+.ocresult { margin-top: 20px; display: grid; gap: 12px; }
+.ocloc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ocprep { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.ocprow { display: grid; grid-template-columns: 14px 120px 1fr auto; align-items: center; column-gap: 12px; min-height: 32px; }
+.ocprow .ocact { display: flex; gap: 8px; justify-content: flex-end; }
+.ocprow > i { width: 10px; height: 10px; border-radius: 50%; background: var(--warn); }
+.ocprow.ok > i { background: var(--ok); }
+.ocprow .st { color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ocjobline { margin-top: 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.ocjobline .ocprog { flex-basis: 100%; }
+.ocshots { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+.ocshots img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: var(--r-ctl); background: var(--raised); }
+.ocfacts { display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--muted); }
+/* the plugins of the job: state, name, a word on it, and the button to a plugin's own setup tool */
+.ocplugins { display: grid; gap: 6px; margin-top: 12px; }
+/* 上传到 VRChat */
+.ocupload { display: grid; gap: 10px; margin-top: 14px; padding: 12px; border-radius: 12px; background: var(--card); }
+.ocufield { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+.ocufield input { min-width: 0; }
+.ocurel { justify-self: start; }
+.ocplugin { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.ocpstate { flex: none; font-size: 11.5px; padding: 1px 7px; border-radius: 6px; background: var(--raised); color: var(--muted); }
+.ocpstate.ok { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+.ocpstate.warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+.ocpstate.err { background: color-mix(in srgb, var(--err) 16%, transparent); color: var(--err); }
+.ocpname { font-weight: 600; }
+.ocpnote { color: var(--muted); font-size: 12px; }
+.ocplugin .btn { margin-left: auto; }
+
+.modal[data-kind="oneclick"] .mhead > .muted { margin-left: 8px; }

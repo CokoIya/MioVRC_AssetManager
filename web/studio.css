@@ -1,0 +1,179 @@
+/* SPDX-License-Identifier: GPL-3.0-only OR PolyForm-Noncommercial-1.0.0
+   Copyright (c) 2026 天川澪 (Coko_Iya). Part of MioVRCA: https://github.com/CokoIya/MioVRC_AssetManager (terms in LICENSE.md) */
+/* the video studio 「宣传视频」 (studio.js) */
+.modal[data-kind="studio"] { width: min(1320px, 97vw); height: min(880px, 94vh); }
+.modal[data-kind="studio"] .mbody.svbody { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 4px 18px 10px; overflow: hidden; }
+.svav { margin-left: 10px; font-size: 13px; font-weight: 400; color: var(--muted); }
+.svsteps { display: flex; gap: 4px; flex: none; overflow-x: auto; padding-bottom: 2px; }
+.svstep { display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px 0 6px; border: 1px solid transparent; border-radius: 17px; background: none; color: var(--muted); cursor: pointer; white-space: nowrap; font-size: 13px; }
+.svstep .no { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--raised); font-size: 12px; font-weight: 600; }
+.svstep:hover:not(:disabled) { color: var(--text); border-color: var(--line); }
+.svstep.on { color: var(--text); border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.svstep.on .no { background: var(--accent-fill); color: #fff; }
+.svstep.done .no { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.svstep:disabled { opacity: .4; cursor: default; }
+.svmain { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; }
+.svmain.svs3, .svmain.svs5 { overflow: hidden; display: flex; flex-direction: column; gap: 10px; }
+.svwait { display: flex; align-items: center; gap: 10px; color: var(--muted); padding: 30px 4px; }
+.svsec { margin: 0 0 18px; }
+.svsec h4 { font-size: 13px; margin: 0 0 8px; color: var(--muted); font-weight: 600; }
+.svsec h5, .svside h5, .svinsp h5, .svpside h5 { font-size: 12.5px; margin: 12px 0 6px; color: var(--muted); font-weight: 600; }
+.svhint { font-size: 12px; color: var(--faint); margin: 6px 0; line-height: 1.6; }
+.svhint.svsub { margin: -2px 0 8px 24px; }
+.svgroup h5 { margin: 6px 0 4px; font-size: 12px; color: var(--faint); font-weight: 600; }
+.svitems { display: flex; flex-wrap: wrap; gap: 6px; }
+.svitem { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); font-size: 13px; }
+.svitem:hover { border-color: var(--line-hover); }
+.svitem.on { border-color: var(--accent); background: var(--accent-soft); }
+.modal .svitem select { width: auto; height: 26px; padding: 0 4px; font-size: 12px; background: var(--bg); }
+.svtag { font-size: 11px; color: var(--ok); }
+.svtag.dim { color: var(--faint); }
+.svworn { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; }
+.svworn li { display: inline-flex; align-items: baseline; gap: 6px; }
+.svnote { margin: 0 0 14px; padding: 6px 10px; border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--warn) 8%, transparent); color: var(--warn); font-size: 12.5px; }
+.svnote p { margin: 2px 0; }
+.svbgline { margin-top: 10px; gap: 10px; }
+.modal .svbgline input[type=color] { width: 44px; height: 30px; padding: 2px; }
+.svwish { display: flex; flex-direction: column; gap: 5px; margin: 8px 0 4px; font-size: 13px; color: var(--muted); }
+.svwish textarea { min-height: 52px !important; }
+.svline { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.svline .seg { flex: none; }
+
+/* music */
+.svmhead { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.svmname { font-weight: 600; overflow-wrap: anywhere; }
+.svmhead .spacer, .svmctl .spacer, .svxrow .spacer, .svih .spacer, .svside .spacer, .svjobhead .spacer { flex: 1; }
+.svstrip { position: relative; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--bg); cursor: ew-resize; touch-action: none; }
+.svstrip canvas { display: block; }
+.svmrow { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; margin: 8px 0; font-size: 13px; }
+.svmctl { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.svrange, .svsel { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.svrange input { width: 140px; accent-color: var(--accent); padding: 0 !important; border: 0 !important; background: none !important; }
+.svrange span { min-width: 40px; color: var(--text); }
+.modal .svsel select { width: auto; height: 30px; padding: 0 8px; }
+
+/* style */
+.svstyles { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 10px; }
+.svstyle { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); cursor: pointer; text-align: left; }
+.svstyle:hover { border-color: var(--line-hover); }
+.svstyle.on { border-color: var(--accent); background: var(--accent-soft); }
+.svstyle .sw { position: relative; display: block; width: 100%; height: 54px; border-radius: 8px; margin-bottom: 4px; }
+.svstyle .sw i { position: absolute; right: 8px; bottom: 8px; width: 14px; height: 14px; border-radius: 50%; }
+.svform { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+.svform label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); }
+.svform label.wide { grid-column: 1 / -1; }
+.svform textarea { min-height: 52px !important; }
+.svsec .check { padding: 4px 0; color: var(--text); }
+
+/* the job */
+.svjob { border: 1px solid var(--line); border-radius: 12px; background: var(--card); padding: 12px 14px; flex: none; }
+.svjobhead { display: flex; align-items: center; gap: 10px; }
+.svjobhead .spin { margin: 0; }
+.svbar { height: 6px; border-radius: 3px; background: var(--raised); overflow: hidden; margin: 10px 0 4px; }
+.svbar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width .3s; }
+.svbar.wait i { animation: svwait 1.4s ease-in-out infinite alternate; }
+@keyframes svwait { from { margin-left: 0; } to { margin-left: 70%; } }
+.svlog { margin: 8px 0 0; padding-left: 20px; font-size: 12.5px; color: var(--muted); line-height: 1.7; max-height: 160px; overflow-y: auto; }
+.svlog li.bad, .svlog li.error { color: var(--err); }
+.svlog .spin { display: inline-block; width: 10px; height: 10px; margin: 0 0 -1px 4px; }
+.svfootnote { display: inline-flex; align-items: center; gap: 8px; }
+.svfootnote .spin { margin: 0; }
+
+/* the storyboard */
+.svtl { position: relative; flex: none; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); padding: 8px 10px 6px; }
+.svruler { position: relative; height: 12px; }
+.svruler i { position: absolute; bottom: 0; width: 1px; height: 5px; background: rgba(236, 238, 246, .2); }
+.svruler i.dn { height: 10px; background: rgba(236, 238, 246, .55); }
+.svdrop { position: absolute; top: -3px; transform: translateX(-50%); color: var(--warn); font-size: 11px; font-weight: 400; }
+.svlane { position: relative; height: 62px; margin-top: 2px; }
+.svblk { position: absolute; top: 0; height: 58px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--card); overflow: hidden; cursor: pointer; }
+.svblk canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .9; }
+.svblk .n { position: absolute; left: 4px; top: 3px; padding: 0 5px; border-radius: 4px; background: rgba(20, 21, 31, .72); font-size: 11px; line-height: 16px; color: var(--text); }
+.svblk:hover { border-color: #5a6080; }
+.svblk.on { border: 2px solid var(--accent); z-index: 1; }
+.svtl .svcaps { position: relative; height: 22px; margin-top: 4px; }
+.svcap { position: absolute; top: 0; height: 20px; padding: 0 6px; border-radius: 4px; background: color-mix(in srgb, var(--pan) 22%, transparent); border: 1px solid color-mix(in srgb, var(--pan) 40%, transparent); font-size: 11px; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #cfe0ff; }
+.svtlnote { margin-top: 4px; }
+.svbd { flex: 1; min-height: 0; display: flex; gap: 14px; }
+.svinsp { flex: 1; min-width: 0; overflow-y: auto; padding-right: 4px; }
+.svside { width: min(380px, 36%); flex: none; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.svside .btnrow { align-items: center; margin: 0; }
+.svpv.small { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #000; display: grid; place-items: center; cursor: pointer; }
+.svpv.small canvas { display: block; }
+.svih { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.svfields { display: flex; flex-wrap: wrap; gap: 10px 16px; }
+.svfields label { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.modal .svfields select { width: auto; height: 30px; padding: 0 8px; }
+.svnum { display: inline-flex; align-items: center; gap: 6px; color: var(--text); font-size: 12.5px; }
+.svnum .btn.small { width: 28px; padding: 0; justify-content: center; }
+.svnum b { min-width: 42px; text-align: center; font-weight: 600; }
+.svlayers { display: flex; flex-direction: column; gap: 6px; }
+.svlayer { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+.modal .svlayer select, .modal .svcaprow select, .modal .svinsp > .btnrow select { width: auto; max-width: 220px; height: 30px; padding: 0 6px; font-size: 12.5px; }
+.modal .svlayer input:not([type=checkbox]), .modal .svcaprow input { height: 30px; padding: 4px 8px; font-size: 13px; }
+.modal .svlayer input[data-svlf="text"] { flex: 1; min-width: 160px; width: auto; }
+.svkind { font-size: 12.5px; color: var(--muted); padding: 0 4px; }
+.svlf { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--faint); }
+.svkb { padding: 0 4px !important; font-size: 12.5px; }
+.svsize { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--muted); }
+.modal .svsize input { width: 58px !important; }
+.svlyb { display: inline-flex; gap: 4px; margin-left: auto; }
+.svlyb .btn.small { width: 28px; padding: 0; justify-content: center; }
+.svinsp .btnrow { margin-top: 8px; align-items: center; }
+.svcaplist { display: flex; flex-direction: column; gap: 6px; }
+.svcaprow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.modal .svcaprow input[data-svcf="text"] { flex: 1; min-width: 150px; width: auto; }
+.svcaprow > .btn.small { width: 28px; padding: 0; justify-content: center; }
+.svct { font-size: 12px; color: var(--accent); cursor: pointer; min-width: 38px; }
+.svct:hover { text-decoration: underline; }
+.svnotes ul { margin: 0; padding-left: 18px; font-size: 12.5px; color: var(--muted); line-height: 1.7; }
+.svsum { margin: 0 0 6px; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; }
+.svdet summary { cursor: pointer; font-size: 12.5px; color: var(--muted); }
+.svdet .svlog { max-height: 220px; }
+
+/* shots */
+.svgal { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.svgal.small { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+.svshot { margin: 0; display: flex; flex-direction: column; gap: 5px; }
+.svshot .im { position: relative; aspect-ratio: 1; border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+  background: repeating-conic-gradient(#232637 0% 25%, #1c1e2b 0% 50%) 50% / 16px 16px; display: grid; place-items: center; }
+.svshot .im img { width: 100%; height: 100%; object-fit: contain; }
+.svshot figcaption { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.svshot .btn.small { align-self: flex-start; }
+.svshotnote { font-size: 11.5px; color: var(--warn); }
+.svshoterr { font-size: 11.5px; color: var(--err); }
+.svshot.bad .im { border-color: rgba(255, 138, 149, .6); }
+
+/* preview */
+.svpvw { flex: 1; min-height: 0; display: flex; gap: 14px; }
+.svstage { flex: 1; min-width: 0; min-height: 0; display: grid; place-items: center; border-radius: 12px; background: #000; overflow: hidden; }
+.svstage canvas { display: block; }
+.svpside { width: min(340px, 32%); flex: none; overflow-y: auto; }
+.svpside h5:first-child { margin-top: 0; }
+.svlook { white-space: pre-wrap; font-size: 12.5px; line-height: 1.7; color: var(--text); margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--card); }
+.svlooknotes { margin: 8px 0 0; padding-left: 18px; font-size: 12.5px; line-height: 1.7; }
+.svctl { flex: none; display: flex; align-items: center; gap: 12px; }
+.svctl input[type=range] { flex: 1; accent-color: var(--accent); padding: 0 !important; border: 0 !important; background: none !important; }
+.svtime { font-size: 12.5px; color: var(--muted); min-width: 92px; }
+
+/* export */
+.svxinfo { font-size: 13px; margin-bottom: 10px; }
+.svdir { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46ch; }
+.svsec .btnrow { margin-top: 10px; }
+.svxrow { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--muted); }
+.svsaved { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.svsaved li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.svsaved .path { flex: 1; min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.svchips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px 24px; }
+.svtabs { margin: 12px 0 8px; }
+.svcopyf { margin-bottom: 10px; }
+.svcopyf .h { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--muted); margin-bottom: 4px; }
+.svcopyf .v { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.6; padding: 8px 10px; border-radius: 8px; background: var(--card); border: 1px solid var(--line); min-height: 36px; }
+
+@media (max-width: 900px) {
+  .svbd, .svpvw { flex-direction: column; }
+  .svside, .svpside { width: auto; }
+  .svmain.svs3, .svmain.svs5 { overflow-y: auto; }
+  .svform { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) { .svbar i { transition: none; } .svbar.wait i { animation: none; margin-left: 35%; } }

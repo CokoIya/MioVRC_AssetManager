@@ -30,7 +30,7 @@ Copyright (c) 2026 天川澪 (Coko_Iya) — https://github.com/CokoIya/MioVRC_As
 ### 两种许可证都适用
 
 - 「MioVRCA」「MioVRC_AssetManager」名称、本项目图标、标志和作者署名不在任何一种许可证的授权范围内，保留所有权利（PolyForm Noncommercial 的「No Other Rights」条款同样不授予商标权利）。
-- 第三方代码（`third_party/`、`unitykit/` 等）按其各自的许可证授权，见 [README](README.md) 的「第三方代码」。
+- 第三方代码（`web/vendor/`、`third_party/`、`unitykit/` 等）按其各自的许可证授权，见 [README](README.md) 的「第三方代码」。
 - 本软件不提供任何担保（见两种许可证中的免责条款）。
 - 本说明的中文、日文是英文的翻译；如有不一致，以英文为准。
 
@@ -65,7 +65,7 @@ When you use, modify or convey this software, a modified version of it or a work
 ### Under either license
 
 - The names “MioVRCA” and “MioVRC_AssetManager”, the project's icon and logo, and the author's credit are not licensed under either license; all rights reserved (the PolyForm Noncommercial License's “No Other Rights” grants no trademark rights either).
-- Third-party code (`third_party/`, `unitykit/` and others) is licensed under its own licenses: see “第三方代码” (third-party code) in the [README](README.md).
+- Third-party code (`web/vendor/`, `third_party/`, `unitykit/` and others) is licensed under its own licenses: see “第三方代码” (third-party code) in the [README](README.md).
 - The Chinese and Japanese texts here are translations; where they differ, the English text governs.
 
 ### Source availability and historical source access policy

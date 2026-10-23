@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only OR PolyForm-Noncommercial-1.0.0
+// Copyright (c) 2026 天川澪 (Coko_Iya). Part of MioVRCA: https://github.com/CokoIya/MioVRC_AssetManager (terms in LICENSE.md)
 // Google Drive and Dropbox shares: netdisk cards of another service (keys gd:… / db:…). The cards, the
 // drawer's netdisk section and the download queue are app.js's; this file tells them which service a card
 // is on, and gives them the words and the download section that differ from a Baidu share's.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only OR PolyForm-Noncommercial-1.0.0
+// Copyright (c) 2026 天川澪 (Coko_Iya). Part of MioVRCA: https://github.com/CokoIya/MioVRC_AssetManager (terms in LICENSE.md)
 // 「ChatGPT 账号」: the player's ChatGPT plan in place of an API key (OpenAI's Sign in with ChatGPT). Signing in
 // happens in the player's own browser, on OpenAI's page. This file draws the sign-in in the AI service dialog and
 // follows one under way, shows the note that the plan is in use (once, after the first sign-in), the 「正在使用
@@ -39,7 +41,6 @@ function gptCardHTML() {
   }
   return `<div class="gptcard" id="gpt_card"><h4>使用你的 ChatGPT 套餐</h4>
     <p class="hint2">无需 API Key：AI 请求计入你的 ChatGPT 套餐用量，可在 ChatGPT 的设置中查看和限制。MioVRCA 本身免费，不收取任何费用。<button class="linkbtn" data-link="gpthelp">了解哪些套餐可用</button></p>
-    <p class="hint2">登录在你的浏览器中、OpenAI 的页面上进行，本软件不会接触你的密码。登录凭据加密保存在本机，仅发送至 OpenAI 官方接口；退出登录时会在 OpenAI 撤销本软件的授权。</p>
     ${body}${g.err && !g.pending ? `<div class="aitest err">${esc(g.err)}</div>` : ""}${g.unread ? `<div class="aitest err">ChatGPT 登录文件暂时无法读取，请稍后重试</div>` : ""}</div>`;
 }
 
@@ -49,8 +50,7 @@ function gptWelcome() {
   const m = $("#modal");
   m.dataset.kind = "aicfg";
   m.innerHTML = `<div class="mhead">你正在使用 ChatGPT 套餐</div><div class="mbody">
-    <p class="lead">本软件中符合条件的 AI 请求将使用你的 ChatGPT 套餐额度。</p>
-    <p class="hint2">可随时在 ChatGPT 的「设置 → 用量」中查看和管理本软件的用量，或在「AI 服务」中退出登录。</p>
+
   </div><div class="mfoot"><button class="btn ghost" data-link="gptusage">管理用量</button><span class="spacer"></span><button class="btn primary" data-ai="gptok">知道了</button></div>`;
   showModal();
 }

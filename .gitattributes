@@ -1,8 +1,12 @@
 * text=auto
 *.go text eol=lf
+internal/ai/*.txt text eol=lf
+internal/socialapi/testdata/*.json text eol=lf
 *.bat text eol=crlf
 *.nsi text eol=crlf
 *.ico binary
 *.syso binary
 *.dll binary
 *.zip binary
+web/vendor/nsfwjs/* binary
+web/vendor/tf.es2017.min.js -text

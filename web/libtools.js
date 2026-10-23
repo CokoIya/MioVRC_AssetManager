@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-only OR PolyForm-Noncommercial-1.0.0
+// Copyright (c) 2026 天川澪 (Coko_Iya). Part of MioVRCA: https://github.com/CokoIya/MioVRC_AssetManager (terms in LICENSE.md)
 // library tools: updates carried into projects, tidying, moving the library to another computer
 "use strict";
 
@@ -78,7 +80,7 @@ function ltJobHTML(j, inDlg) {
   else head = `<div>${failedN ? "新版本已下载，部分工程更新失败" : !(j.projects || []).length ? "新版本已下载" : doneN < j.projects.length ? "新版本已下载，部分工程未更新" : "新版本已下载，工程已更新"}</div>`;
   return `<div class="updjob" data-job="${id}"><div class="impres ${j.stage === "done" && !failedN ? "ok" : "err"}">${head}
       ${j.folder ? `<div class="small">${esc(j.folder)}</div>` : ""}
-      ${doneN ? `<div class="small">若 Unity 已打开，切换到 Unity 窗口即可刷新；否则将在下次打开工程时生效。</div>` : ""}
+
       ${recycled ? `<div class="small">旧版本已移至回收站：${j.recycled.map(o => esc(o.path)).join("、")}</div>` : ""}
       ${j.recycleErr ? `<div class="small warnline">旧版本未移至回收站：${esc(j.recycleErr)}</div>` : ""}
       ${j.recycle && !recycled && !j.recycleErr && j.stage !== "failed" ? `<div class="small">有工程未更新成功，旧版本已保留。</div>` : ""}</div>${rows}
@@ -106,7 +108,7 @@ function ltUpdSec(a) {
     h += `<div class="news"><div class="t">${esc(ltNoteTitle(n))}</div>${ltKV(ltNoteLines(n))}
       ${busy ? "" : `<div class="btnrow">${n.canDl ? `<button class="btn small primary" data-lt="upddl">${ICON.download}<span>下载新版</span></button><button class="btn small" data-lt="upddlg">${ICON.cube}<span>下载并更新到工程</span></button>`
         : `<button class="btn small" data-d="pan">打开网盘分享</button>`}<button class="btn small ghost" data-lt="updseen">标为已是最新</button></div>
-      ${n.canDl ? "" : `<div class="hint2">该网盘分享为手动关联，无法自动下载，请在网盘中下载新文件。</div>`}`}</div>`;
+      `}</div>`;
   }
   if (j) h += ltJobHTML(j, false);
   return `<div class="sec upd" id="updsec"><h4>素材更新${n ? `<span class="updtag">有更新</span>` : ""}</h4>${h}</div>`;
@@ -194,13 +196,12 @@ function ltDrawUpdDlg() {
       <span class="p"><b>${esc(p.name)}</b><span class="muted small">${esc(p.path)}</span></span>
       ${st.has(p.name) ? `<span class="tag ok">${st.get(p.name) === "used" ? "使用中" : "部分使用"}</span>` : ""}</label>`).join("")}</div>`
       : `<div class="muted small">尚未添加 Unity 工程，可在设置中添加工程文件夹。</div>`}
-    <div class="hint2">已默认勾选正在使用该素材的工程（已隐藏的工程除外）。将依次下载新版本、解压并导入所选工程：工程中已有的文件原位更新，已安装的插件（Packages）不会被覆盖。未勾选工程时仅下载新版本。</div>
     ${old.length ? `<h4 class="boardh">旧版本</h4>
       <label class="check opt"><input type="checkbox" id="lt_recycle"${d.recycle ? " checked" : ""}> 全部更新成功后，将旧版本移至回收站</label>
       <div class="ltfiles">${old.map(o => `<div class="ltfile"><span class="p">${esc(o.path)}</span><span class="s">${fmtSize(o.size)}</span></div>`).join("")}</div>
       <div class="hint2">未勾选时保留旧版本。勾选后将移至回收站的内容如上所列，可释放空间：<b>${fmtSize(oldSize)}</b></div>`
-      : n.source === "pan" ? `<div class="hint2">网盘分享中的新文件将下载到该素材原有的文件夹；同名的旧文件会被新文件替换，其余文件保持不变。</div>`
-      : `<div class="hint2">新文件将下载到下载位置中该商品的文件夹，原有文件保持不变。</div>`}`;
+      : n.source === "pan" ? `<div class="hint2">同名文件会被替换。</div>`
+      : ``}`;
   ltShow("upd", "下载并更新到工程", body, `<button class="btn ghost" data-m="close">取消</button><span class="spacer"></span><button class="btn primary" data-lt="updstart" id="lt_updgo">${d.picked.size ? "开始更新" : "仅下载新版"}</button>`);
 }
 async function ltStartUpdate(key, projects, recycle) {
@@ -286,8 +287,8 @@ function ltDupTab() {
   const t = LT.tidy, part = t.st ? t.st.dup : { run: {} }, r = part.dup;
   const sizes = [[1 << 20, "1 MB 以上"], [100 << 10, "100 KB 以上"], [1, "全部文件"]];
   let h = ltScanBar("dup", part, "扫描重复文件", `<select id="lt_min" class="ltsel" title="参与比较的最小文件大小">${sizes.map(([v, l]) => `<option value="${v}"${t.minSize === v ? " selected" : ""}>${l}</option>`).join("")}</select>`);
-  h += `<div class="hint2">在素材文件夹和下载位置中查找内容完全相同的文件：先比较大小，再比较文件片段，仅对仍然相同的文件读取全部内容。Unity 工程内的文件不参与比较。</div>
-    <div class="hint2">标有「分属不同素材」或「同一素材内」的组，其中的每一份可能都被对应的素材需要，不会按建议勾选，请确认后手动勾选。</div>`;
+  h += `
+    <div class="hint2">重复文件可能仍被素材使用，请核对后勾选。</div>`;
   if (!r) return h;
   h += `<div class="ltsum"><span>重复文件组<b>${esc(r.total)}</b></span><span>可释放空间<b>${ltSize(r.waste)}</b></span><span>已检查文件<b>${esc(r.files)}</b></span></div>${ltWarn(r.warnings)}`;
   if (t.note) h += ltDoneNote(t.note);
@@ -310,10 +311,10 @@ function ltDupTab() {
 function ltArcTab() {
   const t = LT.tidy, part = t.st ? t.st.arc : { run: {} }, r = part.arc;
   let h = ltScanBar("arc", part, "扫描压缩包");
-  h += `<div class="hint2">查找内容已解压到旁边或素材文件夹中的压缩包。仅列出已核对的压缩包：按文件名和大小，将压缩包内的文件与已解压的文件逐一比对。分卷压缩包按一项处理。</div>`;
+  h += ``;
   if (!r) return h;
   h += `<div class="ltsum"><span>可清理的压缩包<b>${esc(r.items.length)}</b></span><span>可释放空间<b>${ltSize(r.free)}</b></span><span>已检查压缩包<b>${esc(r.archives)}</b></span>${r.unreadable ? `<span>无法读取<b>${esc(r.unreadable)}</b></span>` : ""}</div>${ltWarn(r.warnings)}`;
-  if (r.unreadable) h += `<div class="small muted">无法读取内容的压缩包未列出：rar、7z 和分卷压缩包需安装 7-Zip，加密压缩包无法核对。</div>`;
+  if (r.unreadable) h += `<div class="small muted">加密压缩包无法核对；rar、7z 需安装 7-Zip。</div>`;
   if (t.note) h += ltDoneNote(t.note);
   if (!r.items.length) return h + `<div class="empty small"><h2>未发现可清理的压缩包</h2></div>`;
   const shown = r.items.slice(0, t.shown.arc);
@@ -346,7 +347,6 @@ function ltSpaceTab() {
   const cr = [...cats.entries()].map(([c, v]) => ({ label: c, size: v.size, n: v.units.size, dot: CAT_COLOR[c] || "#8b8fa6" })).sort((x, y) => y.size - x.size);
   const top = list.map(a => ({ a, size: total(a) })).sort((x, y) => y.size - x.size).slice(0, 50);
   return `<div class="ltsum"><span>素材库占用空间<b>${ltSize(all)}</b></span><span>素材<b>${countUnits(list)}</b></span></div>
-    <div class="hint2">按素材库中记录的大小统计，重新扫描后更新。</div>
     <h4 class="boardh">按文件夹</h4><div class="ltbars">${bars(rr, rr.length ? rr[0].size : 0) || `<div class="muted small">暂无素材</div>`}</div>
     <h4 class="boardh">按分类</h4><div class="ltbars">${bars(cr, cr.length ? cr[0].size : 0)}</div>
     <h4 class="boardh">占用空间最大的素材</h4>
@@ -368,7 +368,7 @@ function ltCompatTab() {
   const n = s => s ? s.size : 0;
   const td = (count, attrs) => count ? `<td><button class="ltcell" ${attrs}>${count}</button></td>` : `<td class="zero">·</td>`;
   if (!bases.length && !n(none.get(""))) return `<div class="empty small"><h2>暂无素材</h2></div>`;
-  return `<div class="hint2">各素体在每个分类下的素材数量，来自素材的「适配素体」信息。点击数字可在素材库中查看对应的素材。</div>
+  return `
     <div class="lttablewrap"><table class="lttable"><thead><tr><th>适配素体</th>${cats.map(c => `<th><i style="background:${CAT_COLOR[c] || "#8b8fa6"}"></i>${esc(c)}</th>`).join("")}<th>合计</th></tr></thead>
     <tbody>${bases.map(b => `<tr><th title="${esc(b)}">${esc(b)}</th>${cats.map(c => td(n(cell.get(b + "\n" + c)), `data-lt="compat" data-base="${esc(b)}" data-cat="${esc(c)}"`)).join("")}${td(n(byBase.get(b)), `data-lt="compat" data-base="${esc(b)}" data-cat=""`)}</tr>`).join("")}
     <tr class="none"><th>未识别适配素体</th>${cats.map(c => td(n(none.get(c)), `data-lt="compat" data-base="" data-cat="${esc(c)}"`)).join("")}${td(n(none.get("")), `data-lt="compat" data-base="" data-cat=""`)}</tr></tbody></table></div>
@@ -396,7 +396,7 @@ function ltConfirmBody() {
   return `<p class="lead">以下文件将移至回收站。</p>
     <div class="ltsum"><span>文件<b>${c.files.length}</b></span><span>可释放空间<b>${fmtSize(c.size)}</b></span></div>
     <div class="ltfiles tall">${c.files.map(f => `<div class="ltfile"><span class="p">${esc(f.path)}</span><span class="s">${fmtSize(f.size)}</span></div>`).join("")}</div>
-    <div class="hint2">文件不会被永久删除，可在 Windows 回收站中还原。扫描后发生变化的文件不会被移动。</div>`;
+    `;
 }
 function ltDrawTidy() {
   const t = LT.tidy;
@@ -416,13 +416,13 @@ function ltGoAsset(key) {
 function ltSettingsRow() {
   return `<div class="row" id="s_move"><label>迁移到另一台电脑</label>
     <div class="btnrow" style="margin-top:0"><button class="btn small" data-lt="exportopen">导出素材库…</button><button class="btn small" data-lt="importopen">导入素材库…</button><button class="btn small ghost" data-lt="moveopen">备份与待映射文件夹</button></div>
-    <div class="muted small" style="margin-top:6px">将素材库数据（素材列表、备注、标签、封面、已购和网盘记录等）导出为一个 zip 文件，在另一台电脑上导入。素材文件本身不包含在内，需自行复制。</div></div>
+    </div>
     <div class="row" id="s_ae"><label>Avatar Explorer</label>
     <div class="btnrow" style="margin-top:0"><button class="btn small" data-lt="aeopen">导入素材信息…</button></div>
-    <div class="muted small" style="margin-top:6px">使用过 Avatar Explorer 的玩家，可将其中记录的素材信息（Booth 商品、分类、适配素体、标签、备注、封面）补充到本素材库。扫描时会自动跳过 Avatar Explorer 的数据库和备份，只收录其中的素材文件夹。</div></div>
+    </div>
     <div class="row" id="s_ka"><label>KonoAsset</label>
     <div class="btnrow" style="margin-top:0"><button class="btn small" data-lt="kaopen">导入素材信息…</button></div>
-    <div class="muted small" style="margin-top:6px">使用过 KonoAsset 的玩家，可将其中记录的素材信息（Booth 商品、分类、适配素体、标签、备注、封面）补充到本素材库。扫描时会自动跳过 KonoAsset 的数据库和图片，只收录其中的素材文件夹。</div></div>`;
+    </div>`;
 }
 // ---------- another asset manager's library (Avatar Explorer, KonoAsset) ----------
 // (one dialog for both: what it says of the manager, by LT.ae.src)
@@ -452,7 +452,7 @@ async function ltAEPick(dir) {
 function ltDrawAE() {
   const ae = LT.ae; if (!ae) return;
   const m = LT_MGR[ae.src];
-  let body = `<p class="lead">${m.lead}</p>`, foot = "";
+  let body = "", foot = "";
   if (ae.res) {
     const r = ae.res;
     body += `<div class="impres ok"><div>导入完成</div>
@@ -530,8 +530,7 @@ async function pkExtract(key, remove) {
 function pkTab() {
   const list = ltCounted().filter(isLocal), none = list.filter(a => !a.cover), can = none.filter(pkWants), from = list.filter(a => a.coverPkg);
   const b = PK.batch;
-  return `<div class="hint2">unitypackage 内带有 Unity 生成的预览图（prefab 的渲染图、贴图的缩略图）。没有封面的素材会在每次扫描后自动从中提取封面；此处可立即为全部素材提取，并重试此前未找到预览图的素材。</div>
-    <div class="hint2">来自 unitypackage 的封面排在最后：关联 Booth 商品、选择图片或从 Unity 生成封面后，将改用其封面。在素材详情中可以移除它，或重新提取。</div>
+  return `
     <div class="ltsum"><span>没有封面的素材<b>${esc(none.length)}</b></span><span>其中带 unitypackage 的<b>${esc(can.length)}</b></span><span>封面来自 unitypackage<b>${esc(from.length)}</b></span></div>
     <div id="lt_pkprog">${pkProgHTML()}</div>
     <div class="btnrow"><button class="btn small primary" data-lt="pkbatch"${(b && b.running) || !can.length ? " disabled" : ""}>为没有封面的素材提取封面</button>${!can.length ? `<span class="muted small">没有封面的素材中，没有可读取的 unitypackage。</span>` : ""}</div>`;
@@ -595,7 +594,7 @@ function ltDrawMove() {
   if (mv.step === "export") {
     head = "导出素材库";
     const run = mv.run;
-    body = `<p class="lead">将素材库数据导出为一个 zip 文件，用于迁移到另一台电脑。</p>
+    body = `<p class="hint2">素材文件需另行复制。</p>
       <div class="ltnote"><div><b>包含</b>素材列表、备注、标签和分类调整，Booth 封面，已购记录和网盘分享记录，以及配方、愿望单等数据文件。</div>
         <div><b>不包含</b>素材文件本身、Unity 工程、缩略图缓存和日志。</div><div>${LT_SECRET}</div></div>
       ${run && run.running ? ltRunHTML(run) : run && run.path ? `<div class="impres ok"><div>导出完成</div><div class="small">${esc(run.path)}</div>
@@ -605,10 +604,10 @@ function ltDrawMove() {
           <div class="inline"><input id="lt_exp_dir" value="${esc(mv.dir)}" placeholder="选择保存导出文件的文件夹"><button class="btn small" data-lt="exppick">${ICON.folder}<span>选择…</span></button></div></div>`}`;
     foot = `<span class="spacer"></span><button class="btn ghost" data-m="close">${run && run.path ? "关闭" : "取消"}</button>${run && (run.running || run.path) ? "" : `<button class="btn primary" data-lt="expgo" id="lt_expgo">导出</button>`}`;
   } else if (mv.step === "pick") {
-    body = `<p class="lead">选择在另一台电脑上导出的素材库文件（zip）。</p>
+    body = `
       <div class="row"><label>导出文件</label><div class="inline"><input id="lt_imp_path" value="${esc(mv.path)}" placeholder="例如 D:\\MioVRCA-library-20260101-120000.zip"><button class="btn small" data-lt="imppick">${ICON.folder}<span>选择文件…</span></button></div></div>
       ${mv.err ? `<div class="impres err">${esc(mv.err)}</div>` : ""}
-      <div class="hint2">导入前会自动备份当前素材库，导入后可以撤销。</div>`;
+      `;
     foot = `<span class="spacer"></span>${mv.fromSetup ? `<button class="btn ghost" data-lt="setupback">返回</button>` : `<button class="btn ghost" data-m="close">取消</button>`}<button class="btn primary" data-lt="impnext" id="lt_impnext"${mv.busy ? " disabled" : ""}>${mv.busy ? "正在读取…" : "下一步"}</button>`;
   } else if (mv.step === "map") {
     const info = mv.info;
@@ -617,12 +616,11 @@ function ltDrawMove() {
       ${info.kind === "import-backup" ? `<div class="small warnline">这是导入前自动生成的备份文件。</div>` : ""}
       <h4 class="boardh">素材文件夹在本机的位置</h4>
       ${info.roots.length ? ltMapRows(info.roots, "root") : `<div class="muted small">导出文件中没有素材文件夹。</div>`}
-      <div class="hint2">请为导出文件中的每个素材文件夹指定本机上存放相同内容的文件夹；素材的备注、标签、封面和使用情况会随之对应到新位置。暂未复制过来的文件夹可以留空，稍后在「备份与待映射文件夹」中指定。</div>
       ${info.projectRoots.length ? `<h4 class="boardh">Unity 工程文件夹在本机的位置（选填）</h4>${ltMapRows(info.projectRoots, "proj")}` : ""}
       <h4 class="boardh">导入方式</h4>
-      <label class="cand"><input type="radio" name="lt_mode" value="merge"${mv.mode === "merge" ? " checked" : ""}><span class="p"><b>合并</b><span class="muted small">保留当前素材库，加入导出文件中的内容。同一素材的备注以当前素材库为准，为空时采用导出文件中的内容；标签合并。</span></span></label>
+      <label class="cand"><input type="radio" name="lt_mode" value="merge"${mv.mode === "merge" ? " checked" : ""}><span class="p"><b>合并</b><span class="muted small">保留已有备注，补充空项并合并标签。</span></span></label>
       <label class="cand"><input type="radio" name="lt_mode" value="replace"${mv.mode === "replace" ? " checked" : ""}><span class="p"><b>替换</b><span class="muted small">以导出文件中的内容替换当前素材库和数据文件。</span></span></label>
-      <div class="ltnote"><div>导入前会自动备份当前素材库（数据文件夹中带日期的 zip 文件），导入后可以撤销。</div><div>${LT_SECRET}</div></div>
+      <div class="ltnote"><div>${LT_SECRET}</div></div>
       ${mv.err ? `<div class="impres err">${esc(mv.err)}</div>` : ""}`;
     foot = `<button class="btn ghost" data-lt="impback"${mv.busy ? " disabled" : ""}>返回上一步</button><span class="spacer"></span>${mv.fromSetup ? "" : `<button class="btn ghost" data-m="close">取消</button>`}<button class="btn primary" data-lt="impgo"${mv.busy ? " disabled" : ""}>${mv.busy ? "正在导入…" : "开始导入"}</button>`;
   } else if (mv.step === "done") {
@@ -644,7 +642,7 @@ function ltDrawMove() {
       <h4 class="boardh">导入前的备份</h4>
       ${s.undo ? `<div class="ltnote"><div>上次导入前的素材库已备份，可恢复到导入前的状态。</div>${s.from ? `<div class="small muted">导入的文件：${esc(s.from)}</div>` : ""}<div class="btnrow"><button class="btn small" data-lt="impundo">撤销上次导入</button></div></div>` : ""}
       ${s.backups.length ? `<div class="ltfiles">${s.backups.map(b => `<div class="ltfile"><span class="p">${esc(b.path)}</span><span class="s">${esc(fmtTime(b.at))}</span><span class="s">${fmtSize(b.size)}</span></div>`).join("")}</div>
-        <div class="btnrow"><button class="btn small" data-gopen="${esc(s.backups[0].path)}">打开所在文件夹</button></div><div class="hint2">备份文件不会自动删除，不再需要时可自行删除。</div>` : `<div class="muted small">暂无备份。</div>`}`;
+        <div class="btnrow"><button class="btn small" data-gopen="${esc(s.backups[0].path)}">打开所在文件夹</button></div>` : `<div class="muted small">暂无备份。</div>`}`;
     foot = `<span class="spacer"></span><button class="btn primary" data-m="close">关闭</button>`;
   }
   ltShow("move", head, body, foot);

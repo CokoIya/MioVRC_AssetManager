@@ -1,10 +1,15 @@
-// outfitting recipes: save a pipeline run, apply it elsewhere, export and import
+// SPDX-License-Identifier: GPL-3.0-only OR PolyForm-Noncommercial-1.0.0
+// Copyright (c) 2026 天川澪 (Coko_Iya). Part of MioVRCA: https://github.com/CokoIya/MioVRC_AssetManager (terms in LICENSE.md)
+// outfitting recipes: save a pipeline run, apply it elsewhere, share it (a code, a file, the community's list)
 "use strict";
 // list: the saved recipes (null: not read yet); rev: the state it was read at; ready: the project (readyFor)
 // has a run that can be saved; sig: the session as it was when that was last asked; view: what the dialog
-// shows (list, save, rename, preview, import); form: what is typed in it, kept over a redraw
-const RCP = { list: null, rev: -1, ready: false, readyFor: "", sig: "", loading: false, view: "list", cur: null, pv: null, form: { name: "", note: "" }, imp: null, busy: false };
+// shows (list, save, rename, preview, import, share, paste, community); form: what is typed in it, kept over a
+// redraw; share: the recipe being shared and its code; paste: the code typed; com: the community's list
+const RCP = { list: null, rev: -1, ready: false, readyFor: "", sig: "", loading: false, view: "list", cur: null, pv: null, form: { name: "", note: "" }, imp: null, busy: false,
+  share: null, paste: "", pasteErr: "", com: null, comErr: "", comBusy: false, comQ: "", comBase: "" };
 const RCP_MAX = 512 * 1024;
+const RCP_SHOW = 150; // community entries drawn at once (the rest are found by searching)
 
 async function recipeLoad() {
   if (RCP.loading) { RCP.again = true; return; }
@@ -76,11 +81,12 @@ function recipeMeta(r) {
 function recipeListHTML() {
   const list = RCP.list;
   if (list === null) return `<div class="aiempty">正在读取…</div>`;
-  if (!list.length) return `<div class="aiempty">暂无方案。<br>流水线运行完成后，可在「验收」步骤点击「保存为方案」，也可导入他人分享的方案文件。</div>`;
+  if (!list.length) return `<div class="aiempty">暂无方案。<br>流水线运行完成后，可在「验收」步骤点击「保存为方案」；也可以粘贴朋友发来的分享码，或在「社区方案」中找一个。</div>`;
+  const from = r => (r.from || "").startsWith("community:") ? `<span class="tag faint" title="来自社区方案">社区</span>` : r.imported ? `<span class="tag faint" title="由方案文件或分享码导入">导入</span>` : "";
   return `<div class="rcplist">${list.map(r => `<div class="rcp" data-rid="${esc(r.id)}">
-      <div class="rcpinfo"><div class="nm" title="${esc(r.name)}"><span data-i18n="off">${esc(r.name)}</span>${r.imported ? `<span class="tag faint" title="由方案文件导入">导入</span>` : ""}</div>
+      <div class="rcpinfo"><div class="nm" title="${esc(r.name)}"><span data-i18n="off">${esc(r.name)}</span>${from(r)}</div>
         <div class="meta">${recipeMeta(r)}</div>${r.note ? `<div class="note" data-i18n="off">${esc(r.note)}</div>` : ""}</div>
-      <div class="rcpacts"><button class="btn small primary" data-recipe="apply" data-id="${esc(r.id)}">应用</button><button class="btn small" data-recipe="rename" data-id="${esc(r.id)}">重命名</button><button class="btn small" data-recipe="export" data-id="${esc(r.id)}">导出</button><button class="btn small ghost" data-recipe="delete" data-id="${esc(r.id)}">删除</button></div>
+      <div class="rcpacts"><button class="btn small primary" data-recipe="apply" data-id="${esc(r.id)}">应用</button><button class="btn small" data-recipe="share" data-id="${esc(r.id)}" title="分享码、导出为文件、分享到社区">分享</button><button class="btn small" data-recipe="rename" data-id="${esc(r.id)}">重命名</button><button class="btn small ghost" data-recipe="delete" data-id="${esc(r.id)}">删除</button></div>
     </div>`).join("")}</div>`;
 }
 const RCP_STATUS = { dress: ["", "将装配"], worn: ["ok", "已在模型上"], missing: ["warn", "未导入"] };
@@ -109,14 +115,134 @@ function recipePreviewHTML() {
 function recipeImportHTML() {
   const x = RCP.imp; if (!x) return "";
   const r = x.recipe, needs = x.needs || [];
+  const c = x.community ? (RCP.com && RCP.com.rows || []).find(e => e.id === x.community) : null;
   let items = 0; for (const m of r.menus || []) items += (m.items || []).length;
   return `<div class="rcphead"><b>${esc(r.name)}</b><span class="meta">${recipeMeta({ base: (r.base || {}).name, assets: (r.assets || []).length, items, created: r.created })}</span></div>
+    ${c && c.author && !c.login ? `<div class="small muted">${esc(`分享者：${c.author}`)}</div>` : ""}${recipeByHTML((c && c.login) || r.author, (c && c.author) || r.author, c ? c.links : r.links)}
     ${r.note ? `<div class="rcpnote plain" data-i18n="off">${esc(r.note)}</div>` : ""}
     <div class="row"><label>所需素材</label>
     <table class="atable rcptable"><tbody>${needs.map(n => `<tr><td class="nm" title="${esc(n.name)}">${esc(n.name)}</td><td>${esc(n.kind)}${n.version ? `<span class="muted small">　${esc(n.version)} 版本</span>` : ""}</td>
       <td class="marks">${n.libKey ? `<span class="tag ok">素材库中已有</span>` : `<span class="tag">素材库中没有</span>`}</td>
       <td class="r">${n.link ? `<button class="btn small ghost" data-recipe="link" data-href="${esc(n.link)}" title="${esc(n.link)}">商品页</button>` : ""}</td></tr>`).join("") || `<tr><td class="muted">该方案不含素材</td></tr>`}</tbody></table></div>
-    <div class="hint2">方案只记录素材在工程中的位置和菜单结构，不包含素材文件。导入后，在装有这些素材的工程中即可应用。</div>`;
+    `;
+}
+// who made a recipe (their page in the community, 1.8.1) and the links they gave
+function recipeByHTML(login, name, links) {
+  if (!login && !(links || []).length) return "";
+  const who = login ? (typeof soCreatorBtn === "function" ? soCreatorBtn(login, name || login) : `<span data-i18n="off">${esc("@" + login)}</span>`) : "";
+  return `<div class="rcpby">${who ? `<span class="small muted">作者</span>${who}` : ""}${typeof socialLinksHTML === "function" ? socialLinksHTML(links) : ""}</div>`;
+}
+// the share dialog's 作者与链接: kept with the recipe, they go with its code and its file
+function recipeMetaHTML(x) {
+  if (!x.meta) {
+    const r = recipeById(x.id) || {};
+    x.meta = { author: r.author || (typeof SO !== "undefined" && SO.st && SO.st.login) || "", links: (r.links || []).map(l => ({ url: l.url, label: l.label || "", kind: l.kind })) };
+  }
+  const rows = typeof soLinkRows === "function" ? soLinkRows("rcp_links", x.meta.links, 8) : "";
+  return `<h5 class="lmh">作者与链接（选填）</h5>
+
+    <div class="row"><label for="rcp_author">作者（GitHub 用户名）</label><input id="rcp_author" value="${esc(x.meta.author)}" placeholder="例如：mio" maxlength="39" autocomplete="off" spellcheck="false"></div>
+    <div class="row"><label>相关链接</label>${rows}</div>
+    <div class="btnrow"><button class="btn small" data-recipe="metasave"${RCP.busy ? " disabled" : ""}>保存并更新分享码</button></div>
+    `;
+}
+function recipeMetaRead() {
+  const x = RCP.share; if (!x || !x.meta) return null;
+  const a = $("#rcp_author"); if (a) x.meta.author = a.value.trim().replace(/^@/, "");
+  if (typeof soLinkRead === "function" && $("#rcp_links")) {
+    const old = x.meta.links;
+    x.meta.links = soLinkRead("rcp_links").map((l, i) => Object.assign(l, { kind: old[i] && old[i].url === l.url ? old[i].kind : "" }));
+  }
+  return x.meta;
+}
+// ---------- sharing ----------
+function recipeShareHTML() {
+  const x = RCP.share; if (!x) return "";
+  const r = recipeById(x.id) || { name: "" }, n = x.code ? x.code.length : 0;
+  const code = x.code ? `<div class="mcpcode rcpcode"><pre id="rcp_code" data-i18n="off">${esc(x.code)}</pre><button class="btn small" data-recipe="copycode">复制</button></div>
+      <div class="small muted mcpsub">${esc(`共 ${n} 个字符`)}${n > 2000 ? `　<span class="warnc">${esc("超过 2000 个字符：Discord 等有字数限制的地方请改用文件")}</span>` : ""}</div>`
+    : x.err ? `<div class="small err">${esc(x.err)}</div>` : `<div class="rmbusy"><i class="spin"></i>正在生成分享码…</div>`;
+  return `<div class="rcphead"><b data-i18n="off">${esc(r.name)}</b><span class="meta">${r.id ? recipeMeta(r) : ""}</span></div>
+    <h5 class="lmh">分享码</h5>
+
+    ${code}
+    ${recipeMetaHTML(x)}
+    <h5 class="lmh">导出为文件</h5>
+
+    <div class="btnrow"><button class="btn small" data-recipe="export" data-id="${esc(x.id)}">导出为文件…</button></div>
+    <h5 class="lmh">分享到社区</h5>
+    <div class="btnrow"><button class="btn small" data-recipe="communityshare" data-id="${esc(x.id)}"${RCP.busy ? " disabled" : ""}>分享到社区…</button></div>`;
+}
+function recipePasteHTML() {
+  return `
+    <div class="row"><label for="rcp_paste">分享码</label><textarea id="rcp_paste" class="rcppaste" spellcheck="false" autocomplete="off" placeholder="MIOVRCA-RECIPE-1:…">${esc(RCP.paste)}</textarea></div>
+    ${RCP.pasteErr ? `<div class="small err" role="status">${esc(RCP.pasteErr)}</div>` : ""}`;
+}
+// ---------- the community's list ----------
+function recipeComRows() {
+  const c = RCP.com; if (!c) return [];
+  const q = RCP.comQ.trim().toLowerCase(), words = q ? q.split(/\s+/) : [];
+  return (c.rows || []).filter(e => {
+    if (RCP.comBase && e.base !== RCP.comBase) return false;
+    if (!words.length) return true;
+    const hay = [e.name, e.note, e.base, e.author, e.login].concat((e.assets || []).map(a => a.name)).join("\n").toLowerCase();
+    return words.every(w => hay.includes(w));
+  });
+}
+function recipeComListHTML() {
+  const c = RCP.com;
+  if (!c) return RCP.comErr ? `<div class="aiempty err">${esc(RCP.comErr)}</div>` : `<div class="rmbusy"><i class="spin"></i>正在读取社区方案…</div>`;
+  if (c.closed) return `<div class="aiempty">${esc(c.closed)}</div>`;
+  const rows = recipeComRows();
+  if (!rows.length) return `<div class="aiempty">${(c.rows || []).length ? "没有符合条件的方案" : "社区方案库中还没有方案"}</div>`;
+  const entry = e => {
+    const meta = []; // (each piece a text of its own: the pieces are looked up one by one)
+    if (e.base) meta.push(`<span>素体 ${esc(e.base)}</span>`);
+    meta.push(`<span>${esc((e.assets || []).length)} 项素材</span>`);
+    if (e.items) meta.push(`<span>${esc(e.items)} 项菜单</span>`);
+    if (e.login && typeof soCreatorBtn === "function") meta.push(soCreatorBtn(e.login, e.author || e.login));
+    else if (e.author) meta.push(`<span data-i18n="off">${esc(e.author)}</span>`);
+    if (e.added) meta.push(`<span>${esc(e.added)}</span>`);
+    // (the chip's name is data, so the page leaves it alone: its tooltip is translated here)
+    const owned = i => { const t = (e.owned || [])[i] ? "素材库中已有" : "素材库中没有"; return window.I18N ? I18N.t(t) : t; };
+    const chips = (e.assets || []).map((a, i) => `<span class="tag${(e.owned || [])[i] ? " ok" : ""}" title="${esc(owned(i))}" data-i18n="off">${esc(a.name)}</span>`).join("");
+    const n = (e.assets || []).length;
+    return `<div class="rcp" data-cid="${esc(e.id)}">
+      <div class="rcpinfo"><div class="nm" title="${esc(e.name)}"><span data-i18n="off">${esc(e.name)}</span>${e.imported ? `<span class="tag faint">已在我的方案中</span>` : ""}</div>
+        <div class="meta">${meta.join(" · ")}${n ? ` · <span class="${e.have === n ? "okc" : ""}">${esc(`已有 ${e.have}/${n} 项素材`)}</span>` : ""}</div>
+        ${e.note ? `<div class="note" data-i18n="off">${esc(e.note)}</div>` : ""}${chips ? `<div class="rcpchips">${chips}</div>` : ""}${typeof socialLinksHTML === "function" ? socialLinksHTML(e.links) : ""}</div>
+      <div class="rcpacts"><button class="btn small${e.imported ? "" : " primary"}" data-recipe="comview" data-cid="${esc(e.id)}"${RCP.comBusy ? " disabled" : ""}>查看</button></div>
+    </div>`;
+  };
+  const more = rows.length > RCP_SHOW ? `<div class="aiempty small">${esc(`还有 ${rows.length - RCP_SHOW} 个方案，请用搜索缩小范围`)}</div>` : "";
+  return `<div class="rcplist">${rows.slice(0, RCP_SHOW).map(entry).join("")}</div>${more}`;
+}
+function recipeComHTML() {
+  const c = RCP.com;
+  const bases = c && c.bases || [];
+  const when = !c || c.closed ? "" : c.offline ? `<span class="warnc">${esc(`暂时无法更新（${c.offline}），显示的是 ${fmtTime(c.fetched)} 读取的列表`)}</span>`
+    : c.fetched ? esc(`列表读取于 ${fmtTime(c.fetched)}`) : "";
+  return `
+    <div class="rcpcomtop"><input id="rcp_q" type="search" value="${esc(RCP.comQ)}" placeholder="搜索方案、素体、素材、分享者" autocomplete="off" spellcheck="false">
+      <select id="rcp_base"><option value="">全部素体</option>${bases.map(b => `<option value="${esc(b)}"${b === RCP.comBase ? " selected" : ""} data-i18n="off">${esc(b)}</option>`).join("")}</select>
+      <button class="btn small" data-recipe="comrefresh"${RCP.comBusy ? " disabled" : ""}>${RCP.comBusy ? `<i class="spin"></i>` : ""}刷新</button></div>
+    <div class="small muted rcpwhen">${when}</div>
+    <div id="rcp_com">${recipeComListHTML()}</div>
+    `;
+}
+function recipeComDraw() {
+  const el = $("#rcp_com"); if (!el || RCP.view !== "community") return;
+  const refocus = focusMark(el);
+  if (put(el, recipeComListHTML())) refocus();
+}
+async function recipeComLoad(refresh) {
+  if (RCP.comBusy) return;
+  RCP.comBusy = true; RCP.comErr = "";
+  if (recipeOpen() && RCP.view === "community") recipeRender();
+  let r; try { r = await api("/api/recipe/community", { refresh: !!refresh }); } catch (e) { r = { ok: false, err: "程序无响应" }; }
+  RCP.comBusy = false;
+  if (r.ok) RCP.com = r.list; else RCP.comErr = r.err || "无法读取社区方案";
+  if (recipeOpen() && RCP.view === "community") recipeRender();
 }
 function recipeFormHTML(lead) {
   const f = RCP.form;
@@ -143,13 +269,30 @@ function recipeRender() {
   } else if (v === "import") {
     head = "导入方案";
     body = recipeImportHTML();
-    foot = `<span class="spacer"></span><button class="btn ghost" data-recipe="open">取消</button><button class="btn primary" data-recipe="importgo"${dis}>导入</button>`;
+    const back = RCP.imp && RCP.imp.community ? "community" : RCP.imp && RCP.imp.pasted ? "paste" : "open";
+    foot = `<span class="spacer"></span><button class="btn ghost" data-recipe="${back}">${back === "open" ? "取消" : "返回"}</button><button class="btn primary" data-recipe="importgo"${dis}>导入</button>`;
+  } else if (v === "share") {
+    head = "分享方案";
+    body = recipeShareHTML();
+    foot = `<button class="btn ghost" data-recipe="open">方案列表</button><span class="spacer"></span><button class="btn primary" data-recipe="close">关闭</button>`;
+  } else if (v === "paste") {
+    head = "粘贴分享码";
+    body = recipePasteHTML();
+    foot = `<button class="btn ghost" data-recipe="open">返回</button><span class="spacer"></span><button class="btn primary" data-recipe="pastego"${dis}>读取</button>`;
+  } else if (v === "community") {
+    head = "社区方案";
+    body = recipeComHTML();
+    foot = `<button class="btn ghost" data-recipe="open">方案列表</button><span class="spacer"></span><button class="btn primary" data-recipe="close">关闭</button>`;
   } else {
-    body = `<p class="lead">方案记录一次流水线装配的素材和菜单，可在其他工程或其他素体上直接应用，也可导出为文件分享。</p><div id="rcp_list"></div>`;
-    foot = `<button class="btn" data-recipe="import">导入方案…</button>${recipeCanSave() ? `<button class="btn" data-recipe="save">保存当前结果为方案</button>` : ""}<span class="spacer"></span><button class="btn primary" data-recipe="close">关闭</button>
+    body = `
+      <div class="btnrow rcptools"><button class="btn small" data-recipe="community">社区方案</button><button class="btn small" data-recipe="paste">粘贴分享码</button><button class="btn small" data-recipe="import">从文件导入…</button></div>
+      <div id="rcp_list"></div>`;
+    foot = `${recipeCanSave() ? `<button class="btn" data-recipe="save">保存当前结果为方案</button>` : ""}<span class="spacer"></span><button class="btn primary" data-recipe="close">关闭</button>
       <input type="file" id="rcp_file" accept=".json,application/json" hidden>`;
   }
+  const keep = v === "community" ? focusMark(m) : () => {};
   m.innerHTML = `<div class="mhead">${head}</div><div class="mbody">${body}</div><div class="mfoot rcpfoot">${foot}</div>`;
+  keep();
   recipeListDraw();
 }
 function recipeById(id) { return (RCP.list || []).find(r => r.id === id); }
@@ -172,9 +315,7 @@ async function recipeAction(b) {
     return recipeLoad();
   }
   if (what === "link") {
-    const u = b.dataset.href;
-    if (S.data.paneMode && (isBoothURL(u) || webKind(u) !== "booth")) closeModal(); // a page inside the program would open behind the dialog
-    return openLink(u);
+    return soOpenLink("", b.dataset.href, "", b);
   }
   if (what === "save") { if (p) recipeShow("save"); return; }
   if (what === "savego" || what === "renamego") {
@@ -236,11 +377,93 @@ async function recipeAction(b) {
   if (what === "importgo") {
     if (!RCP.imp || RCP.busy) return;
     RCP.busy = true; b.disabled = true; let r;
-    try { r = await api("/api/recipe/import", { text: RCP.imp.text, save: true }); } catch (e) { r = { ok: false, err: "程序无响应" }; } finally { RCP.busy = false; }
+    const from = RCP.imp.community || "", pasted = !!RCP.imp.pasted;
+    try { r = await api("/api/recipe/import", { text: RCP.imp.text, save: true, community: from }); } catch (e) { r = { ok: false, err: "程序无响应" }; } finally { RCP.busy = false; }
     if (!r.ok) { toast(r.err || "导入失败", 5000); if (recipeOpen()) recipeRender(); return; }
     RCP.imp = null; toast("已导入方案「" + r.recipe.name + "」", 3500);
+    if (pasted) RCP.paste = "";
+    if (from && RCP.com) { const e = (RCP.com.rows || []).find(x => x.id === from); if (e) e.imported = true; }
     if (recipeOpen()) recipeShow("list");
     return recipeLoad();
+  }
+  if (what === "share") {
+    const r = recipeById(id); if (!r) return;
+    RCP.share = { id, code: "", err: "" };
+    recipeShow("share");
+    let res; try { res = await api("/api/recipe/code", { id }); } catch (e) { res = { ok: false, err: "程序无响应" }; }
+    if (!RCP.share || RCP.share.id !== id) return;
+    if (res.ok) RCP.share.code = res.code; else RCP.share.err = res.err || "无法生成分享码";
+    if (recipeOpen() && RCP.view === "share") recipeRender();
+    return;
+  }
+  if (what === "copycode") { if (RCP.share && RCP.share.code) copyText(RCP.share.code, "已复制分享码"); return; }
+  if (what === "metasave") {
+    const x = RCP.share, meta = recipeMetaRead(); if (!x || !meta || RCP.busy) return;
+    RCP.busy = true; b.disabled = true; let r;
+    try { r = await api("/api/recipe/meta", { id: x.id, author: meta.author, links: meta.links.filter(l => l.url).map(l => ({ url: l.url, label: l.label })) }); }
+    catch (e) { r = { ok: false, err: "程序无响应" }; } finally { RCP.busy = false; }
+    if (!r.ok) { toast(r.err || "保存失败", 5000); if (recipeOpen() && RCP.view === "share") recipeRender(); return; }
+    // the author typed is the player's own account in the community, when none is set there yet
+    if (meta.author && typeof SO !== "undefined") {
+      try {
+        const state = await api("/api/community/state", {});
+        if (state.ok) {
+          SO.st = state;
+          if (!state.login) {
+            const saved = await api("/api/community/me/login", { login: meta.author });
+            if (saved.ok) SO.st.login = saved.login;
+          }
+        }
+      } catch (e) {}
+    }
+    x.meta = null; x.code = "";
+    await recipeLoad();
+    if (!RCP.share || RCP.share.id !== x.id) return;
+    if (recipeOpen() && RCP.view === "share") recipeRender();
+    let res; try { res = await api("/api/recipe/code", { id: x.id }); } catch (e) { res = { ok: false, err: "程序无响应" }; }
+    if (!RCP.share || RCP.share.id !== x.id) return;
+    if (res.ok) RCP.share.code = res.code; else RCP.share.err = res.err || "无法生成分享码";
+    if (recipeOpen() && RCP.view === "share") recipeRender();
+    return toast("已保存，分享码已更新");
+  }
+  if (what === "communityshare") {
+    if (typeof soRecipeShare === "function") soRecipeShare(id);
+    return;
+  }
+  if (what === "paste") {
+    RCP.pasteErr = "";
+    recipeShow("paste");
+    const t = $("#rcp_paste"); if (t) t.focus();
+    return;
+  }
+  if (what === "pastego") {
+    const t = $("#rcp_paste"); if (t) RCP.paste = t.value;
+    const text = RCP.paste.trim();
+    if (!text) { RCP.pasteErr = "请粘贴分享码"; recipeRender(); const n = $("#rcp_paste"); if (n) n.focus(); return; }
+    if (text.length > RCP_MAX) { RCP.pasteErr = "内容过长，不是有效的分享码"; return recipeRender(); }
+    if (RCP.busy) return;
+    RCP.busy = true; b.disabled = true; let r;
+    try { r = await api("/api/recipe/import", { text, save: false }); } catch (e) { r = { ok: false, err: "程序无响应" }; } finally { RCP.busy = false; }
+    if (!recipeOpen() || RCP.view !== "paste") return;
+    if (!r.ok) { RCP.pasteErr = r.err || "无法读取该分享码"; recipeRender(); const n = $("#rcp_paste"); if (n) n.focus(); return; }
+    RCP.pasteErr = "";
+    RCP.imp = { text, recipe: r.recipe, needs: r.needs, pasted: true };
+    return recipeShow("import");
+  }
+  if (what === "community") {
+    recipeShow("community");
+    return recipeComLoad(false); // (the program reads it again only when it is old)
+  }
+  if (what === "comrefresh") return recipeComLoad(true);
+  if (what === "comview") {
+    const cid = b.dataset.cid; if (!cid || RCP.comBusy) return;
+    RCP.comBusy = true; recipeComDraw();
+    let r; try { r = await api("/api/recipe/community/get", { id: cid }); } catch (e) { r = { ok: false, err: "程序无响应" }; }
+    RCP.comBusy = false;
+    if (!recipeOpen() || RCP.view !== "community") return;
+    if (!r.ok) { toast(r.err || "无法读取该方案", 6000); return recipeRender(); }
+    RCP.imp = { text: r.text, recipe: r.recipe, needs: r.needs, community: cid };
+    return recipeShow("import");
   }
 }
 // a file somebody else made: read as text, looked at by the program before anything of it is shown
@@ -258,8 +481,19 @@ document.addEventListener("click", e => {
   const b = e.target.closest("[data-recipe]");
   if (b) recipeAction(b);
 });
-document.addEventListener("change", e => { if (e.target.id === "rcp_file") recipePickFile(e.target); });
-document.addEventListener("input", e => { if (e.target.id === "rcp_name" || e.target.id === "rcp_note") recipeKeep(); });
+document.addEventListener("change", e => {
+  if (e.target.id === "rcp_file") recipePickFile(e.target);
+  if (e.target.id === "rcp_base") { RCP.comBase = e.target.value; recipeComDraw(); }
+});
+document.addEventListener("input", e => {
+  if (e.target.id === "rcp_name" || e.target.id === "rcp_note") recipeKeep();
+  if (e.target.id === "rcp_paste") RCP.paste = e.target.value;
+  if (e.target.id === "rcp_q") { RCP.comQ = e.target.value; recipeComDraw(); }
+  if (e.target.id === "rcp_author" || (e.target.closest && e.target.closest("#rcp_links"))) {
+    const meta = recipeMetaRead();
+    if (meta && e.target.closest("#rcp_links") && typeof soKinds === "function") soKinds("rcp_links", "work", meta.links);
+  }
+});
 // Enter in the name field saves, as the dialog's main button does
 ENTER_GOES.rcp_name = '#modal .mfoot .btn.primary';
 // the page may have been drawn before this file was read: its live parts are drawn again with what is here

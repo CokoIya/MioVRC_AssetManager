@@ -1,9 +1,11 @@
+// SPDX-License-Identifier: GPL-3.0-only OR PolyForm-Noncommercial-1.0.0
+// Copyright (c) 2026 天川澪 (Coko_Iya). Part of MioVRCA: https://github.com/CokoIya/MioVRC_AssetManager (terms in LICENSE.md)
 // the avatar check-up before upload, and covers made from prefabs
 "use strict";
-// CK.recs: what the server last said about a project's check-up ({record, can, why}); busy / err: a run under
+// CK.recs: what the server last said about a project's check-up ({record, can, why, slim}); busy / err: a run under
 // way or failed; open: the detail lists the player unfolded; seen: how long each project's run record was when
 // it was last idle (a run that ends is noticed by it); cov: cover status by asset; batch: the cover task
-// fixBusy: the one-click fix under way (by project); fixed: this session's fixes by project and kind, as the
+// fixBusy: the one-click fix under way (by project: its kind, or "slim:<level>"); fixed: this session's fixes by project and kind, as the
 // server answered them; lastTex: the revert record 「恢复」 takes back next (by project: the newest texture fix
 // that still can be, as the server says); rep: the report card open
 const CK = { recs: {}, busy: {}, err: {}, open: new Set(), seen: {}, asked: {}, cov: {}, covBusy: {}, batch: null, batchSeen: 0, fixBusy: {}, fixed: {}, lastTex: {}, rep: null };
@@ -47,33 +49,51 @@ function ckNext(it) {
 // what a detail line names is an object, a texture or a menu of the avatar (left as it is), or one of these words of
 // the plugin's (said in the player's language)
 const CK_T = new Set(["参数资产中已有", "Modular Avatar 在构建时生成（估算）", "VRCFury 在构建时生成"]);
+// a label with its sentence on hover and focus when it is a term of the glossary (newbie.js); the words of the
+// plugin's detail lines that name a tool
+function ckLabel(label) { return typeof nbTermLabel === "function" ? nbTermLabel(label) : esc(label); }
+function ckTerm(key, html) { return typeof nbTerm === "function" ? nbTerm(key, html) : html; }
+const CK_T_TERM = { "Modular Avatar 在构建时生成（估算）": "ma", "VRCFury 在构建时生成": "vrcfury" };
 function ckLine(l) {
-  return `<li${l.w ? ` class="w"` : ""}><span class="t"${CK_T.has(l.t) ? "" : ` data-i18n="off"`}>${esc(l.t)}</span>${l.m ? `<span class="m" data-i18n="off">${esc(l.m)}</span>` : ""}${l.n ? `<span class="n">${esc(l.n)}</span>` : ""}${
+  return `<li${l.w ? ` class="w"` : ""}><span class="t"${CK_T.has(l.t) ? "" : ` data-i18n="off"`}>${CK_T_TERM[l.t] ? ckTerm(CK_T_TERM[l.t], esc(l.t)) : esc(l.t)}</span>${l.m ? `<span class="m" data-i18n="off">${esc(l.m)}</span>` : ""}${l.n ? `<span class="n">${esc(l.n)}</span>` : ""}${
     l.v !== undefined ? `<span class="n"><b>${esc(ckNum(l.v))}</b>${l.u ? `<span>${esc(l.u)}</span>` : ""}</span>` : ""}${l.f ? `<span class="f"><span>可能是</span><b data-i18n="off">${esc(l.f)}</b></span>` : ""}</li>`;
 }
 // one item with everything it has to say: the figure, the advice, the details to unfold
 function ckRow(it, where, path) {
   const id = where + ":" + it.id, lines = it.details || [];
   return `<div class="ckrow ${esc(it.level)}">
-    <div class="ckline"><i class="ckmark"></i><span class="lb">${esc(it.label)}</span>${ckValue(it)}${ckMeter(it)}${ckItemRank(it)}</div>
+    <div class="ckline"><i class="ckmark"></i><span class="lb">${ckLabel(it.label)}</span>${ckValue(it)}${ckMeter(it)}${ckItemRank(it)}</div>
     ${it.level === "warn" && it.group === "figure" ? ckNext(it) : ""}
     ${it.advice ? `<div class="ckadv">${esc(it.advice)}</div>` : ""}
     ${lines.length ? `<details class="ckdet" data-ckd="${esc(id)}"${CK.open.has(id) ? " open" : ""}><summary><span>${esc(it.detailsTitle || "详情")}</span><span class="n">${lines.length}</span></summary><ul>${lines.map(ckLine).join("")}</ul></details>` : ""}
-    ${path ? ckFixHTML(it, path) + ckDoneHTML(path, CK_FIX_KIND[it.id], where) : ""}
+    ${path ? ckFixHTML(it, path) + ckDoneHTML(path, ckKindOf(it, path), where) : ""}
   </div>`;
 }
 
 // ---------- one-click fixes ----------
 // What the plugin can put right by itself (by the item's id), and what the other items need instead of a button.
+// Nothing that deletes what may be a gimmick's (particle systems, PhysBones, colliders, animators…) is offered.
 const CK_FIX_KIND = { textures: "textures", "fig.lights": "lights", missing: "missing" };
 const CK_FIX_ITEM = { textures: "textures", lights: "fig.lights", missing: "missing" };
-const CK_FIX_LABEL = { textures: "贴图降到 2048", lights: "移除灯光", missing: "移除丢失的脚本" };
+const CK_FIX_LABEL = { textures: "贴图降到 2048", lights: "移除灯光", missing: "移除丢失的脚本", optimizer: "添加 Trace And Optimize" };
 // (missing scripts are usually a plugin that is not installed: the button is not the first thing to reach for)
-const CK_FIX_HINT = { textures: "改动贴图的导入设置并重新导入，可恢复", lights: "可用 Ctrl+Z 或「撤销上一步」撤销", missing: "仅在确认这些组件已不再需要时使用；若是插件未安装，请先安装插件" };
-const CK_NOFIX = { materials: "需要安装对应的着色器包", params: "需要决定减少哪些开关", physbones: "需要决定移除哪些衣服或物理", menu: "需要在菜单资产中整理控件", "fig.bounds": "需要在 Unity 中找出离模型过远的物体" };
+const CK_FIX_HINT = { textures: "改动贴图的导入设置并重新导入，可恢复", lights: "可用 Ctrl+Z 或「撤销上一步」撤销", missing: "仅在确认这些组件已不再需要时使用；若是插件未安装，请先安装插件", optimizer: "可用 Ctrl+Z 或「撤销上一步」撤销" };
+const CK_GIMMICK = "可能属于模型的机关，请自行决定是否移除", CK_OUTFITS = "需要决定移除哪些衣服或物理";
+const CK_NOFIX = { materials: "需要安装对应的着色器包", params: "需要决定减少哪些开关", physbones: CK_OUTFITS, menu: "需要在菜单资产中整理控件", "fig.bounds": "需要在 Unity 中找出离模型过远的物体",
+  nomesh: "需要重新导入对应的素材", "fig.physBoneTransforms": CK_OUTFITS, "fig.physBoneColliders": CK_OUTFITS, "fig.physBoneChecks": CK_OUTFITS, "fig.cloths": CK_OUTFITS, "fig.clothVertices": CK_OUTFITS };
+for (const id of ["particleSystems", "particles", "particleTriangles", "particleTrails", "particleCollision", "trailRenderers", "lineRenderers", "audioSources", "contacts", "raycasts", "colliders", "rigidbodies", "animators", "constraints", "constraintDepth"]) CK_NOFIX["fig." + id] = CK_GIMMICK;
+// The figures Avatar Optimizer brings down when the avatar is built. Its Trace And Optimize is offered once, under
+// the first of them that needs it, while AAO is installed and the avatar's root has none.
+const CK_AAO = ["fig.triangles", "fig.skinnedMeshes", "fig.meshes", "fig.materials", "fig.bones"];
+function ckResult(path) { return ((CK.recs[path] || {}).record || {}).result || {}; }
+function ckAaoFirst(path) { const it = (ckResult(path).items || []).find(x => CK_AAO.includes(x.id) && (x.level === "warn" || x.level === "fail")); return it ? it.id : ""; }
+// offer: the button; noAAO: a line saying why there is none; "": nothing (it is there, or an older plugin did not say)
+function ckAaoState(path) { const tools = ckResult(path).tools || {}; return tools.traceAndOptimize ? "" : tools.aaoInstalled ? "offer" : tools.aaoInstalled === false ? "noAAO" : ""; }
+function ckKindOf(it, path) { return CK_FIX_KIND[it.id] || (path && it.id === ckAaoFirst(path) ? "optimizer" : ""); }
 // the button under an item, when there is something to fix; the fix runs only in the Unity that has the project open
 function ckFixHTML(it, path) {
-  const kind = CK_FIX_KIND[it.id];
+  const kind = ckKindOf(it, path);
+  if (kind === "optimizer" && ckAaoState(path) !== "offer") return ckAaoState(path) === "noAAO" ? `<div class="cknofix"><span>无法一键处理：</span>${ckTerm("aao", "需要先安装 Avatar Optimizer（AAO）")}</div>` : "";
   if (!kind) return CK_NOFIX[it.id] && (it.level === "fail" || it.level === "warn") ? `<div class="cknofix"><span>无法一键处理：</span>${CK_NOFIX[it.id]}</div>` : "";
   if (!(typeof it.value === "number" && it.value > 0)) return "";
   // the 4096 px textures that are left are a package's, or have no import settings: nothing for the button to do
@@ -90,6 +110,7 @@ function ckFixText(f) {
   // (the figure is of the textures that were changed, not the avatar's whole)
   if (f.kind === "textures") return f.memoryBefore ? `已将 ${f.changed} 张贴图的 Max Size 降到 ${f.max}，所处理贴图的显存估计由 ${f.memoryBefore} MB 降到 ${f.memoryAfter} MB` : `已将 ${f.changed} 张贴图的 Max Size 降到 ${f.max}`;
   if (f.kind === "lights") return `已移除 ${f.changed} 个灯光组件`;
+  if (f.kind === "optimizer") return "已在模型的根物体上添加 Trace And Optimize";
   return `已移除 ${f.changed} 个丢失脚本的组件`;
 }
 function ckFixLine(l) {
@@ -111,7 +132,7 @@ function ckDoneHTML(path, kind, where) {
 }
 // this session's fixes whose item has no row on the page (a figure that went to the grid)
 function ckFixesHTML(path, where, rowIds) {
-  const done = Object.keys(CK.fixed[path] || {}).filter(k => !rowIds.has(CK_FIX_ITEM[k]));
+  const done = Object.keys(CK.fixed[path] || {}).filter(k => !rowIds.has(k === "optimizer" ? ckAaoFirst(path) : CK_FIX_ITEM[k]));
   return done.length ? `<div class="ckfixes">${done.map(k => `<div class="ckfixrow"><span class="lb">${CK_FIX_LABEL[k]}</span>${ckDoneHTML(path, k, where)}</div>`).join("")}</div>` : "";
 }
 async function ckFix(path, kind) {
@@ -122,6 +143,7 @@ async function ckFix(path, kind) {
   const can = typeof it.fixable === "number" ? Math.min(it.fixable, n) : n;
   const ask = kind === "textures" ? `将把模型用到的 ${can} 张 4096 像素贴图的 Max Size 改为 2048 并重新导入，压缩设置保持不变。${can < n ? `另有 ${n - can} 张不在 Assets 文件夹内或没有可调整的导入设置，不会改动。` : ""}贴图的导入设置对整个工程生效，使用这些贴图的其他模型和场景也会随之改变。导入设置不在 Unity 的撤销记录中，处理后可点击「恢复」改回原设置。是否继续？`
     : kind === "lights" ? `将移除模型下的 ${n} 个灯光组件（Light），灯光所在的物体保留。可在 Unity 中按 Ctrl+Z 或点击「撤销上一步」撤销。是否继续？`
+    : kind === "optimizer" ? "将在模型的根物体上添加 Avatar Optimizer 的 Trace And Optimize 组件，上传构建时会合并网格和材质槽、移除用不到的骨骼和组件。可在 Unity 中按 Ctrl+Z 或点击「撤销上一步」撤销。是否继续？"
     : `将移除模型下 ${n} 个丢失脚本的组件。如果脚本丢失是因为插件（Modular Avatar、VRCFury 等）没有安装或编译出错，请不要移除，应先安装或修复该插件：移除后，这些组件上的设置（衣服的装配、菜单项等）在场景保存后无法找回，重新安装插件也不会恢复。保存场景前可在 Unity 中按 Ctrl+Z 或点击「撤销上一步」撤销。确认这些组件已不再需要，是否继续？`;
   if (!confirm(ask)) return;
   CK.fixBusy[path] = kind; delete CK.err[path]; ckDraw();
@@ -160,9 +182,54 @@ async function ckRevert(path) {
   toast(ckFixText(rev), (rev.missing || []).length ? 7000 : 4000);
   if (S.view === "proj" || S.view === "pipe") loadProjects();
 }
+// ---------- the slimming presets ----------
+// One control for the avatar (Slim.cs defines them in full): 推荐 — textures at most 2048 px with compression on,
+// the avatar's lights switched off, Avatar Optimizer's Trace And Optimize added; 尽量变轻 — the same at 1024 px;
+// 保持原样 — everything a preset changed put back. The check-up runs again after each. The Quest version is not
+// touched. Which one is in force the server reads from the project (r.slim, for the avatar it was chosen for).
+const CK_SLIM = [["keep", "保持原样"], ["recommended", "推荐"], ["light", "尽量变轻"]];
+const CK_SLIM_TIP = { keep: "撤回瘦身档位的全部改动", recommended: "贴图最大 2048 并开启压缩，关闭灯光，添加 Trace And Optimize", light: "贴图最大 1024 并开启压缩，关闭灯光，添加 Trace And Optimize" };
+const CK_SLIM_DONE = { recommended: "已应用「推荐」", light: "已应用「尽量变轻」" };
+function ckSlimOn(path) {
+  const st = CK.recs[path] || {}, s = st.slim, r = ckResult(path);
+  return s && CK_SLIM_TIP[s.preset] && (!s.avatar || s.avatar === (r.path || r.avatar)) ? s.preset : "keep";
+}
+function ckSlimHTML(path) {
+  const st = CK.recs[path] || {}, r = ckResult(path);
+  if (!r.avatar) return "";
+  const on = ckSlimOn(path), busy = CK.fixBusy[path] || "", going = busy.startsWith("slim:") ? busy.slice(5) : "";
+  const can = !!st.can && !busy && !CK.busy[path];
+  return `<div class="seg ckslim" role="radiogroup" aria-label="瘦身档位">${CK_SLIM.map(([k, l]) => `<button class="segbtn${(going || on) === k ? " on" : ""}" role="radio" aria-checked="${on === k}" data-ckslim="${k}"${can ? "" : " disabled"} title="${esc(!st.can && st.why ? st.why : CK_SLIM_TIP[k])}">${going === k ? `<i class="spin"></i>` : ""}${l}</button>`).join("")}</div>`;
+}
+// what a preset did, in a line
+function ckSlimText(s) {
+  if (!s) return "";
+  if (s.preset !== "keep") return (CK_SLIM_DONE[s.preset] || "") + (s.optimizer === "noAAO" ? "。未安装 Avatar Optimizer，未添加 Trace And Optimize" : "");
+  if (s.was === "keep") return "没有改动任何内容";
+  const left = (s.missing || []).length + (s.changed || []).length;
+  return left ? `已恢复原样，${left} 项未能恢复` : "已恢复原样";
+}
+async function ckSlim(path, preset) {
+  const st = CK.recs[path], rec = st && st.record;
+  if (!rec || !rec.result || !CK_SLIM_TIP[preset] || !st.can || CK.fixBusy[path] || CK.busy[path]) return;
+  CK.fixBusy[path] = "slim:" + preset; delete CK.err[path]; ckDraw();
+  let r; try { r = await api("/api/checkup/slim", { project: path, preset, avatar: rec.result.path || rec.avatar }); } catch (e) { r = { ok: false, err: "程序无响应" }; }
+  delete CK.fixBusy[path];
+  if (!r.ok) {
+    CK.err[path] = r.err || "处理失败"; ckDraw(); toast(CK.err[path], 6000);
+    delete CK.asked[path]; ckFetch(path); // (broken off half way: what is in force now is read again)
+    return;
+  }
+  ckSet(path, r);
+  if (r.recheckErr) CK.err[path] = "已处理，但重新体检失败：" + r.recheckErr;
+  ckDraw();
+  toast(ckSlimText(r.slimResult), 5000);
+  if (S.view === "proj" || S.view === "pipe") loadProjects(); // the card's badge
+}
+
 // a figure in the two-column list
 function ckCell(it) {
-  return `<div class="ckfig ${esc(it.level)}"${it.advice ? ` title="${esc(it.advice)}"` : ""}><span class="lb">${esc(it.label)}</span>${ckValue(it)}${ckMeter(it)}${ckItemRank(it)}</div>`;
+  return `<div class="ckfig ${esc(it.level)}"${it.advice ? ` title="${esc(it.advice)}"` : ""}><span class="lb">${it.advice ? esc(it.label) : ckLabel(it.label)}</span>${ckValue(it)}${ckMeter(it)}${ckItemRank(it)}</div>`;
 }
 function ckCounts(rec) {
   const items = (rec.result || {}).items || [];
@@ -174,22 +241,26 @@ function ckSummary(rec) {
   if (c.fail) parts.push(`<span class="fail"><b>${c.fail}</b><span>项需处理</span></span>`);
   if (c.warn) parts.push(`<span class="warn"><b>${c.warn}</b><span>项建议优化</span></span>`);
   parts.push(`<span class="ok">${c.fail || c.warn ? "其余通过" : "全部通过"}</span>`);
-  return `<div class="cksum"><span class="cnt">${parts.join(`<i>·</i>`)}</span><span class="ranks">${ckRank(ranks.pc, "PC", true)}${ckRank(ranks.quest, "Quest", true)}</span></div>`;
+  const rated = ckRank(ranks.pc, "PC", true) + ckRank(ranks.quest, "Quest", true);
+  return `<div class="cksum"><span class="cnt">${parts.join(`<i>·</i>`)}</span><span class="ranks">${rated ? `<span class="ckrankof">${ckTerm("rank", "性能评级")}</span>` : ""}${rated}</span></div>`;
 }
 function ckMeta(rec) {
   return `<span class="ckmeta">${rec.avatar ? `<span class="av" title="${esc(rec.avatar)}">${esc(rec.avatar)}</span>` : ""}<span>${esc(fmtTime(rec.at))}</span></span>`;
 }
+// two small marks, what they mean on hover
 function ckNote(rec) {
   const r = rec.result || {};
-  return `<div class="cknote"><span class="tag">构建前的数值</span><span>${CK_NOTE}</span></div>${
-    r.avatar && !r.sdkCalc ? `<div class="cknote"><span class="tag">近似值</span><span>未能调用 VRChat SDK 的性能计算器，以下数值由插件自行统计，不含评级。</span></div>` : ""}`;
+  return `<div class="cknote"><span class="tag" title="${CK_NOTE}">构建前的数值</span>${
+    r.avatar && !r.sdkCalc ? `<span class="tag" title="未能调用 VRChat SDK 的性能计算器，以下数值由插件自行统计，不含评级。">近似值</span>` : ""}</div>`;
 }
 // The groups. full: the pipeline page (需处理 / 建议优化 / 参数). Otherwise the project's details: what the
 // upload is bound by first, then the figures.
 function ckBody(rec, where, full, path) {
   const items = (rec.result || {}).items || [];
-  // a light on the avatar is a row whatever its rank: it has a fix
-  const isFig = it => it.group === "figure" && !(it.id === "fig.lights" && typeof it.value === "number" && it.value > 0);
+  // a light on the avatar is a row whatever its rank: it has a fix; so is the figure Trace And Optimize is
+  // offered under (or was added from)
+  const aao = path && (ckAaoState(path) || (CK.fixed[path] || {}).optimizer) ? ckAaoFirst(path) : "";
+  const isFig = it => it.group === "figure" && !(it.id === "fig.lights" && typeof it.value === "number" && it.value > 0) && !(aao && it.id === aao);
   const rowIds = new Set(items.filter(it => !isFig(it) || (full && (it.level === "fail" || it.level === "warn"))).map(it => it.id));
   const fixes = path ? ckFixesHTML(path, where, rowIds) : "";
   const zero = it => isFig(it) && it.value === 0 && it.level !== "warn" && it.level !== "fail";
@@ -305,7 +376,6 @@ function ckReportOpen(path) {
   const m = $("#modal"); m.dataset.kind = "ckrep";
   m.innerHTML = `<div class="mhead">导出报告图片</div><div class="mbody">
     <div class="ckrep"><canvas id="ck_card" width="2400" height="1260" role="img" aria-label="体检报告"></canvas></div>
-    <div class="hint2">图片含模型名、工程名、评级和主要数值，为构建前的数值。可复制后直接粘贴到群聊，或保存为文件。</div>
     <div id="ck_repsaved"></div></div>
     <div class="mfoot"><button class="btn ghost" data-m="close">关闭</button><span class="spacer"></span><button class="btn" data-ckr="copy">复制图片</button><button class="btn primary" data-ckr="save">保存图片</button></div>`;
   ckDrawCard($("#ck_card"), rec, p.name || "", (S.data || {}).version);
@@ -340,7 +410,7 @@ async function ckReportSave() {
 // arrived (adopted from the record in the project).
 function ckSet(path, r) {
   const rec = r.record || null, tf = rec && rec.texFix && rec.texFix.record ? rec.texFix : null;
-  CK.recs[path] = { record: rec, can: !!r.can, why: r.why || "", at: Date.now() };
+  CK.recs[path] = { record: rec, can: !!r.can, why: r.why || "", at: Date.now(), slim: r.slim || null };
   if (tf && CK.lastTex[path] !== tf.record) { (CK.fixed[path] = CK.fixed[path] || {}).textures = tf; CK.lastTex[path] = tf.record; }
   else if (!tf && rec && CK.lastTex[path]) { // taken back elsewhere (the AI, another window)
     delete CK.lastTex[path];
@@ -378,7 +448,7 @@ function ckPanelHTML() {
     rec && rec.result && rec.result.avatar ? `<button class="btn small ghost ckrep" data-ck="report" title="把评级和主要数值画成一张图片，可复制到群聊或保存">导出报告图片</button>` : ""}</div>`;
   if (err) h += `<div class="ckerr">${esc(err)}</div>`;
   if (!rec) return h + `<div class="ckhint">${st || err ? "尚未体检。装配完成后点击「上传前体检」，可提前发现会导致上传失败或显示异常的问题，并查看模型的各项参数。" : "正在读取上次的体检结果…"}</div></div>`;
-  return h + ckSummary(rec) + ckNote(rec) + ckBody(rec, "p", true, p.path) + `</div>`;
+  return h + ckSummary(rec) + ckSlimHTML(p.path) + ckNote(rec) + ckBody(rec, "p", true, p.path) + `</div>`;
 }
 function ckDrawPanel() {
   const el = $("#ck_panel"); if (!el) return;
@@ -423,7 +493,7 @@ function ckDrawDrawer(fresh) {
     <button class="h4act${rec && rec.result && rec.result.avatar ? " next" : ""}" data-ck="rerun"${busy || !st || !st.can ? " disabled" : ""}${st && !st.can ? ` title="${esc(st.why)}"` : ""}>${busy ? "正在体检…" : rec ? "重新体检" : "开始体检"}</button></h4>`;
   if (err) sec += `<div class="ckerr">${esc(err)}</div>`;
   if (st && !st.can && !busy) sec += `<div class="ckwhy">${esc(st.why)}</div>`;
-  if (rec) sec += ckSummary(rec) + ckNote(rec) + ckBody(rec, "d", false, path);
+  if (rec) sec += ckSummary(rec) + ckSlimHTML(path) + ckNote(rec) + ckBody(rec, "d", false, path);
   else sec += `<div class="ckhint">${st ? "尚未体检。在 Unity 中打开该工程并连接插件后，可在此查看模型的各项参数，以及会导致上传失败或显示异常的问题。" : "正在读取…"}</div>`;
   sec += `</div>`;
   const html = `<div class="dhead">
@@ -540,6 +610,8 @@ document.addEventListener("click", async e => {
   const where = () => t.closest("#drawer") ? ckDrawerPath() : AI.proj ? AI.proj.path : ""; // which project the button is about
   const fb = t.closest("[data-ckfix]");
   if (fb) return ckFix(where(), fb.dataset.ckfix);
+  const sb = t.closest("[data-ckslim]");
+  if (sb) return ckSlim(where(), sb.dataset.ckslim);
   if (t.closest("[data-ckrevert]")) return ckRevert(where());
   const rb = t.closest("[data-ckr]");
   if (rb) return rb.dataset.ckr === "copy" ? ckReportCopy() : ckReportSave();
