@@ -10,3 +10,5 @@ internal/socialapi/testdata/*.json text eol=lf
 *.zip binary
 web/vendor/nsfwjs/* binary
 web/vendor/tf.es2017.min.js -text
+web/vendor/jsQR.js -text
+web/vendor/LICENSE-jsqr.txt -text

@@ -28,3 +28,13 @@ NSFWJS's own script is not used: its browser build (2.7 MB) carries a second cop
 runs the model as NSFWJS 4.4.0's classify does (the picture as 224x224 RGB in 0..1, the five softmax outputs in
 the order Drawing, Hentai, Neutral, Porn, Sexy). Both are loaded the first time a picture is checked, never at
 start. .gitattributes keeps these files byte for byte as published.
+
+The community page's QR scanner in a browser (web/social.js, 扫一扫 and 扫码登录 on a phone), unchanged:
+
+- jsQR.js           jsQR 1.4.0, dist/jsQR.js   https://github.com/cozmo/jsQR   Apache-2.0, LICENSE-jsqr.txt
+                    from https://registry.npmjs.org/jsqr/-/jsqr-1.4.0.tgz (sha1 8efb8d0a7cc6863cb6d95116b9069123ce9eb2d1)
+                    256885 bytes, sha256 bc40c8a15196236b2314db0856f72ca0b49980cd5413b8c852a7349f5fee0859
+- LICENSE-jsqr.txt  the package's LICENSE, sha256 c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08
+
+It is loaded the first time the camera is opened where the browser has no BarcodeDetector of its own (Safari), never
+at start. The QR codes the community shows use qrcode.js above.

@@ -190,7 +190,7 @@ function frSide() {
   if (FR.tab === "parts") { $("#fr_side").innerHTML = tabs + frPartsHTML(); return; }
   const off = new Set((((FR.parts || {}).items) || []).filter(it => it.removed).map(it => it.path)); // (taken off in 「部件」)
   const wear = FR.wear.length ? FR.wear.filter(w => !off.has(w.path)).map(w => `<div class="frworn${FR.look === w.path ? " open" : ""}"><div class="frrow"><label><input type="checkbox" data-frw="${esc(w.path)}"${FR.on.get(w.path) ? " checked" : ""}><span>${esc(w.name)}</span></label>${w.active ? "" : `<span class="frtag">默认隐藏</span>`}
-      <button class="btn small ghost frlookbtn" data-frlookopen="${esc(w.path)}" aria-expanded="${FR.look === w.path}">颜色</button></div>${FR.look === w.path ? frLookHTML(w) : ""}</div>`).join("")
+      ${w.kind && w.kind !== "outfit" ? "" : `<button class="btn small ghost frlookbtn" data-frlookopen="${esc(w.path)}" aria-expanded="${FR.look === w.path}">颜色</button>`}</div>${FR.look === w.path ? frLookHTML(w) : ""}</div>`).join("")
     : `<div class="muted small">模型上没有用 Modular Avatar 穿上的衣服。</div>`;
   const tries = FR.tries.length ? FR.tries.map((t, i) => {
     const cur = FR.trying.get(t.folder + "|" + i), all = [t.prefab].concat(t.colours || []);
@@ -229,11 +229,13 @@ async function frExportNow() {
   let r;
   try { r = await api("/api/fit/export", Object.assign({ project, avatar: FR.avatar }, st)); } catch (e) { r = { ok: false, err: "程序无响应" }; }
   const current = () => frCurrent(session, project) && seq === FR.seq;
-  if (!current()) return;
+  // (an answer no longer wanted still frees the room for the next one: else every later change only waits)
+  const drop = () => { if (seq === FR.seq) { FR.busy = false; frWait(false); } };
+  if (!current()) return drop();
   if (r.ok) {
     try { await FR.view.load(r.url, current); } catch (e) { r = { ok: false, err: "3D 模型无法显示：" + (e && e.message || e) }; }
   }
-  if (!current()) return;
+  if (!current()) return drop();
   if (r.ok) FR.stat = r;
   FR.busy = false;
   if (!r.ok) FR.err = r.err || "未能生成 3D 模型";

@@ -3,6 +3,9 @@
 // 社区: the community window (internal/social). Creators, works and recipes come from the community service; an
 // email account publishes posts and follows creators. Explore retains works, recipes and the waterfall.
 "use strict";
+// SO_WEB: the community in a browser (web/community/): what only the program can do (the library, the modding basket,
+// projects, recipes, the wish list, Windows notifications, choosing a folder) is left out, and explanations with it.
+const SO_WEB = !!window.WEB;
 // Protocol launches are held by the local server until the shell and first-run screens are ready.
 function socialOpenLink(link) {
   if (!link || !(link.kind === "post" && /^[pcmg][0-9]{1,18}$/.test(link.id) ||
@@ -12,7 +15,7 @@ function socialOpenLink(link) {
 }
 let soLinkBusy = false;
 setInterval(async () => {
-  if (soLinkBusy || !S.data || S.data.setupNeeded || $("#guide")?.open || $("#modal.on[data-kind='whatsnew']")) return;
+  if (SO_WEB || soLinkBusy || !S.data || S.data.setupNeeded || $("#guide")?.open || $("#modal.on[data-kind='whatsnew']")) return;
   soLinkBusy = true;
   try {
     const hash = /^#miovrca:\/\/(post|work)\/([^/]+)$/.exec(location.hash);
@@ -76,6 +79,7 @@ const SO_ICON = {
 // a post's actions as X draws them: the icon alone (its name in title and aria-label) with the count beside it;
 // also the profile's tabs, the notices' kinds and 为你推荐's filters
 const SO_ACT = {
+  featured: '<svg viewBox="0 0 24 24"><path class="mv" d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>',
   reply: '<svg viewBox="0 0 24 24"><path d="M20 11.5c0 4-3.6 7-8 7-1 0-2-.2-2.9-.5L4 20l1.4-3.6A6.7 6.7 0 0 1 4 11.5c0-4 3.6-7 8-7s8 3 8 7z"/></svg>',
   repost: '<svg viewBox="0 0 24 24"><path d="M4 11V8a2 2 0 0 1 2-2h12"/><path d="m15 3 3 3-3 3"/><path d="M20 13v3a2 2 0 0 1-2 2H6"/><path d="m9 21-3-3 3-3"/></svg>',
   like: '<svg viewBox="0 0 24 24"><path d="M12 20.3 4.6 13a4.7 4.7 0 0 1 6.7-6.6l.7.7.7-.7a4.7 4.7 0 0 1 6.7 6.6z"/></svg>',
@@ -93,6 +97,114 @@ const SO_ACT = {
   hot: '<svg viewBox="0 0 24 24"><path d="M12 21c-3.6 0-6.5-2.6-6.5-6.2 0-3 2-4.8 3.4-6.6.5 1.6 1.4 2.6 2.5 3.1-.2-3.4 1.4-6 3.9-7.8-.2 2.8.9 4.6 2.4 6.3 1.2 1.4 1.8 3 1.8 5 0 3.6-3.1 6.2-7.5 6.2z"/></svg>',
   bot: '<svg viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 8V5M9.5 13h.01M14.5 13h.01M9.5 16.2h5"/><circle cx="12" cy="4" r="1"/></svg>',
 };
+// the icons of the other buttons (soIconize puts them in); the parts an animation moves have a class of their own
+const SO_UI = {
+  send: '<svg viewBox="0 0 24 24"><g class="mv"><path d="M20.5 3.5 10 14"/><path d="M20.5 3.5 14 20.5l-4-6.5-6.5-4z"/></g></svg>',
+  plus: '<svg viewBox="0 0 24 24"><path class="mv" d="M12 5v14M5 12h14"/></svg>',
+  join: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path class="mv" d="M12 8v8M8 12h8"/></svg>',
+  joined: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path class="dr" pathLength="1" d="m8 12.3 2.8 2.8L16 9.6"/></svg>',
+  clone: '<svg viewBox="0 0 24 24"><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/><g class="mv"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M14 11.5v5M11.5 14h5"/></g></svg>',
+  copy: '<svg viewBox="0 0 24 24"><path d="M5 15V6a2 2 0 0 1 2-2h8"/><rect class="mv" x="9" y="8" width="11" height="12" rx="2"/></svg>',
+  following: '<svg viewBox="0 0 24 24"><circle cx="10" cy="8" r="3.5"/><path d="M4 20a6 6 0 0 1 12 0"/><path class="dr" pathLength="1" d="m16 11 2 2 4-4"/></svg>',
+  dots: '<svg viewBox="0 0 24 24" class="fill"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>',
+  edit: '<svg viewBox="0 0 24 24"><g class="mv"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></g></svg>',
+  mail: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path class="mv" d="m3 6 9 7 9-7"/></svg>',
+  shield: '<svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6z"/><path class="dr" pathLength="1" d="m9 12 2.2 2.2L15.5 10"/></svg>',
+  download: '<svg viewBox="0 0 24 24"><g class="mv"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/></g><path d="M5 20h14"/></svg>',
+  logout: '<svg viewBox="0 0 24 24"><path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4"/><g class="mv"><path d="m15 8 4 4-4 4"/><path d="M19 12H9"/></g></svg>',
+  login: '<svg viewBox="0 0 24 24"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><g class="mv"><path d="m10 8 4 4-4 4"/><path d="M14 12H4"/></g></svg>',
+  trash: '<svg viewBox="0 0 24 24"><g class="lid"><path d="M4 7h16"/><path d="M9.5 7V4.5h5V7"/></g><path d="M6 7l1 13h10l1-13"/><path d="M10 11v5.5M14 11v5.5"/></svg>',
+  checks: '<svg viewBox="0 0 24 24"><path class="dr" pathLength="1" d="m2.5 12.5 4.5 4.5 8.5-8.5"/><path class="dr d2" pathLength="1" d="m11.5 16 1 1 9-9"/></svg>',
+  check: '<svg viewBox="0 0 24 24"><path class="dr" pathLength="1" d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
+  inbox: '<svg viewBox="0 0 24 24"><path d="M4 13l2.5-8h11L20 13v6H4z"/><path class="mv" d="M4 13h4.5l1.5 2.5h4l1.5-2.5H20"/></svg>',
+  block: '<svg viewBox="0 0 24 24"><g class="mv"><circle cx="12" cy="12" r="9"/><path d="m5.7 5.7 12.6 12.6"/></g></svg>',
+  x: '<svg viewBox="0 0 24 24"><path class="mv" d="M6 6l12 12M18 6 6 18"/></svg>',
+  chat: '<svg viewBox="0 0 24 24"><g class="mv"><path d="M4 5h16v11H9.5L4 20z"/><path d="M8.5 10.5h.01M12 10.5h.01M15.5 10.5h.01"/></g></svg>',
+  globe: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><g class="mv"><path d="M3 12h18"/><path d="M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/></g></svg>',
+  trend: '<svg viewBox="0 0 24 24"><g class="mv"><path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/></g></svg>',
+  video: '<svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path class="mv" d="m16 10 5-3v10l-5-3z"/></svg>',
+  person: '<svg viewBox="0 0 24 24"><g class="mv"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></g></svg>',
+  list: '<svg viewBox="0 0 24 24"><path d="M8.5 6H20M8.5 12H20M8.5 18H20"/><path class="mv" d="M4 6h.01M4 12h.01M4 18h.01"/></svg>',
+  help: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><g class="mv"><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.3"/><path d="M12 16.8h.01"/></g></svg>',
+  more: '<svg viewBox="0 0 24 24"><path class="mv" d="m6 9 6 6 6-6"/></svg>',
+  prev: '<svg viewBox="0 0 24 24"><path class="mv" d="m15 6-6 6 6 6"/></svg>',
+  next: '<svg viewBox="0 0 24 24"><path class="mv" d="m9 6 6 6-6 6"/></svg>',
+  back: '<svg viewBox="0 0 24 24"><g class="mv"><path d="M19 12H5"/><path d="m11 6-6 6 6 6"/></g></svg>',
+  eye: '<svg viewBox="0 0 24 24"><g class="mv"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></g></svg>',
+  eyeoff: '<svg viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5c2 0 3.7.7 5.1 1.7M21.5 12s-3.5 6.5-9.5 6.5c-2 0-3.7-.7-5.1-1.7"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path class="mv" d="M4 4l16 16"/></svg>',
+  undo: '<svg viewBox="0 0 24 24"><g class="mv"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></g></svg>',
+  refresh: '<svg viewBox="0 0 24 24"><g class="mv"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></g></svg>',
+  star: '<svg viewBox="0 0 24 24"><path class="mv" d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>',
+  folder: '<svg viewBox="0 0 24 24"><path class="mv" d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  library: '<svg viewBox="0 0 24 24"><path d="M5 4h4v16H5zM10 4h4v16h-4z"/><path class="mv" d="m15.2 5.3 3.7-1 3.6 14.6-3.7 1z"/></svg>',
+  unlink: '<svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/><path class="mv" d="M4 4l16 16"/></svg>',
+  qr: '<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1"/><path class="mv" d="M14 14h2.5v2.5H14zM20.5 14v.01M14 20.5h.01M17.5 17.5h3v3"/></svg>',
+  scan: '<svg viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path class="mv" d="M4 12h16"/></svg>',
+  phone: '<svg viewBox="0 0 24 24"><g class="mv"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M11 18h2"/></g></svg>',
+  bell: '<svg viewBox="0 0 24 24"><g class="mv"><path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5z"/><path d="M10 21h4"/></g></svg>',
+};
+function soIconSVG(k) { return SO_UI[k] || SO_ACT[k] || SO_TOOL[k] || SO_ICON[k] || ""; }
+// What each button of the community shows, as X puts an icon on almost everything: by data-so, or by data-so and
+// its data-nav, -tab, -box, -sort or -kind ("nav:edit"). Two names: the first when off, the second when on (.on or
+// aria-pressed). Rows that are a person, a post, a work or a tag stay as they are.
+const SO_BTN = {
+  xpublish: "send", dmsend: "send", wsend: "send", reportsend: "flag", xthemejoin: "join", groupjoin: ["join", "joined"], xthemeoff: "x",
+  webinapp: "clone", xclone: "clone", wclone: "clone", xclonebase: "clone", wclonebase: "clone", xalong: "clone", remix: "clone", cloneapply: "check", cloneundo: "undo",
+  xcredits: "copy", credits: "copy", copycontact: "copy", boothcopy: "copy", xcopy: "link", url: "link", githubstart: "link", githubunlink: "unlink", oauthlink: "link", oauthunlink: "unlink", boothunbind: "unlink",
+  follow: ["follow", "following"], basefollow: ["follow", "following"], followshop: ["follow", "following"], dmstart: "mail",
+  xmenu: "dots", pagemenu: "dots", dmmore: "dots", xmore: "dots", xprev: "prev", xnext: "next",
+  dmaccept: "check", dmblock: "block", xblock: "block", dmdelete: "trash", xdelete: "trash", wremove: "trash", dmrecall: "undo", dmreport: "flag", xreport: "flag", report: "flag",
+  "dmbox:requests": "inbox", "dmbox:inbox": "back", pageunblock: "undo", xpin: "pin", xunpin: "pin",
+  "nav:edit": "edit", wedit: "edit", handle: "edit", contacts: "edit", emailchange: "mail", emailcode: "mail", accountcode: "mail", boothstart: "shield", boothcheck: "check",
+  accountexport: "download", accountlogout: "logout", accountdelete: "trash", accountdeletego: "trash", accountsave: "login", account: "login", accountcancel: "x",
+  emailsave: "check", contactssave: "check", homesave: "check", xhandlesave: "check", xhandlelater: "x", xcomplete: "check", reportcancel: "x", nooffer: "x",
+  noticesread: "checks", refresh: "refresh", xretry: "refresh", homeretry: "refresh", xthreadretry: "refresh",
+  xthreadmore: "more", xsearchmore: "more", worksnext: "more", groupmembersmore: "more", basesmore: "more", pageworkmore: "more", showcaseall: "check", showcasenone: "x",
+  groupback: "back", back: "back", xviewerback: "back", groupmembers: "creators", xreveal: "eye", askmark: "answer",
+  linkadd: "plus", xpolladd: "plus", askboothadd: "plus", assetadd: "plus", newwork: "plus", xnew: "plus",
+  linkdel: "x", askboothdel: "x", askworkdrop: "x", xworkdrop: "x", xpolldrop: "x", xpolldel: "x", assetdel: "x", assetclear: "x", avclear: "x", bdclear: "x", basedclear: "x", dmpicclear: "x",
+  wish: "star", wishmissing: "star", showcasewish: "star", shareimage: "share", recipeshare: "share", recipesharego: "share", recipe: "recipes", wrecipe: "recipes", xrecipe: "recipes", assetrecipe: "recipes",
+  assetlib: "library", assetproject: "folder", ask: "ask", booth: "booth",
+  "sort:latest": "clock", "sort:popular": "hot", recipefilter: "recipes", videofilter: "video",
+  "nav:explore": "trend", "nav:groups": "creators", "nav:asks": "ask", "nav:works": "work", "nav:images": "posts", "nav:creators": "creators", "nav:recipes": "recipes",
+  "htab:recommend": "spark", "htab:following": "creators", "htab:latest": "clock", "m:close": "x",
+  "link:booth_item": "booth", "link:booth_shop": "booth", link: "link", asset: "work",
+  xstafffeature: "star", xstaffunfeature: "star", xtranslate: "globe", xtranslatehide: "x", xstaffhide: "eyeoff", xstaffsens: "eye", xstaffunsens: "eye", xstaffdelete: "trash", pagestaffban: "block",
+  qrhandoff: "qr", qrscan: "scan", qrrefresh: "refresh", qrapprove: "login", qrdeny: "x", qrsignin: "login",
+};
+function soIconOne(b) {
+  // (a dialog's own buttons only in the community's dialogs: the program's other dialogs stay as they are)
+  const so = b.dataset.so || (b.dataset.m && (SO_WEB || /^s[ox]/.test(b.closest("#modal")?.dataset.kind || "")) && "m:" + b.dataset.m);
+  if (!so || b.querySelector(":scope > .soi, svg, img, canvas, .soav, .octh") || b.matches(".sxitem, .solink")) return; // (an item's row, a profile's link)
+  const k = SO_BTN[so + ":" + (b.dataset.nav || b.dataset.tab || b.dataset.box || b.dataset.sort || b.dataset.kind || "")] || SO_BTN[so];
+  const [off, on] = Array.isArray(k) ? k : [k];
+  if (!off || !soIconSVG(off)) return;
+  const text = b.textContent.trim();
+  if (/^[⋯…‹›×✕]$/.test(text)) { if (!b.getAttribute("aria-label")) b.setAttribute("aria-label", b.title || { "‹": "上一张", "›": "下一张", "×": "关闭", "✕": "关闭" }[text] || "更多"); b.textContent = ""; b.classList.add("soiconly"); }
+  else if (!text) b.classList.add("soiconly");
+  b.insertAdjacentHTML("afterbegin", `<span class="soi${on ? " sotwo" : ""}" data-i="${off}" aria-hidden="true">${on ? `<span class="soff">${soIconSVG(off)}</span><span class="son" data-i="${on}">${soIconSVG(on)}</span>` : soIconSVG(off)}</span>`);
+}
+function soIconize(root) {
+  if (root.dataset?.so || root.dataset?.m) soIconOne(root);
+  for (const b of root.querySelectorAll?.("[data-so], [data-m]") || []) soIconOne(b);
+}
+// pressing a button plays its icon's move (the send arrow flies, the bin's lid lifts, the check draws itself, …)
+function soIconPop(b) {
+  const i = b.querySelector(":scope > .soi, :scope > .sxtabicon, :scope > svg, :scope > .ico");
+  if (!i || b.closest(".sxactions")) return;
+  i.classList.remove("pop"); void i.offsetWidth; i.classList.add("pop");
+  i.addEventListener("animationend", () => i.classList.remove("pop"), { once: true });
+}
+if (typeof MutationObserver !== "undefined") {
+  soIconize(document.body);
+  new MutationObserver(ms => {
+    for (const m of ms) {
+      if (m.target.nodeType === 1 && (m.target.dataset.so || m.target.dataset.m)) soIconOne(m.target);
+      for (const n of m.addedNodes) if (n.nodeType === 1) soIconize(n);
+    }
+  }).observe(document.body, { childList: true, subtree: true });
+}
+document.addEventListener("pointerdown", e => { const b = e.target.closest("button, [role=button], [role=tab]"); if (b && !b.disabled) soIconPop(b); }, true);
 
 // ---------- reading ----------
 async function soLoad(what, refresh) {
@@ -234,14 +346,14 @@ async function soOpenLink(kind, url, label, btn) {
   kind = r.ok && r.kinds && r.kinds[0];
   if (!kind) { toast("链接格式不正确"); return; }
   if (kind === "booth_shop" || kind === "booth_item") { soInside(); return openWeb(url, "booth"); }
-  if (kind === "netdisk") return soPop(btn, [["netadd", "收录到素材库"], ["netopen", "在网盘中打开"]], { url, label });
+  if (kind === "netdisk") return SO_WEB ? openURL(url) : soPop(btn, [["netadd", "收录到素材库"], ["netopen", "在网盘中打开"]], { url, label });
   return openURL(url);
 }
 function soPop(btn, items, data) {
   soPopClose();
   const p = document.createElement("div");
   p.className = "sopop"; p.id = "so_pop"; p._data = data;
-  p.innerHTML = items.map(([k, t]) => `<button class="navitem" data-so="${k}">${esc(t)}</button>`).join("");
+  p.innerHTML = items.map(([k, t]) => k === "sep" ? `<div class="sopopsep" role="separator"></div>` : `<button class="navitem" data-so="${k}">${esc(t)}</button>`).join("");
   document.body.append(p);
   const r = btn.getBoundingClientRect(), w = p.offsetWidth;
   p.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + "px";
@@ -264,6 +376,7 @@ function renderSocialSide() {
   const icons = {explore: "⌕", notices: "♧", messages: "✉", bookmarks: "♧", more: "⋯"};
   const item = (k, t) => `<button class="navitem${selected(k) ? " on" : ""}" data-so="nav" data-nav="${k}" aria-pressed="${selected(k)}">${SO_ICON[k] || `<span class="sxnavicon" aria-hidden="true">${icons[k]}</span>`}<span class="nm">${t}</span>${SO.unread[k] ? `<span class="sxbadge">${esc(SO.unread[k])}</span>` : ""}</button>`;
   const account = a ? `${soAv(SO.service?.accountPic, a.nickname)}<span><b data-i18n="off">${esc(a.nickname)}</b><small data-i18n="off">@${esc(a.handle || "")}</small></span>` : `<span>登录社区</span>`;
+  if (SO_WEB && !a) return put($("#side"), `<div class="sidelinks sonav">${item("home", "首页")}${item("explore", "探索")}${item("more", "更多")}</div>`); // (signed out in a browser, as X: the bar at the bottom offers 注册 and 登录)
   put($("#side"), `<div class="sidelinks sonav">${item("home", "首页")}${item("explore", "探索")}${item("notices", "通知")}${item("messages", "私信")}${item("bookmarks", "书签")}${item("me", "个人主页")}${item("more", "更多")}</div>
     <div class="soside"><button class="btn primary sxpublish" data-so="compose">${SO_TOOL.pen}<span>发帖</span></button><button class="btn sxnewwork" data-so="newwork">${SO_TOOL.work}<span>发布作品</span></button><button class="btn sxnewwork" data-so="ask">${SO_TOOL.ask}<span>求同款</span></button></div>
     ${SO.nav === "works" ? soBaseChips() : ""}<button class="sxaccount" data-so="${a ? "nav" : "account"}" data-nav="more">${account}</button>`);
@@ -348,7 +461,7 @@ function soCreatorsDraw() {
 
 // Explore keeps the existing library browsing and waterfall.
 function soExploreNav() {
-  return `<div class="sxexplore">${[["explore", "趋势"], ["groups", "小组"], ["asks", "求同款"], ["works", "作品"], ["images", "图片"], ["creators", "创作者"], ["recipes", "装配方案"]].map(([key, label]) => `<button class="chip${SO.nav === key ? " on" : ""}" data-so="nav" data-nav="${key}">${label}</button>`).join("")}</div>`;
+  return `<div class="sxexplore">${[["explore", "趋势"], ["groups", "小组"], ["asks", "求同款"], ["works", "作品"], ...SO_WEB ? [] : [["images", "图片"], ["creators", "创作者"], ["recipes", "装配方案"]]].map(([key, label]) => `<button class="chip${SO.nav === key ? " on" : ""}" data-so="nav" data-nav="${key}">${label}</button>`).join("")}</div>`;
 }
 // ---------- 首页 ----------
 const SO_HTABS = [["recommend", "推荐"], ["following", "关注"], ["latest", "最新"]];
@@ -717,7 +830,7 @@ function soHomeDraw() {
       <div class="sxfield"><div class="sxfieldk"><label for="sh_vrc">VRChat 主页</label></div><input id="sh_vrc" value="${esc(c.vrchat)}" placeholder="vrchat.com/home/user/usr_…" spellcheck="false" autocomplete="off"></div>
       <div class="sxfield"><div class="sxfieldk"><span>链接</span></div>${soLinkRows("sh_links", c.links, 8)}</div>
       <div class="sxfield"><div class="sxfieldk"><span>生日</span></div><div class="sobd">${sel("sh_month", 12, c.month, "月", "月")}${sel("sh_day", days, c.day, "日", "日")}${c.month || c.day ? `<button class="btn small ghost" data-so="bdclear">清除</button>` : ""}</div></div>
-      <div class="sxfield"><div class="sxfieldk"><span>素材展示柜</span></div>
+      <div class="sxfield"${SO_WEB ? " hidden" : ""}><div class="sxfieldk"><span>素材展示柜</span></div>
         <div id="sh_showcase_picker"><input id="sh_showcase_q" value="${esc(c.showcaseQuery || "")}" placeholder="搜索有 Booth 商品编号的素材" autocomplete="off">
           <div class="btnrow"><button class="btn small" data-so="showcaseall">全选</button><button class="btn small" data-so="showcasenone">全不选</button><span class="muted small" id="sh_showcase_count">${esc(`已选择 ${c.showcase.length}/60 件`)}</span></div>
           <div class="solibrows" id="sh_showcase_rows">${soShowcaseChoices(c)}</div></div></div>
@@ -942,6 +1055,18 @@ async function soShareImage() {
   const current = SO.work;
   if (!current?.data?.ok || current.sharing) return;
   current.sharing = true; soWorkDraw();
+  if (SO_WEB) {
+    try {
+      const canvas = await soShareCanvas(current.data);
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+      if (!blob) throw new Error("无法保存");
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `MioVRCA_${current.id}.png`;
+      document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      toast("分享图已保存");
+    } catch (e) { toast(e.message || "无法保存", 5000); }
+    finally { current.sharing = false; if (SO.work === current && $("#modal").dataset.kind === "sowork") soWorkDraw(); }
+    return;
+  }
   let save;
   try {
     const folder = await api("/api/studio/save/folder", { kind: "image" });
@@ -997,7 +1122,8 @@ function soWorkDraw() {
   const w = r.work, a = r.author || {}, v = SO_VIDEO[r.videoKind];
   const row = s => {
     const marks = [], acts = [];
-    if (s.owned) marks.push(`<span class="tag ok">已有</span>`);
+    if (SO_WEB) { /* (no library to compare with) */ }
+    else if (s.owned) marks.push(`<span class="tag ok">已有</span>`);
     else if (s.boothId) {
       marks.push(`<span class="tag faint">未有</span>`);
       const on = s.wished || typeof wishHas === "function" && wishHas(s.boothId);
@@ -1016,11 +1142,11 @@ function soWorkDraw() {
       ${soLikeButton(w.id)}
       <button class="btn small" data-so="remix">我也做了</button>
       <button class="btn small" data-so="credits">复制使用素材</button><button class="btn small" data-so="shareimage"${x.sharing ? " disabled" : ""}>保存分享图</button>
-      ${w.recipe ? `<button class="btn small primary" data-so="wclone">一键克隆</button><button class="btn small" data-so="wclonebase">换素体克隆</button><button class="btn small" data-so="wrecipe">照着装</button>` : ""}
+      ${w.recipe ? SO_WEB ? `<button class="btn small primary" data-so="webinapp" data-work="${esc(w.id)}">一键克隆</button>` : `<button class="btn small primary" data-so="wclone">一键克隆</button><button class="btn small" data-so="wclonebase">换素体克隆</button><button class="btn small" data-so="wrecipe">照着装</button>` : ""}
       ${r.canEdit ? `<button class="btn small" data-so="wedit">编辑</button><button class="btn small ghost" data-so="wremove">删除</button>` : `<button class="btn small ghost" data-so="report" data-kind="work" data-id="${esc(w.id)}" data-name="${esc(w.title)}">${SO_ICON.flag}<span>举报</span></button>`}</div>
     ${r.original ? `<div class="soreference"><button class="linkbtn" data-so="work" data-id="${esc(r.original.id)}">${esc(`参考了「${r.original.title}」`)}</button>${soProfileBtn(r.original.authorId, r.original.author, r.original.nickname)}</div>` : r.originalMissing ? `<p class="muted soreference">参考的作品已删除</p>` : ""}
     ${w.desc ? `<div class="sobio" data-i18n="off">${esc(w.desc)}</div>` : ""}
-    ${(r.assets || []).length ? `<h5 class="lmh">同款素材</h5><p class="soowned">${esc(`已拥有 ${own}/${matched.length}`)}</p><button class="btn small" data-so="wishmissing"${own === matched.length || x.wishing ? " disabled" : ""}>把缺的加入愿望单</button><table class="atable"><tbody>${r.assets.map(row).join("")}</tbody></table>` : ""}
+    ${(r.assets || []).length ? `<h5 class="lmh">同款素材</h5>${SO_WEB ? "" : `<p class="soowned">${esc(`已拥有 ${own}/${matched.length}`)}</p><button class="btn small" data-so="wishmissing"${own === matched.length || x.wishing ? " disabled" : ""}>把缺的加入愿望单</button>`}<table class="atable"><tbody>${r.assets.map(row).join("")}</tbody></table>` : ""}
     ${(w.links || []).length ? `<h5 class="lmh">相关链接</h5>${socialLinksHTML(w.links)}` : ""}
     ${r.offline ? `<p>${soOffline(r.offline)}</p>` : ""}
     ${r.remixes?.length ? `<section id="so_remixes"><h5 class="lmh">做同款的作品</h5><div class="sogrid works">${r.remixes.map(soWorkCard).join("")}</div></section>` : ""}
@@ -1105,6 +1231,7 @@ async function soServiceLoad(refresh) {
     const r = await soServiceAPI("service", { refresh: !!refresh });
     SO.service = r.ok ? r : { available: false, account: null, err: r.err };
     SO.serviceAt = Date.now();
+    if (SO.service.account) try { localStorage.setItem("miovrca.signed", "1"); } catch (_) {} // (signed in before 注册 / 登录 came: 登录 opens first)
     if (previous && previous.account?.id !== SO.service.account?.id) {
       SO.feed = null; SO.me = null; SO.home = null; soSessionReset();
       if (SO.nav === "images" && S.view === "social") soLoadHome(false, true);
@@ -1130,7 +1257,7 @@ function soServiceError(r) {
 }
 function soAccountHTML() {
   const s = SO.service, a = s?.account, d = SO.device;
-  if (!a) return `<section class="soaccount soform" id="so_account"><div class="btnrow"><button class="btn primary" data-so="account"${!s?.available ? " disabled" : ""}>登录社区</button></div>
+  if (!a) return `<section class="soaccount soform" id="so_account"><div class="btnrow"><button class="btn primary" data-so="acctopen" data-mode="signup"${!s?.available ? " disabled" : ""}>注册</button><button class="btn" data-so="acctopen" data-mode="login"${!s?.available ? " disabled" : ""}>登录</button></div>
     ${s?.err ? `<p class="warnc small" role="status">${esc(s.err)}</p>` : !s?.available ? `<p class="warnc small">社区服务暂时不可用</p>` : ""}</section>`;
   const off = !s.available ? " disabled" : "", c = a.contacts || {};
   const contacts = [["QQ", c.qq], ["LINE", c.line], ["Discord", c.discord]].filter(x => x[1])
@@ -1138,73 +1265,143 @@ function soAccountHTML() {
   const github = a.github ? `<button class="btn small" data-so="githubunlink"${off}>取消关联</button>`
     : s.githubLink ? `<button class="btn small" data-so="githubstart"${off || (d?.status === "pending" ? " disabled" : "")}>关联</button>` : `<span class="muted small">暂未开放</span>`;
   return `<section class="sxset" id="so_account">
-    <h3>账号</h3>
+    ${soSetHead("person", "账号")}
     ${soSetRow("昵称", `<b data-i18n="off">${esc(a.nickname)}</b>`, `<button class="btn small" data-so="nav" data-nav="edit">编辑资料</button>`)}
     ${soSetRow("用户名", `<span data-i18n="off">@${esc(a.handle || "")}</span>`, `<button class="btn small" data-so="handle">更改</button>`)}
     ${soSetRow("邮箱", `<span class="soemail" data-i18n="off">${esc(a.email || "")}</span>`, `<button class="btn small" data-so="emailchange"${off}>更换邮箱</button>`)}
-    <h3>关联账号</h3>
-    ${soSetRow("GitHub", a.github ? `<b data-i18n="off">@${esc(a.github)}</b>` : `<span class="muted">未关联</span>`, github)}
+    ${soCanScan() ? "" : soSetRow("在手机上登录", "", `<button class="btn small" data-so="qrhandoff"${off}>显示二维码</button>`)}
+    ${soSetHead("link", "关联账号")}
+    ${SO_WEB ? "" : soSetRow("GitHub", a.github ? `<b data-i18n="off">@${esc(a.github)}</b>` : `<span class="muted">未关联</span>`, github)}
+    ${soOAuthList().map(p => (a.logins || []).includes(p) ? soSetRow(SO_OAUTH[p][0], `<span>已关联</span>`, `<button class="btn small" data-so="oauthunlink" data-provider="${p}"${off}>取消关联</button>`)
+      : soSetRow(SO_OAUTH[p][0], `<span class="muted">未关联</span>`, `<button class="btn small" data-so="oauthlink" data-provider="${p}"${off}>关联</button>`)).join("")}
     <div id="so_device">${d?.status === "pending" ? `<code class="sodevicecode" data-i18n="off">${esc(d.user_code)}</code>` : d?.message ? `<p class="small">${esc(d.message)}</p>` : ""}</div>
     ${soSetRow("QQ / LINE / Discord", contacts || `<span class="muted">未填写</span>`, `<button class="btn small" data-so="contacts"${off}>编辑</button>`)}
   </section>`;
 }
 // a row of the settings: what it is, what it is now (a note under it), what to do about it
 function soSetRow(label, value, actions, note) {
-  return `<div class="sxsetrow"><div class="sxsetk">${label}</div><div class="sxsetv">${value}${note ? `<small>${esc(note)}</small>` : ""}</div><div class="sxseta">${actions || ""}</div></div>`;
+  return `<div class="sxsetrow"><div class="sxsetk">${label}</div><div class="sxsetv">${value}${note && !SO_WEB ? `<small>${esc(note)}</small>` : ""}</div><div class="sxseta">${actions || ""}</div></div>`;
 }
 // a switch of the settings: the label (a note under it) on the left, the switch on the right
 function soSwitchRow(id, label, on, note, disabled) {
-  return `<label class="sxsetrow sxswitchrow" for="${id}"><div class="sxsetv">${esc(label)}${note ? `<small>${esc(note)}</small>` : ""}</div><div class="sxseta"><input type="checkbox" class="sxswitch" id="${id}"${on ? " checked" : ""}${disabled ? " disabled" : ""}></div></label>`;
+  return `<label class="sxsetrow sxswitchrow" for="${id}"><div class="sxsetv">${esc(label)}${note && !SO_WEB ? `<small>${esc(note)}</small>` : ""}</div><div class="sxseta"><input type="checkbox" class="sxswitch" id="${id}"${on ? " checked" : ""}${disabled ? " disabled" : ""}></div></label>`;
 }
 function soAccountDraw() { const el = $("#so_account"); if (el) el.outerHTML = soAccountHTML(); }
+// ---------- 注册 / 登录 ----------
+// As X: a window to join (加入 MioVRCA) and one to sign in (登录 MioVRCA). A device that never signed in opens the
+// first, one that did the second; each links to the other. Both go by an emailed code, or by Google or Discord where
+// the service offers them; a new address goes on to 设置资料. Each step redraws the window from SO.acct.
+const SO_PRIVACY = "https://miovrc.net/privacy.html";
 const soMailCooldowns = new Map();
 let soMailTimer = 0;
+const SO_OAUTH = {
+  google: ["Google", '<svg viewBox="0 0 48 48" aria-hidden="true"><path style="fill:#ea4335" d="M24 9.5c3.5 0 6.7 1.2 9.2 3.6l6.9-6.9C35.9 2.4 30.5 0 24 0 14.6 0 6.5 5.4 2.6 13.2l8 6.2C12.4 13.7 17.7 9.5 24 9.5z"/><path style="fill:#4285f4" d="M47 24.6c0-1.6-.2-3.1-.4-4.6H24v9h12.9c-.6 3-2.3 5.5-4.8 7.2l7.7 6c4.5-4.2 7.1-10.4 7.1-17.6z"/><path style="fill:#fbbc05" d="M10.5 28.6c-.5-1.5-.8-3-.8-4.6s.3-3.1.8-4.6l-8-6.2C.9 16.5 0 20.1 0 24s.9 7.5 2.6 10.8z"/><path style="fill:#34a853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.7-6c-2.2 1.5-4.9 2.3-8.2 2.3-6.3 0-11.6-4.2-13.5-9.9l-8 6.2C6.5 42.6 14.6 48 24 48z"/></svg>'],
+  discord: ["Discord", '<svg viewBox="0 0 24 24" aria-hidden="true"><path style="fill:#5865f2" d="M20.3 4.4A19.8 19.8 0 0 0 15.4 2.9l-.7 1.3a18.3 18.3 0 0 0-5.5 0l-.6-1.3a19.7 19.7 0 0 0-4.9 1.5C.5 9-.3 13.6.1 18.1a19.9 19.9 0 0 0 6 3l1.3-2a13 13 0 0 1-1.9-.9l.4-.3c3.9 1.8 8.2 1.8 12 0l.4.3c-.6.4-1.2.7-1.9.9l1.3 2a19.8 19.8 0 0 0 6-3c.5-5.2-.8-9.7-3.5-13.7zM8 15.3c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4zm8 0c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4z"/></svg>'],
+};
+// has this device been signed in before (then 登录 opens first)
+function soKnown() { try { return localStorage.getItem("miovrca.signed") === "1"; } catch (_) { return false; } }
+function soOAuthList() { return (SO.service?.oauth || []).filter(p => SO_OAUTH[p]); }
+function soOAuthButtons(signup) {
+  return soOAuthList().map(p => `<button class="btn soaccbig soaccprov" data-so="oauthstart" data-provider="${p}">${SO_OAUTH[p][1]}<span>${signup ? `使用 ${SO_OAUTH[p][0]} 注册` : `使用 ${SO_OAUTH[p][0]} 登录`}</span></button>`).join("");
+}
 function soMailCountdown() {
   clearTimeout(soMailTimer);
-  const email = $("#so_email"), btn = $("#so_send_code");
-  if (!email || !btn) return;
-  const seconds = Math.max(0, Math.ceil(((soMailCooldowns.get(email.value.trim().toLowerCase()) || 0) - Date.now()) / 1000));
+  const btn = $("#so_send_code"), A = SO.acct;
+  if (!btn || !A) return;
+  const seconds = Math.max(0, Math.ceil(((soMailCooldowns.get(A.email) || 0) - Date.now()) / 1000));
   btn.disabled = !!seconds || btn.dataset.sending === "1";
-  btn.textContent = seconds ? `重新发送（${seconds} 秒）` : "发送验证码";
+  btn.textContent = seconds ? `重新发送（${seconds} 秒）` : "重新发送验证码";
   if (seconds) soMailTimer = setTimeout(soMailCountdown, 250);
 }
-function soAccountDialog(next) {
+// mode: "signup" or "login" (else by soKnown); step: where it opens ("start", "email" for 创建账号)
+function soAccountDialog(next, mode, step) {
   SO.accountNext = typeof next === "function" ? next : null;
   const open = $("#modal")?.classList.contains("on") ? $("#modal").dataset.kind : "";
   const back = open === "sowork" && SO.work || open === "sopost" && SO.post || open === "sopostedit" && SO.compose;
-  SO.accountReturn = back ? open : "";
-  const m = $("#modal");
-  m.dataset.kind = "soaccount";
-  m.innerHTML = `<div class="mhead">登录社区</div><div class="mbody soform">
-    <div class="row"><label for="so_email">邮箱</label><input id="so_email" type="email" maxlength="254" autocomplete="email"></div>
-    <div class="row"><label for="so_code">验证码</label><div class="somailcode"><input id="so_code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"><button class="btn" id="so_send_code" data-so="accountcode">发送验证码</button></div>
-      <p class="small muted" id="so_mail_hint" hidden>验证码已发送。几分钟内没收到，请查看垃圾邮件。</p></div>
-    <div class="row" id="so_nickname_row" hidden><label for="so_nickname">昵称</label><input id="so_nickname" maxlength="24" autocomplete="off"></div>
-    <div class="row" id="so_handle_row" hidden><label for="so_handle">用户名</label><div class="sxat"><span aria-hidden="true">@</span><input id="so_handle" maxlength="15" autocomplete="off" spellcheck="false" placeholder="4–15 位字母、数字或下划线"></div>
+  if (open !== "soaccount") SO.accountReturn = back ? open : "";
+  SO.oauth = null;
+  SO.acct = { mode: mode === "signup" || mode === "login" ? mode : soKnown() ? "login" : "signup", step: step || "start", email: "", code: "", nickname: "", handle: "", oauth: null };
+  soAcctDraw();
+}
+function soAcctGo(step, mode) {
+  const A = SO.acct; if (!A) return;
+  if (mode) A.mode = mode;
+  if (step === "start" || step === "email") { A.oauth = null; SO.oauth = null; }
+  A.step = step; soAcctDraw();
+}
+// 返回: one step back (a code goes back to its address, 设置资料 to its code or to the start)
+function soAcctBack() {
+  const A = SO.acct; if (!A) return;
+  if (A.step === "profile" && !A.oauth) return soAcctGo("code");
+  if (A.step === "code" && A.mode === "signup") return soAcctGo("email");
+  soAcctGo("start");
+}
+function soAcctDraw() {
+  const A = SO.acct, m = $("#modal"); if (!A) return;
+  clearTimeout(soMailTimer);
+  const signup = A.mode === "signup", start = A.step === "start" || A.step === "wait";
+  const qr = A.step === "start" && !signup && !(soCanScan() || innerWidth <= 760);
+  if (!qr) soQRStop();
+  const providers = soOAuthButtons(signup), or = providers ? `<div class="soaccor"><span>或</span></div>` : "";
+  const no = signup ? { email: 1, code: 2, profile: 3 }[A.step] : 0;
+  const title = A.step === "email" ? "创建账号" : A.step === "code" ? "输入邮箱验证码" : A.step === "profile" ? "设置资料" : signup ? "加入 MioVRCA" : "登录 MioVRCA";
+  const email = `<div class="row"><label for="so_email">邮箱</label><input id="so_email" type="email" maxlength="254" autocomplete="email" value="${esc(A.email)}"></div>`;
+  let body;
+  if (A.step === "wait") body = `<div class="soaccwait"><span class="spin"></span><p>请在浏览器中完成登录</p></div><button class="btn soaccbig" data-so="acctback">取消</button>`;
+  else if (A.step === "start" && signup) body = `${providers}${or}<button class="btn primary soaccbig" data-so="acctcreate">创建账号</button>
+    <p class="soacclegal">注册即表示你同意<button class="linkbtn" data-so="privacy">隐私政策</button></p>
+    <p class="soaccswitch">已有账号？<button class="linkbtn" data-so="acctlogin">登录</button></p>`;
+  else if (A.step === "start") body = `${providers}${or}${email}<button class="btn primary soaccbig" data-so="accountcode">下一步</button>
+    ${soCanScan() ? `<button class="btn soaccbig soqrscanbtn" data-so="qrscan">扫码登录</button>` : ""}
+    <p class="soaccswitch">还没有账号？<button class="linkbtn" data-so="acctsignup">注册</button></p>`;
+  else if (A.step === "email") body = `${email}<button class="btn primary soaccbig" data-so="accountcode">下一步</button>`;
+  else if (A.step === "code") body = `<p class="soacclead">${esc(`验证码已发送至 ${A.email}`)}</p><p class="small muted">几分钟内没收到，请查看垃圾邮件。</p>
+    <div class="row"><label for="so_code">验证码</label><input id="so_code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" value="${esc(A.code)}"></div>
+    <button class="btn primary soaccbig" data-so="accountsave">${signup ? "下一步" : "登录"}</button><button class="linkbtn soaccresend" id="so_send_code" data-so="accountcode">重新发送验证码</button>`;
+  else body = `<p class="soacclead">${A.oauth ? esc(`使用 ${SO_OAUTH[A.oauth.provider]?.[0] || ""} 账号（${A.email}）注册`) : signup ? "昵称可以随时修改，用户名用于 @ 和个人主页地址。" : "该邮箱还没有账号，设置昵称和用户名即可完成注册。"}</p>
+    <div class="row" id="so_nickname_row"><label for="so_nickname">昵称</label><input id="so_nickname" maxlength="24" autocomplete="off" value="${esc(A.nickname)}"></div>
+    <div class="row" id="so_handle_row"><label for="so_handle">用户名</label><div class="sxat"><span aria-hidden="true">@</span><input id="so_handle" maxlength="15" autocomplete="off" spellcheck="false" placeholder="4–15 位字母、数字或下划线" value="${esc(A.handle)}"></div>
       <p class="small muted" id="so_handle_status" role="status"></p></div>
-    <p class="warnc small" id="so_account_error" role="status"></p></div>
-    <div class="mfoot"><button class="btn" data-so="accountcancel">取消</button><button class="btn primary" data-so="accountsave">登录</button></div>`;
-  showModal(); $("#so_email").focus(); soMailCountdown();
+    <button class="btn primary soaccbig" data-so="accountsave">注册</button>`;
+  m.dataset.kind = "soaccount";
+  m.classList.toggle("withqr", qr);
+  m.innerHTML = `<div class="mhead soacchead">${start ? `<button class="soaccnav wmback" data-so="accountcancel" aria-label="关闭">${SO_UI.x}</button>` : `<button class="soaccnav wmback" data-so="acctback" aria-label="返回">${SO_UI.back}</button>`}
+      <span class="soaccmark" aria-hidden="true">${SO_WEB ? `<img src="icon.svg" alt="">` : ""}</span>${no ? `<small class="soaccstep">${esc(`第 ${no} 步，共 3 步`)}</small>` : ""}</div>
+    <div class="mbody soaccountbody"><div class="soform soacc"><h2>${title}</h2>${body}<p class="warnc small" id="so_account_error" role="status"></p></div>${qr ? `<div class="soqrside" id="so_qr_login"></div>` : ""}</div>`;
+  showModal(); m.setAttribute("aria-label", title);
+  const first = $("#so_code") || $("#so_nickname") || $("#so_email") || $(".soaccbig", m);
+  if (first) first.focus();
+  if (A.step === "profile" && $("#so_handle").value) soSignHandleCheck();
+  if (qr) soQRStart("login", $("#so_qr_login"));
+  soMailCountdown();
 }
 function soAccountClose() {
-  clearTimeout(soMailTimer); SO.accountNext = null;
+  clearTimeout(soMailTimer); clearTimeout(SO.oauthTimer); SO.accountNext = null; SO.acct = null; SO.oauth = null; soQRStop(); $("#modal")?.classList.remove("withqr");
   const back = SO.accountReturn; SO.accountReturn = "";
   if (back === "sowork" && SO.work?.data) { soWorkDraw(); showModal(); }
   else if (back === "sopost" && SO.post?.data?.ok) { soPostDraw(); showModal(); }
   else if (back === "sopostedit" && SO.compose) { soComposeDraw(); showModal(); }
   else closeModal();
 }
+// 下一步 after an address (the code is mailed, then the code step) and 重新发送验证码
 async function soAccountCode(btn) {
-  const input = $("#so_email"), email = input.value.trim().toLowerCase(), error = $("#so_account_error");
-  if (!email || !input.checkValidity()) { input.reportValidity(); input.focus(); return; }
+  const A = SO.acct, input = $("#so_email"), error = $("#so_account_error");
+  if (!A) return;
+  if (input) {
+    const email = input.value.trim().toLowerCase();
+    if (!email || !input.checkValidity()) { input.reportValidity(); input.focus(); return; }
+    A.email = email;
+  }
+  // (a code went to this address a moment ago: that one is typed)
+  if ((soMailCooldowns.get(A.email) || 0) > Date.now() && A.step !== "code") return soAcctGo("code");
   btn.disabled = true; btn.dataset.sending = "1"; error.textContent = "";
-  const r = await soServiceAPI("auth/code", { email });
-  if (r.ok) soMailCooldowns.set(email, Date.now() + 60000);
-  btn.dataset.sending = "";
-  if (!input.isConnected) return;
-  if (!r.ok) error.textContent = r.err;
-  else { const hint = $("#so_mail_hint"); if (hint) hint.hidden = false; $("#so_code").focus(); }
-  soMailCountdown();
+  const r = await soServiceAPI("auth/code", { email: A.email });
+  btn.dataset.sending = ""; btn.disabled = false;
+  if (SO.acct !== A || !btn.isConnected) return;
+  if (!r.ok) { error.textContent = r.err; soMailCountdown(); return; }
+  soMailCooldowns.set(A.email, Date.now() + 60000);
+  if (A.step !== "code") return soAcctGo("code");
+  toast("验证码已重新发送"); soMailCountdown(); $("#so_code")?.focus();
 }
 // 注册时的用户名: checked as it is typed (the service decides when the account is made)
 let soSignHandleTimer = 0;
@@ -1219,23 +1416,93 @@ async function soSignHandleCheck() {
   status.className = "small " + (r.ok && r.available ? "okline" : "warnc");
   status.textContent = !r.ok ? r.err : r.available ? "可以使用" : "已被使用，请换一个";
 }
+// the code step's 下一步 / 登录 (an address with an account signs in; a new one goes on to 设置资料) and 注册
 async function soAccountSave(btn) {
-  const nickname = $("#so_nickname").value.trim(), email = $("#so_email"), error = $("#so_account_error");
-  const signing = !$("#so_nickname_row").hidden, handle = signing ? $("#so_handle").value.trim().replace(/^@/, "") : "";
-  if (signing && !nickname) { $("#so_nickname").focus(); return; }
-  if (signing && (!handle || $("#so_handle").dataset.ok === "0")) { $("#so_handle").focus(); if (!handle) $("#so_handle_status").textContent = "请选择用户名"; return; }
-  if (!email || (!email.value.trim() || !email.checkValidity())) { if (email) { email.reportValidity(); email.focus(); } return; }
-  btn.disabled = true;
-  const r = await soServiceAPI("auth/verify", { email: email.value.trim(), code: $("#so_code").value.trim(), nickname, handle });
-  if (!btn.isConnected) return;
+  const A = SO.acct, error = $("#so_account_error"); if (!A) return;
+  let nickname = "", handle = "";
+  if (A.step === "code") {
+    A.code = $("#so_code").value.trim();
+    if (!A.code) { $("#so_code").focus(); return; }
+  } else if (A.step === "profile") {
+    A.nickname = nickname = $("#so_nickname").value.trim(); A.handle = handle = $("#so_handle").value.trim().replace(/^@/, "");
+    if (!nickname) { $("#so_nickname").focus(); return; }
+    if (!handle || $("#so_handle").dataset.ok === "0") { $("#so_handle").focus(); if (!handle) $("#so_handle_status").textContent = "请选择用户名"; return; }
+  } else return;
+  btn.disabled = true; error.textContent = "";
+  const r = A.oauth ? await soServiceAPI("oauth/finish", { id: A.oauth.id, nickname, handle })
+    : await soServiceAPI("auth/verify", { email: A.email, code: A.code, nickname, handle });
+  if (SO.acct !== A || !btn.isConnected) return;
   btn.disabled = false;
   if (!r.ok) {
-    error.textContent = r.code === "nickname_required" ? "" : r.err;
-    if (r.code === "nickname_required") { $("#so_nickname_row").hidden = false; $("#so_handle_row").hidden = false; $("#so_nickname").focus(); btn.textContent = "注册"; }
+    if (r.code === "nickname_required") return soAcctGo("profile");
+    if (r.code === "bad_code" && A.step === "profile") { soAcctGo("code"); $("#so_account_error").textContent = r.err; return; }
+    if (r.code === "oauth_expired") { soAcctGo("start"); $("#so_account_error").textContent = r.err; return; }
+    error.textContent = r.err;
     if (r.code === "handle_taken" || r.code === "bad_handle") { $("#so_handle").dataset.ok = "0"; $("#so_handle").focus(); }
     return;
   }
   if (handle) try { localStorage.setItem("so-handle:" + r.account.id, "1"); } catch (_) {} // (chosen here: no second question)
+  if (A.mode === "signup" && A.step === "code") toast("该邮箱已有账号，已为你登录", 5000);
+  await soSignedIn(r);
+}
+// Google / Discord: the page goes to the provider and comes back at #/oauth/<id> (web-start.js); the program opens
+// the browser and waits here, asking every 2 seconds. 关联 in the settings goes the same way for a signed-in account.
+async function soOAuthStart(btn, link) {
+  const provider = btn.dataset.provider, A = SO.acct;
+  btn.disabled = true;
+  const r = await soServiceAPI("oauth/start", { provider, link: !!link });
+  btn.disabled = false;
+  if (!r.ok) { if (A && $("#so_account_error")) $("#so_account_error").textContent = r.err; else soServiceError(r); return; }
+  if (SO_WEB && r.leaving) { try { sessionStorage.setItem("miovrca.oauthui." + r.id, JSON.stringify({ mode: A?.mode || "", link: !!link })); } catch (_) {} return; } // (on its way to the provider; the window it left is opened again on return)
+  SO.oauth = { id: r.id, provider, link: !!link };
+  if (A) { A.oauth = SO.oauth; A.step = "wait"; soAcctDraw(); }
+  else toast("请在浏览器中完成关联", 5000);
+  SO.oauthTimer = setTimeout(() => soOAuthPoll(r.id), 2000);
+}
+async function soOAuthPoll(id) {
+  clearTimeout(SO.oauthTimer);
+  const o = SO.oauth; if (!o || o.id !== id) return;
+  const r = await soServiceAPI("oauth/poll", { id });
+  if (SO.oauth !== o) return;
+  if (r.ok && r.state === "pending") { SO.oauthTimer = setTimeout(() => soOAuthPoll(id), 2000); return; }
+  SO.oauth = null;
+  const name = SO_OAUTH[o.provider]?.[0] || "";
+  if (!r.ok) {
+    if (!SO.acct && o.mode) soAccountDialog(null, o.mode);
+    if (SO.acct) { soAcctGo("start"); $("#so_account_error").textContent = r.err; } else toast(r.err, 5000);
+    return;
+  }
+  if (r.state === "linked") {
+    if (SO.service?.account) SO.service.account.logins = r.logins || [];
+    soAccountDraw(); return toast(`已关联 ${name}`);
+  }
+  if (r.state === "new") {
+    if (!SO.acct) soAccountDialog(null, "signup");
+    Object.assign(SO.acct, { mode: "signup", step: "profile", email: r.email || "", nickname: r.nickname || "", handle: r.handle || "", oauth: o });
+    return soAcctDraw();
+  }
+  if (r.state === "signed_in") { if (!SO.acct) SO.acct = { mode: "login" }; return soSignedIn(r); }
+}
+// back from the provider in the browser (#/oauth/<id>, web-start.js)
+function soOAuthReturn(id) {
+  let ui = {};
+  try { ui = JSON.parse(sessionStorage.getItem("miovrca.oauthui." + id) || "{}"); sessionStorage.removeItem("miovrca.oauthui." + id); } catch (_) {}
+  SO.oauth = { id, provider: (SO_WEB && webOAuthProvider(id)) || "", mode: ui.mode || "", link: !!ui.link };
+  soOAuthPoll(id);
+}
+async function soOAuthUnlink(btn) {
+  const provider = btn.dataset.provider;
+  btn.disabled = true;
+  const r = await soServiceAPI("account/logins/unlink", { provider });
+  btn.disabled = false;
+  if (!r.ok) return soServiceError(r);
+  if (SO.service?.account) SO.service.account.logins = (SO.service.account.logins || []).filter(p => p !== provider);
+  soAccountDraw(); toast(`已取消关联 ${SO_OAUTH[provider]?.[0] || ""}`);
+}
+// signed in (by email or by a QR code): the community starts over as this account
+async function soSignedIn(r) {
+  if (!SO.service) SO.service = { available: true, account: null };
+  try { localStorage.setItem("miovrca.signed", "1"); } catch (_) {} // (this device opens 登录 from now on)
   SO.service.account = r.account; SO.serviceAt = 0; SO.feed = null; SO.me = null; SO.home = null; SO.lists = null; SO.posts = null; SO.timeline = null;
   soSessionReset();
   if (r.restored) toast("已取消注销", 5000);
@@ -1250,10 +1517,408 @@ async function soAccountLogout(btn) {
   btn.disabled = true;
   const r = await soServiceAPI("account/logout");
   if (!r.ok) { btn.disabled = false; soServiceError(r); return; }
+  if (SO_WEB) soPushSub().then(sub => sub?.unsubscribe()).catch(() => {}); // (the service ended it with the session)
   SO.service.account = null; SO.service.unread = 0; SO.device = null; SO.stats = null; SO.feed = null; SO.me = null; SO.home = null; SO.lists = null; SO.posts = null; SO.post = null;
   soSessionReset(); SO.drafts = {}; SO.compose = null;
   soDraw(); soDot();
   if (SO.nav === "home") soTimelineLoad();
+}
+// ---------- 管理 (the community's moderators) ----------
+// An account the service names a moderator (its config, not a group's moderators) finds the moderation of a post and
+// of an account in their menus. Hiding, deleting and banning ask first; everything is logged on the service and can
+// be undone in the admin pages (but a deletion).
+function soStaff() { return !!SO.service?.account?.moderator; }
+function soStaffPostMenu(p) {
+  if (!soStaff() || p.author?.bot) return [];
+  return [["sep"], [p.featured ? "xstaffunfeature" : "xstafffeature", p.featured ? "取消精选" : "设为精选"], ["xstaffhide", "隐藏"], [p.sensitive ? "xstaffunsens" : "xstaffsens", p.sensitive ? "取消敏感标记" : "标记为敏感内容"], ["xstaffdelete", "删除"]];
+}
+function soStaffProfileMenu(r) {
+  const a = r.profile || {};
+  if (!soStaff() || r.readOnly || r.me || a.bot || !/^u[0-9a-z]{12}$/.test(a.id || "") || a.id === SO.service.account.id) return [];
+  return [["sep"], ["pagestaffban", "封禁"]];
+}
+// a question over the page, as X asks before deleting: the answer, and the reason when one is asked for
+function soAsk({ title, text, ok, danger, reason }) {
+  return new Promise(done => {
+    document.querySelector(".soask")?.remove();
+    const el = document.createElement("div");
+    el.className = "soask";
+    el.innerHTML = `<div class="soaskbox" role="alertdialog" aria-modal="true" aria-labelledby="so_ask_t"><b id="so_ask_t">${esc(title)}</b>${text ? `<p>${esc(text)}</p>` : ""}
+      ${reason ? `<input class="soaskreason" maxlength="100" placeholder="${esc(reason)}">` : ""}
+      <div class="soaskbtns"><button class="btn ${danger ? "sxdangerfill" : "primary"}" data-ask="ok">${esc(ok)}</button><button class="btn" data-ask="no">取消</button></div></div>`;
+    document.body.append(el);
+    const end = v => { el.remove(); done(v); };
+    el.addEventListener("click", e => {
+      const a = e.target.closest("[data-ask]")?.dataset.ask;
+      if (a === "ok") end({ ok: true, reason: el.querySelector(".soaskreason")?.value.trim() || "" });
+      else if (a === "no" || e.target === el) end({ ok: false });
+    });
+    el.addEventListener("keydown", e => { if (e.key === "Escape") { e.stopPropagation(); end({ ok: false }); } });
+    requestAnimationFrame(() => el.classList.add("on"));
+    (el.querySelector(".soaskreason") || el.querySelector('[data-ask="no"]')).focus();
+  });
+}
+async function soStaffPost(p, action) {
+  const ask = { hide: ["隐藏这条帖子？", "其他人将看不到它，可以在后台恢复", "隐藏"], delete: ["删除这条帖子？", "删除后无法恢复", "删除"] }[action];
+  if (ask && !(await soAsk({ title: ask[0], text: ask[1], ok: ask[2], danger: true })).ok) return;
+  const r = await soServiceAPI("mod/post", { id: p.id, action });
+  if (!r.ok) return soServiceError(r);
+  if (ask) { soPostGone(p.id); return toast(action === "hide" ? "已隐藏" : "已删除"); }
+  if (action === "feature" || action === "unfeature") { soPostFlag(p.id, "featured", action === "feature"); return toast(action === "feature" ? "已设为精选" : "已取消精选"); }
+  soPostFlag(p.id, "sensitive", action === "sensitive");
+  toast(action === "sensitive" ? "已标记为敏感内容" : "已取消敏感标记");
+}
+async function soStaffBan(a) {
+  const ask = await soAsk({ title: `封禁 @${a.handle}？`, text: "封禁后无法发帖、回复和私信，可以在后台解封", ok: "封禁", danger: true, reason: "原因（可不填）" });
+  if (!ask.ok) return;
+  const r = await soServiceAPI("mod/account", { id: a.id, action: "ban", reason: ask.reason });
+  if (!r.ok) return soServiceError(r);
+  toast("已封禁");
+  if (SO.page) soProfile(SO.page.src, true);
+}
+// a post hidden or deleted by a moderator leaves every list in sight
+function soPostGone(id) {
+  const keep = list => Array.isArray(list) ? list.filter(x => x?.id !== id && x?.post?.id !== id) : list;
+  if (SO.timeline) SO.timeline.items = keep(SO.timeline.items);
+  for (const holder of [SO.posts, SO.asks, SO.page?.posts, SO.group?.posts]) if (holder?.items) holder.items = keep(holder.items);
+  if (SO.post?.data?.replies) SO.post.data.replies = keep(SO.post.data.replies);
+  if (SO.post?.id === id) { closeModal(); SO.post = null; } else if (SO.post?.data?.ok && $("#modal")?.dataset.kind === "sopost") soPostDraw();
+  soDraw();
+}
+function soPostFlag(id, key, value) {
+  const set = x => { if (!x) return; if (x.id === id) x[key] = value; if (x.quote) set(x.quote); };
+  for (const list of soPostLists()) for (const x of list || []) set(x);
+  if (SO.post?.data?.ok && $("#modal")?.dataset.kind === "sopost") soPostDraw();
+  soDraw();
+}
+
+// ---------- 翻译帖子 ----------
+// As X: under a post written in another language than the page's, 「翻译帖子」; the translation shows under the text,
+// naming the language and the service, until 隐藏翻译. The service translates for free (its own services, one after
+// another, the result kept for everyone); 「AI 翻译」 in the settings uses the player's AI instead (the program's AI
+// service, or in a browser the player's own API key), and falls back to the free one when it fails.
+SO.trans = new Map();
+const SO_LANG_FROM = { zh: "翻译自中文", en: "翻译自英语", ja: "翻译自日语", ko: "翻译自韩语", other: "翻译自其他语言" };
+const SO_TRANS_BY = { deepl: "DeepL", microsoft: "Microsoft", mymemory: "MyMemory", ai: "AI" };
+const SO_AI_PROVIDERS = [["openai", "OpenAI", "gpt-4o-mini"], ["deepseek", "DeepSeek", "deepseek-chat"], ["anthropic", "Claude", "claude-haiku-5-5"],
+  ["gemini", "Gemini", "gemini-2.0-flash"], ["openrouter", "OpenRouter", "openai/gpt-4o-mini"], ["siliconflow", "硅基流动", "Qwen/Qwen2.5-7B-Instruct"],
+  ["dashscope", "阿里云百炼", "qwen-plus"], ["moonshot", "Moonshot", "moonshot-v1-8k"]];
+// the language a text is written in, by its letters (what the service decides by too): "" when nothing is left once
+// links, @handles and #tags are taken out
+function soTextLang(text) {
+  const t = String(text || "").replace(/https?:\/\/\S+/g, "").replace(/[@#][\p{L}\p{N}_]+/gu, "");
+  const kana = (t.match(/[\u3040-\u30ff]/g) || []).length, hangul = (t.match(/[\uac00-\ud7af]/g) || []).length;
+  const han = (t.match(/\p{Script=Han}/gu) || []).length, latin = (t.match(/[A-Za-z]/g) || []).length;
+  if (kana) return "ja";
+  if (hangul) return "ko";
+  if (han) return "zh";
+  if (latin >= 2) return "en";
+  return (t.match(/\p{L}/gu) || []).length >= 2 ? "other" : "";
+}
+function soUILang() { return I18N.lang === "en" || I18N.lang === "ja" ? I18N.lang : "zh"; }
+function soTransSettings() {
+  try { return Object.assign({ mode: "free", provider: "deepseek", model: "", key: "" }, JSON.parse(localStorage.getItem("so-translate") || "{}")); }
+  catch (_) { return { mode: "free", provider: "deepseek", model: "", key: "" }; }
+}
+function soTransSave(v) { try { localStorage.setItem("so-translate", JSON.stringify(v)); } catch (_) {} }
+function soTranslateHTML(p) {
+  const lang = soTextLang(p.text);
+  if (!lang || lang === soUILang()) return "";
+  return `<div class="sxtrans" data-trans="${esc(p.id)}">${soTranslateInner(p.id)}</div>`;
+}
+function soTranslateInner(id) {
+  const t = SO.trans.get(id);
+  if (!t) return `<button class="linkbtn sxtranslink" data-so="xtranslate" data-id="${esc(id)}">翻译帖子</button>`;
+  if (t.busy) return `<p class="sxtransby"><span class="spin"></span><span>正在翻译…</span></p>`;
+  if (t.err) return `<p class="sxtransby warnc"><span>${esc(t.err)}</span><button class="linkbtn" data-so="xtranslate" data-id="${esc(id)}">重试</button></p>${t.hint ? `<p class="sxtransby"><span>${esc(t.hint)}</span></p>` : ""}`;
+  return `<p class="sxtransby"><span>${esc(SO_LANG_FROM[t.source] || SO_LANG_FROM.other)}</span><span aria-hidden="true">·</span><span data-i18n="off">${esc(SO_TRANS_BY[t.provider] || t.provider || "")}</span><button class="linkbtn" data-so="xtranslatehide" data-id="${esc(id)}">隐藏翻译</button></p>
+    ${t.fallback ? `<p class="sxtransby"><span>AI 翻译失败，已改用免费翻译</span></p>` : ""}<div class="sxtext sxtranstext" data-i18n="off">${soPostText(t.text || "")}</div>`;
+}
+function soTranslateDraw(id) { for (const el of document.querySelectorAll(`.sxtrans[data-trans="${CSS.escape(id)}"]`)) put(el, soTranslateInner(id)); }
+async function soTranslate(id) {
+  if (SO.trans.get(id)?.busy) return;
+  const mode = soTransSettings().mode === "ai" ? "ai" : "free";
+  SO.trans.set(id, { busy: true }); soTranslateDraw(id);
+  const r = await soServiceAPI("post/translate", { id, target: soUILang(), mode });
+  SO.trans.set(id, r.ok ? { text: r.text, source: r.source, provider: r.provider, fallback: !!r.fallback }
+    : { err: r.err || "翻译失败，请稍后重试", hint: mode === "free" && r.code === "translate_failed" ? "可以在「设置」中改用 AI 翻译" : "" });
+  soTranslateDraw(id);
+}
+// 设置 → 翻译: the service, and in a browser the player's own AI (its key stays in this browser)
+function soTransSetHTML() {
+  const v = soTransSettings(), ai = v.mode === "ai", prov = SO_AI_PROVIDERS.find(x => x[0] === v.provider) || SO_AI_PROVIDERS[1];
+  const mode = `<select id="so_trans_mode" aria-label="翻译服务"><option value="free"${ai ? "" : " selected"}>免费翻译</option><option value="ai"${ai ? " selected" : ""}>AI 翻译</option></select>`;
+  let more = "";
+  if (ai && SO_WEB) more = `<div class="sxtransai soform">
+      <div class="row"><label for="so_trans_provider">服务商</label><select id="so_trans_provider">${SO_AI_PROVIDERS.map(([k, n]) => `<option value="${k}"${k === prov[0] ? " selected" : ""} data-i18n="off">${esc(n)}</option>`).join("")}</select></div>
+      <div class="row"><label for="so_trans_model">模型</label><input id="so_trans_model" maxlength="100" autocomplete="off" spellcheck="false" value="${esc(v.model || prov[2])}"></div>
+      <div class="row"><label for="so_trans_key">API Key</label><input id="so_trans_key" type="password" maxlength="300" autocomplete="off" spellcheck="false" value="${esc(v.key || "")}"></div>
+      <p class="small muted">API Key 只保存在此浏览器中，翻译时经由 MioVRCA 服务器转发，不会被保存。AI 翻译失败时改用免费翻译。</p></div>`;
+  else if (ai) more = `<div class="sxtransai"><p class="small muted">使用「AI 服务」中的设置。AI 翻译失败时改用免费翻译。</p><button class="btn small" data-so="transai">AI 服务</button></div>`;
+  return `<section class="sxset">${soSetHead("globe", "帖子翻译")}${soSetRow("翻译服务", "", mode)}${more}</section>`;
+}
+function soAICfgOpen() { if (typeof openAICfg === "function") openAICfg(); }
+document.addEventListener("change", e => {
+  const id = e.target.id;
+  if (!["so_trans_mode", "so_trans_provider", "so_trans_model", "so_trans_key"].includes(id)) return;
+  const v = soTransSettings();
+  if (id === "so_trans_mode") v.mode = e.target.value === "ai" ? "ai" : "free";
+  if (id === "so_trans_provider") { v.provider = e.target.value; v.model = (SO_AI_PROVIDERS.find(x => x[0] === v.provider) || [])[2] || ""; }
+  if (id === "so_trans_model") v.model = e.target.value.trim();
+  if (id === "so_trans_key") v.key = e.target.value.trim();
+  soTransSave(v);
+  if (id === "so_trans_mode" || id === "so_trans_provider") soDraw();
+});
+// ---------- 推送通知 (the page in a browser) ----------
+// The service's notices on this phone or computer through the browser's push service; sw.js shows them and opens
+// the page at what they are about. On an iPhone or iPad only once the page is on the home screen. Which kinds come
+// is kept in this browser and sent with the subscription; signing out ends the subscription on the service.
+const SO_PUSH_KINDS = [["reply", "回复"], ["mention", "提及"], ["quote", "引用"], ["repost", "转帖"], ["like", "喜欢"], ["follow", "新关注者"], ["dm", "私信"], ["featured", "精选"]];
+function soPushSupport() {
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return ios && !standalone ? "home" : "none";
+  return Notification.permission === "denied" ? "denied" : "ok";
+}
+function soPushKinds() {
+  try { const v = JSON.parse(localStorage.getItem("miovrca.web.pushkinds") || "null"); if (Array.isArray(v)) return v; } catch (e) {}
+  return SO_PUSH_KINDS.map(k => k[0]);
+}
+// (the worker may never be ready, e.g. where the browser keeps none: then no subscription after three seconds)
+async function soPushSub() {
+  const reg = await Promise.race([navigator.serviceWorker.ready, new Promise(ok => setTimeout(ok, 3000, null))]).catch(() => null);
+  try { return reg ? await reg.pushManager.getSubscription() : null; } catch (e) { return null; }
+}
+function soPushHTML() {
+  const support = soPushSupport(), on = !!SO.push?.on, kinds = soPushKinds();
+  const note = { home: "添加到主屏幕后才能开启", none: "此浏览器不支持推送通知", denied: "通知权限已被关闭，请在浏览器设置中允许" }[support];
+  return `${soSwitchRow("sx_push", "推送通知", on && support === "ok", "", support !== "ok" || !SO.push)}
+    ${note ? `<p class="sxsetnote">${note}</p>` : ""}
+    <div id="sx_push_kinds"${on && support === "ok" ? "" : " hidden"}>${SO_PUSH_KINDS.map(([k, t]) => soSwitchRow("sx_push_" + k, t, kinds.includes(k))).join("")}</div>
+    <p class="sxsetstatus" id="sx_push_status" role="status"></p>`;
+}
+// what this browser has: a subscription and the permission (the switch waits for it)
+async function soPushLoad() {
+  const sub = soPushSupport() === "ok" && Notification.permission === "granted" ? await soPushSub() : null;
+  SO.push = { on: !!sub };
+  if (SO.nav === "more") soDraw();
+  return sub;
+}
+async function soPushSwitch(box) {
+  const status = $("#sx_push_status");
+  box.disabled = true; status.textContent = "";
+  const ok = box.checked ? await soPushOn() : await soPushOff();
+  box.disabled = false;
+  if (!ok.ok) { box.checked = !box.checked; status.textContent = ok.err; return; }
+  SO.push = { on: box.checked };
+  $("#sx_push_kinds").hidden = !box.checked;
+}
+// on: the permission first (asked while the click lasts), then the browser's subscription, then the service
+async function soPushOn() {
+  if (Notification.permission !== "granted" && await Notification.requestPermission() !== "granted") return { ok: false, err: "未允许通知" };
+  const key = await soServiceAPI("push/key");
+  if (!key.ok || !key.key) return { ok: false, err: key.err || "暂时无法开启推送通知" };
+  let sub;
+  try {
+    const reg = await Promise.race([navigator.serviceWorker.ready, new Promise((ok, bad) => setTimeout(bad, 10000))]);
+    const raw = atob(key.key.replace(/-/g, "+").replace(/_/g, "/"));
+    sub = await reg.pushManager.getSubscription() || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Uint8Array.from(raw, c => c.charCodeAt(0)) });
+  } catch (e) { return { ok: false, err: "暂时无法开启推送通知" }; }
+  return soPushSend(sub);
+}
+function soPushSend(sub) {
+  const kinds = soPushKinds();
+  return soServiceAPI("push/on", { subscription: sub.toJSON(), lang: window.I18N?.lang || "zh", kinds: kinds.includes("reply") ? [...kinds, "answer"] : kinds });
+}
+async function soPushOff() {
+  const sub = await soPushSub();
+  if (sub) { await soServiceAPI("push/off", { endpoint: sub.endpoint }); try { await sub.unsubscribe(); } catch (e) {} }
+  return { ok: true };
+}
+async function soPushKindsSave() {
+  const kinds = SO_PUSH_KINDS.map(k => k[0]).filter(k => $("#sx_push_" + k)?.checked);
+  try { localStorage.setItem("miovrca.web.pushkinds", JSON.stringify(kinds)); } catch (e) {}
+  const sub = await soPushSub(); if (!sub) return;
+  const r = await soPushSend(sub);
+  const status = $("#sx_push_status"); if (status) status.textContent = r.ok ? "已保存" : r.err;
+}
+// on each start, signed in with a subscription: the service gets it again (a new endpoint, the language)
+async function soPushSync() {
+  if (!SO_WEB || !SO.service?.account || soPushSupport() !== "ok" || Notification.permission !== "granted") return;
+  const sub = await soPushLoad(); if (sub) soPushSend(sub);
+}
+// 通知: the offer to turn them on, until it is taken or closed
+function soPushOffer() {
+  if (!SO_WEB || !SO.service?.account || SO.push?.on || soPushSupport() !== "ok" || Notification.permission !== "default") return "";
+  try { if (localStorage.getItem("miovrca.web.pushoffer") === "0") return ""; } catch (e) {}
+  return `<div class="sxpushoffer"><span class="soi" data-i="bell" aria-hidden="true">${SO_UI.bell}</span><span>开启推送通知，有人回复或私信时提醒你</span>
+    <button class="btn small primary" data-so="pushon">开启</button><button class="wb" data-so="pushofferclose" aria-label="关闭">${SO_UI.x}</button></div>`;
+}
+
+// ---------- 扫码登录 ----------
+// A QR code signs a device in to the account another of the player's devices is signed in to, and the signed-in one
+// always approves (internal/socialsrv qr.go):
+// - login: this device is not signed in and shows the code beside the email form; a signed-in phone scans it
+//   (扫一扫, or its camera opening the page at #/qr/<id>) and approves there;
+// - handoff: this device is signed in and shows the code (设置 →「在手机上登录」); a phone scans it, then this device
+//   approves it.
+// A code lasts two minutes; the page asks every two seconds what became of it.
+const SOQR = { id: "", kind: "", timer: 0, box: null, url: "", state: "" };
+function soCanScan() { return SO_WEB && !!navigator.mediaDevices?.getUserMedia && matchMedia("(pointer: coarse)").matches; }
+function soQRSVG(text) {
+  qrcode.stringToBytes = qrcode.stringToBytesFuncs["UTF-8"];
+  const q = qrcode(0, "M"); q.addData(text); q.make();
+  return q.createSvgTag({ cellSize: 4, margin: 3, scalable: true });
+}
+function soNeedScript(src, global) {
+  if (window[global]) return Promise.resolve(window[global]);
+  return new Promise((ok, bad) => {
+    const el = document.createElement("script"); el.src = src; el.async = true;
+    el.onload = () => window[global] ? ok(window[global]) : bad(new Error("无法载入 " + src));
+    el.onerror = () => { el.remove(); bad(new Error("无法载入 " + src)); };
+    document.head.append(el);
+  });
+}
+function soQRStop() { clearTimeout(SOQR.timer); SOQR.id = ""; SOQR.box = null; }
+async function soQRStart(kind, box) {
+  soQRStop();
+  SOQR.kind = kind; SOQR.box = box; SOQR.state = "";
+  put(box, `<div class="soqr"><div class="soqrcode"><span class="spin"></span></div></div><p class="soqrcap">${kind === "login" ? "用手机扫码登录" : "用手机相机扫描二维码"}</p>`);
+  const [r] = await Promise.all([soServiceAPI("qr/new", { kind }), soNeedScript("vendor/qrcode.js", "qrcode").catch(() => null)]);
+  if (SOQR.box !== box || !box.isConnected) return;
+  if (!r.ok || !window.qrcode) return soQRDraw(box, "error", r.err || "无法显示二维码");
+  SOQR.id = r.id; SOQR.url = r.url;
+  soQRDraw(box, "waiting");
+  soQRPoll(r.id, box);
+}
+function soQRDraw(box, state, text) {
+  SOQR.state = state;
+  const over = { scanned: [SO_UI.check, "已扫描，请在手机上确认"], denied: [SO_UI.x, "已取消"], expired: [SO_UI.refresh, "二维码已过期"],
+    approved: [SO_UI.check, "已登录"], error: [SO_UI.x, text || "无法显示二维码"] }[state];
+  const again = state === "denied" || state === "expired" || state === "error";
+  put(box, `<div class="soqr${over ? " dim" : ""}"><div class="soqrcode">${SOQR.url && window.qrcode ? soQRSVG(SOQR.url) : ""}</div>${over ? `<div class="soqrover"><span class="soi" data-i="check" aria-hidden="true">${over[0]}</span><b>${over[1]}</b>${again ? `<button class="btn small" data-so="qrrefresh">刷新</button>` : ""}</div>` : ""}</div>
+    <p class="soqrcap">${SOQR.kind === "login" ? "用手机扫码登录" : "用手机相机扫描二维码"}</p>`);
+}
+async function soQRPoll(id, box) {
+  clearTimeout(SOQR.timer);
+  if (SOQR.id !== id || !box.isConnected) return;
+  const r = await soServiceAPI("qr/poll", { id });
+  if (SOQR.id !== id || !box.isConnected) return;
+  if (!r.ok) {
+    if (r.code === "qr_expired") { SOQR.id = ""; return soQRDraw(box, "expired"); }
+    SOQR.timer = setTimeout(() => soQRPoll(id, box), 4000); return; // (the connection: try again)
+  }
+  if (r.account) { SOQR.id = ""; soQRDraw(box, "approved"); return soSignedIn(r); }
+  if (r.state === "denied") { SOQR.id = ""; return soQRDraw(box, "denied"); }
+  if (SOQR.kind === "handoff" && r.state === "scanned") return soQRAsk(id, box, r);
+  if (r.state === "approved" && SOQR.kind === "handoff") { SOQR.id = ""; return soQRDone(box); }
+  if (r.state !== SOQR.state) soQRDraw(box, r.state === "scanned" ? "scanned" : "waiting");
+  SOQR.timer = setTimeout(() => soQRPoll(id, box), 2000);
+}
+// handoff: a phone scanned this device's code; it signs in once this device says so
+function soQRAsk(id, box, r) {
+  SOQR.state = "ask";
+  put(box, `<div class="soqrask"><span class="soqrdevice"><span class="soi" data-i="phone" aria-hidden="true">${SO_UI.phone}</span></span>
+    <b>${esc(r.device || "手机")}</b><p>请求登录你的账号</p>
+    <div class="soqrbtns"><button class="btn" data-so="qrdeny" data-id="${esc(id)}">拒绝</button><button class="btn primary" data-so="qrapprove" data-id="${esc(id)}">登录</button></div></div>`);
+}
+function soQRDone(box) {
+  put(box, `<div class="soqrask"><span class="soqrdevice ok"><span class="soi pop" data-i="check" aria-hidden="true">${SO_UI.check}</span></span><b>已在手机上登录</b></div>`);
+}
+async function soQRAnswer(btn, ok) {
+  const id = btn.dataset.id, box = btn.closest("#so_qr_handoff, .soqrscanned");
+  btn.disabled = true;
+  const r = await soServiceAPI("qr/approve", { id, ok });
+  if (!r.ok) { btn.disabled = false; return toast(r.err, 4000); }
+  if (box?.id === "so_qr_handoff") { SOQR.id = ""; if (ok) soQRDone(box); else soQRDraw(box, "denied"); return; }
+  closeModal(); toast(ok ? "已登录" : "已取消");
+}
+// 设置 →「在手机上登录」: this account's code for a phone
+function soQRHandoff() {
+  if (!SO.service?.account) return soAccountDialog(soQRHandoff);
+  const m = $("#modal"); m.dataset.kind = "sxqr";
+  m.innerHTML = `<div class="mhead">在手机上登录</div><div class="mbody"><div class="soqrside" id="so_qr_handoff"></div></div>
+    <div class="mfoot"><button class="btn" data-m="close">关闭</button></div>`;
+  showModal(); soQRStart("handoff", $("#so_qr_handoff"));
+}
+// a phone opened a code (扫一扫, or the camera opening #/qr/<id>): sign the computer in, or sign in here
+async function soQROpen(id) {
+  if (!/^[A-Za-z0-9_-]{16,64}$/.test(id || "")) return toast("这不是 MioVRCA 的登录二维码", 4000);
+  const m = $("#modal"); m.dataset.kind = "sxqr";
+  m.innerHTML = `<div class="mhead">扫码登录</div><div class="mbody soqrscanned"><span class="spin"></span></div>`;
+  showModal();
+  const r = await soServiceAPI("qr/scan", { id });
+  const box = $("#modal .soqrscanned"); if (!box) return;
+  if (!r.ok) {
+    if (r.code === "unauthorized" || r.accountInvalid) return put(box, `<div class="soqrask"><span class="soqrdevice"><span class="soi" data-i="login" aria-hidden="true">${SO_UI.login}</span></span><b>请先登录，再扫码</b>
+      <div class="soqrbtns"><button class="btn primary" data-so="qrsignin" data-id="${esc(id)}">登录</button></div></div>`);
+    return put(box, `<div class="soqrask"><span class="soqrdevice"><span class="soi" data-i="x" aria-hidden="true">${SO_UI.x}</span></span><b>${esc(r.err)}</b></div>`);
+  }
+  if (r.kind === "login") {
+    const a = SO.service?.account;
+    return put(box, `<div class="soqrask"><span class="soqrdevice"><span class="soi" data-i="login" aria-hidden="true">${SO_UI.login}</span></span>
+      <b>在 ${esc(r.device || "电脑")} 上登录？</b>${a ? `<p class="soqrwho">${soAv(SO.service.accountPic, a.nickname, "xs")}<span data-i18n="off">${esc(a.nickname)} @${esc(a.handle)}</span></p>` : ""}
+      <div class="soqrbtns"><button class="btn" data-so="qrdeny" data-id="${esc(id)}">取消</button><button class="btn primary" data-so="qrapprove" data-id="${esc(id)}">登录</button></div></div>`);
+  }
+  const p = r.person || {};
+  put(box, `<div class="soqrask"><span class="soqrdevice"><span class="spin"></span></span><b>请在电脑上确认</b>
+    <p class="soqrwho">${soAv(r.personPic, p.nickname, "xs")}<span data-i18n="off">${esc(p.nickname || "")} @${esc(p.handle || "")}</span></p></div>`);
+  SOQR.kind = "take"; SOQR.id = id; SOQR.box = box;
+  const wait = async () => {
+    if (SOQR.id !== id || !box.isConnected) return;
+    const q = await soServiceAPI("qr/poll", { id });
+    if (SOQR.id !== id || !box.isConnected) return;
+    if (q.ok && q.account) { SOQR.id = ""; closeModal(); toast("已登录"); return soSignedIn(q); }
+    if (q.ok && q.state === "denied" || q.code === "qr_expired") { SOQR.id = ""; return put(box, `<div class="soqrask"><span class="soqrdevice"><span class="soi" data-i="x" aria-hidden="true">${SO_UI.x}</span></span><b>${q.ok ? "已拒绝" : "二维码已过期"}</b></div>`); }
+    SOQR.timer = setTimeout(wait, 2000);
+  };
+  wait();
+}
+// 扫一扫 (a phone's camera in the page): BarcodeDetector where the browser has it, else jsQR (vendor/jsQR.js)
+const SOSCAN = { stream: null, timer: 0 };
+async function soQRScan() {
+  const m = $("#modal"); m.dataset.kind = "sxscan";
+  m.innerHTML = `<div class="mhead">扫一扫</div><div class="mbody soscan"><video id="so_scan_video" playsinline muted></video><span class="soscanframe" aria-hidden="true"></span>
+    <p class="soscantip" id="so_scan_tip">将二维码放入框内</p></div>`;
+  showModal();
+  const video = $("#so_scan_video"), tip = $("#so_scan_tip");
+  try {
+    SOSCAN.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+  } catch (e) {
+    tip.textContent = e && e.name === "NotAllowedError" ? "请允许使用相机" : "无法使用相机"; return;
+  }
+  if (!soScanOpen()) return soScanStop();
+  video.srcObject = SOSCAN.stream; await video.play().catch(() => {});
+  let detect;
+  if ("BarcodeDetector" in window && (await BarcodeDetector.getSupportedFormats?.() || []).includes("qr_code")) {
+    const d = new BarcodeDetector({ formats: ["qr_code"] });
+    detect = async () => (await d.detect(video))[0]?.rawValue || "";
+  } else {
+    try { await soNeedScript("vendor/jsQR.js", "jsQR"); } catch (e) { tip.textContent = "无法使用相机"; return; }
+    const c = document.createElement("canvas"), g = c.getContext("2d", { willReadFrequently: true });
+    detect = async () => {
+      const w = video.videoWidth, h = video.videoHeight; if (!w || !h) return "";
+      const k = Math.min(1, 640 / Math.max(w, h)); c.width = Math.round(w * k); c.height = Math.round(h * k);
+      g.drawImage(video, 0, 0, c.width, c.height);
+      return jsQR(g.getImageData(0, 0, c.width, c.height).data, c.width, c.height, { inversionAttempts: "dontInvert" })?.data || "";
+    };
+  }
+  const tick = async () => {
+    if (!soScanOpen() || !SOSCAN.stream) return soScanStop();
+    let text = ""; try { text = await detect(); } catch (e) {}
+    const id = /#\/qr\/([A-Za-z0-9_-]{16,64})$/.exec(text)?.[1];
+    if (id) { soScanStop(); return soQROpen(id); }
+    if (text) tip.textContent = "这不是 MioVRCA 的登录二维码";
+    SOSCAN.timer = setTimeout(tick, 250);
+  };
+  tick();
+}
+// (closed by its way back, or by anything that put another dialog in its place: the camera goes off)
+function soScanOpen() { return !!$("#modal.on[data-kind='sxscan'] #so_scan_video"); }
+function soScanStop() {
+  clearTimeout(SOSCAN.timer);
+  if (SOSCAN.stream) for (const t of SOSCAN.stream.getTracks()) t.stop();
+  SOSCAN.stream = null;
 }
 // 注销账号: confirmed by typing the handle. The service hides the account at once and deletes it after 7 days;
 // signing in again before then cancels it.
@@ -1278,6 +1943,7 @@ async function soAccountDeleteGo(btn) {
   const r = await soServiceAPI("account/delete", { handle: typed });
   if (!r.ok) { btn.disabled = false; if (r.accountInvalid) { closeModal(); soServiceError(r); } else error.textContent = r.err || "操作失败"; return; }
   closeModal();
+  if (SO_WEB) soPushSub().then(sub => sub?.unsubscribe()).catch(() => {});
   SO.service.account = null; SO.service.unread = 0; SO.device = null; SO.stats = null; SO.feed = null; SO.me = null; SO.home = null; SO.posts = null; SO.post = null;
   soSessionReset(); SO.drafts = {}; SO.compose = null;
   toast("账号已注销，7 天内重新登录可取消", 5000);
@@ -1285,15 +1951,15 @@ async function soAccountDeleteGo(btn) {
 }
 // 导出我的数据: a zip made by the service, saved into the folder the player picks
 async function soAccountExport(btn) {
-  const dir = await pickInto("选择导出位置");
-  if (!dir) return;
+  const dir = SO_WEB ? "" : await pickInto("选择导出位置");
+  if (!dir && !SO_WEB) return;
   const status = $("#sx_export_status");
   btn.disabled = true;
   if (status) status.textContent = "正在导出…";
   const r = await soServiceAPI("account/export", { folder: dir });
   btn.disabled = false;
   if (!r.ok) { if (status) status.textContent = r.err || "操作失败"; if (r.accountInvalid) soServiceError(r); return; }
-  if (status) put(status, `<span>已导出：</span><span data-i18n="off">${esc(r.path)}</span>`);
+  if (status) put(status, r.path ? `<span>已导出：</span><span data-i18n="off">${esc(r.path)}</span>` : `<span>已导出</span>`);
   toast("已导出");
 }
 // Booth 店铺认证: the service gives a code, the shop's owner puts it into the shop's profile, the service reads it there
@@ -1535,7 +2201,7 @@ function soWorkEdit() {
       <div id="sw_libpick"></div></div>
     <div class="row"><label>链接（选填）</label>${soLinkRows("sw_links", d.links, 8)}</div>
     <label class="check${net ? "" : " sohide"}" id="sw_rightsrow"><input type="checkbox" id="sw_rights"${d.rights ? " checked" : ""}> 网盘链接中的内容是我自己的，或我有权分享</label>
-    <div class="row"><label for="sw_recipe">附带装配方案（选填）</label><select id="sw_recipe"><option value="">${d.recipeCode ? "保留原来附带的方案" : "不附带"}</option>${recipes.map(r => `<option value="${esc(r.id)}"${d.recipe === r.id ? " selected" : ""} data-i18n="off">${esc(r.name)}</option>`).join("")}${d.recipeCode ? `<option value="-"${d.recipe === "-" ? " selected" : ""}>不再附带</option>` : ""}</select>
+    <div class="row"${SO_WEB ? " hidden" : ""}><label for="sw_recipe">附带装配方案（选填）</label><select id="sw_recipe"><option value="">${d.recipeCode ? "保留原来附带的方案" : "不附带"}</option>${recipes.map(r => `<option value="${esc(r.id)}"${d.recipe === r.id ? " selected" : ""} data-i18n="off">${esc(r.name)}</option>`).join("")}${d.recipeCode ? `<option value="-"${d.recipe === "-" ? " selected" : ""}>不再附带</option>` : ""}</select>
       ${recipes.length ? `<div class="btnrow"><button class="btn small ghost" data-so="assetrecipe">把方案中的素材加入同款素材</button></div>` : ""}</div>
   </div></div><div class="mfoot"><button class="btn ghost" data-m="close">取消</button><button class="btn primary" data-so="wsend"${d.busy ? " disabled" : ""}>${d.id ? "保存" : "发布"}</button></div>`;
   showModal();
@@ -1677,6 +2343,23 @@ async function soAction(b, e) {
     case "accountcode": return soAccountCode(b);
     case "accountlogout": return soAccountLogout(b);
     case "accountcancel": return soAccountClose();
+    case "acctback": return soAcctBack();
+    case "privacy": return openURL(SO_PRIVACY);
+    case "transai": return soAICfgOpen();
+    case "acctcreate": return soAcctGo("email");
+    case "acctlogin": return soAcctGo("start", "login");
+    case "acctsignup": return soAcctGo("start", "signup");
+    case "acctopen": return soAccountDialog(null, b.dataset.mode, b.dataset.step);
+    case "oauthstart": return soOAuthStart(b);
+    case "oauthlink": return soOAuthStart(b, true);
+    case "oauthunlink": return soOAuthUnlink(b);
+    case "qrrefresh": { const box = b.closest(".soqrside"); if (box) soQRStart(SOQR.kind === "handoff" ? "handoff" : "login", box); return; }
+    case "qrapprove": case "qrdeny": return soQRAnswer(b, what === "qrapprove");
+    case "qrhandoff": return soQRHandoff();
+    case "pushon": { const r = await soPushOn(); if (!r.ok) return toast(r.err, 4000); SO.push = { on: true }; toast("推送通知已开启"); return soDraw(); }
+    case "pushofferclose": try { localStorage.setItem("miovrca.web.pushoffer", "0"); } catch (er) {} return soDraw();
+    case "qrscan": soAccountClose(); return soQRScan();
+    case "qrsignin": { const id = b.dataset.id; return soAccountDialog(() => soQROpen(id)); }
     case "accountdelete": return soAccountDelete();
     case "accountdeletego": return soAccountDeleteGo(b);
     case "accountexport": return soAccountExport(b);
@@ -1703,6 +2386,7 @@ async function soAction(b, e) {
       else b.disabled = false;
       return;
     }
+    case "webinapp": return webOnlyInApp(b.dataset.work);
     case "newwork": return socialNewWork({});
     case "remix": { const w = SO.work?.data?.work; if (w) return socialNewWork({ based_on: w.id, base: w.base, assets: w.assets }); return; }
     case "basedpick": case "basedclear": {
@@ -1797,7 +2481,6 @@ document.addEventListener("keydown", e => {
 }, true);
 document.addEventListener("input", e => {
   const t = e.target;
-  if (t.id === "so_email") { soMailCountdown(); $("#so_nickname_row").hidden = true; return; }
   if (t.id === "sw_based_q") { SO.wd.basedQuery = t.value; put($("#sw_based_results"), soBasedChoices()); return; }
   if (t.id === "sh_showcase_q") { SO.home.showcaseQuery = t.value; put($("#sh_showcase_rows"), soShowcaseChoices(SO.home)); return; }
   if (t.closest && t.closest("#sh_form")) {
@@ -1894,10 +2577,10 @@ function soPageWatch(selector, load) {
   soPageObservers.set(key, observer); observer.observe(el);
 }
 // 「适配你的素体」: the posts whose work is made on one of the library's bases (internal/social/clone.go)
-const SO_TTABS = [["for_you", "为你推荐"], ["following", "正在关注"], ["bases", "适配你的素体"]];
+const SO_TTABS = [["for_you", "为你推荐", "spark"], ["following", "正在关注", "creators"], ["bases", "适配你的素体", "person"]].filter(([k]) => !SO_WEB || k !== "bases"); // (the bases are the library's)
 // 为你推荐's filters (the service's timeline filter): the ranking, or only the newest, the most liked of the week,
 // posts with pictures, works, or the posts that carry Booth items (Booth 情报)
-const SO_TFILTERS = [["", "推荐", "spark"], ["latest", "最新发布", "clock"], ["hot", "热门", "hot"], ["media", "图片", "picture"], ["works", "作品", "work"], ["booth", "Booth 情报", "booth"]];
+const SO_TFILTERS = [["", "推荐", "spark"], ["featured", "精选", "featured"], ["latest", "最新发布", "clock"], ["hot", "热门", "hot"], ["media", "图片", "picture"], ["works", "作品", "work"], ["booth", "Booth 情报", "booth"]];
 try { SO.timelineFilter = localStorage.getItem("so-for-you") || ""; } catch (e) { SO.timelineFilter = ""; }
 if (!SO_TFILTERS.some(([k]) => k === SO.timelineFilter)) SO.timelineFilter = "";
 function soTimelineFilters() {
@@ -1906,9 +2589,9 @@ function soTimelineFilters() {
 }
 function soTimelineDraw() {
   const t = SO.timeline;
-  soBar(null, "", `<div class="sxtabs" role="tablist">${SO_TTABS.map(([k, text]) => `<button role="tab" aria-selected="${SO.timelineTab === k}" data-so="xtab" data-tab="${k}">${text}</button>`).join("")}</div>`);
+  soBar(null, "", soTabs(SO_TTABS, SO.timelineTab, "xtab"));
   const rows = (t?.items || []).map(it => `${it.kind === "repost" ? `<div class="sxreposted">${SO_ACT.repost}<span data-i18n="off">${esc(it.by?.nickname || "")}</span> <span>转帖了</span></div>` : ""}${soPostCard(it.post)}`).join("");
-  gridPut(`<div class="sxtimeline">${SO.timelineTab === "for_you" ? soTimelineFilters() + soThemeHTML(true) : ""}${soComposerHTML("home")}<button class="sxnew" id="sx_new" data-so="xnew"${t?.newer?.length ? "" : " hidden"}>${esc(`显示 ${t?.newer?.length || 0} 条新帖子`)}</button>
+  gridPut(`<div class="sxtimeline">${SO.timelineTab === "for_you" ? soTimelineFilters() + soThemeHTML(true) : ""}${SO_WEB && !SO.service?.account ? "" : soComposerHTML("home")}<button class="sxnew" id="sx_new" data-so="xnew"${t?.newer?.length ? "" : " hidden"}>${esc(`显示 ${t?.newer?.length || 0} 条新帖子`)}</button>
     ${t?.error ? `<p class="warnc">${esc(t.error)}</p><button class="btn" data-so="xretry">重试</button>` : ""}
     ${rows || (t?.loaded ? soEmpty(t.noBases ? "素材库中还没有素体" : "暂无内容") : !t?.error ? `<p class="muted">正在读取…</p>` : "")}
     ${t?.next ? `<button class="btn sxmore" id="sx_more" data-so="xmore"${t.busy ? " disabled" : ""}>加载更多</button>` : t?.loaded ? `<p class="sohend">没有更多了</p>` : ""}</div>`);
@@ -1971,6 +2654,7 @@ function soReveal(id) {
 // a work card's 「已拥有 n/m」 (its Booth items the library has), each missing item by its name (its Booth page), and
 // 「N 人做了同款」. items: [{name, url, owned}], as timeline.go and the work page give them.
 function soWorkHave(owned, total, items, clones) {
+  if (SO_WEB) return clones > 0 ? `<p class="sxclones">${esc(`${clones} 人做了同款`)}</p>` : "";
   const missing = (items || []).filter(x => x.boothId && !x.owned && x.url);
   return `${total ? `<p class="sxowned">${esc(`已拥有 ${owned}/${total}`)}</p>` : ""}${missing.length ? `<p class="sxmissing"><span>缺少</span>${missing.map(x => `<button class="linkbtn" data-so="link" data-kind="booth_item" data-href="${esc(x.url)}" title="${esc(x.url)}" data-i18n="off">${esc(x.name)}</button>`).join("")}</p>` : ""}${clones > 0 ? `<p class="sxclones">${esc(`${clones} 人做了同款`)}</p>` : ""}`;
 }
@@ -1985,13 +2669,13 @@ function soPostCard(p, large = false, embedded = false, author = "", ask = null)
   // post has no pictures of its own to carry them)
   const cover = w?.pic ? `<img src="${esc(w.pic)}" alt="" loading="lazy"${hideWork ? ` class="sxsensimg" data-sensimg="${esc(workMedia.id)}"` : ""}>` : "";
   const coverNote = hideWork && w?.pic && (!pics.length || !hide || workMedia.id !== p.id) ? `<div class="sxsens sxsensbar" data-sens="${esc(workMedia.id)}">${soSensCover(workMedia.id)}</div>` : "";
-  const work = w ? `<section class="sxwork"><button class="sxworkhead" data-so="work" data-id="${esc(w.id)}">${cover}<span><b data-i18n="off">${esc(w.title)}</b><small data-i18n="off">${esc(w.base || "")}</small>${w.own_shop ? `<span class="tag sxownshop">作者本人</span>` : ""}</span></button>${coverNote}${soWorkHave(w.owned, w.total, w.items, w.clones)}<div class="btnrow">${w.recipe ? `<button class="btn small primary" data-so="xclone" data-id="${esc(p.id)}">一键克隆</button><button class="btn small" data-so="xclonebase" data-id="${esc(p.id)}">换素体克隆</button><button class="btn small" data-so="xalong" data-id="${esc(p.id)}">照着装</button><button class="btn small" data-so="xrecipe" data-id="${esc(p.id)}">装配方案</button>` : ""}<button class="btn small" data-so="xcredits" data-id="${esc(p.id)}">复制使用素材</button></div></section>` : "";
+  const work = w ? `<section class="sxwork"><button class="sxworkhead" data-so="work" data-id="${esc(w.id)}">${cover}<span><b data-i18n="off">${esc(w.title)}</b><small data-i18n="off">${esc(w.base || "")}</small>${w.own_shop ? `<span class="tag sxownshop">作者本人</span>` : ""}</span></button>${coverNote}${soWorkHave(w.owned, w.total, w.items, w.clones)}<div class="btnrow">${w.recipe ? SO_WEB ? `<button class="btn small primary" data-so="webinapp" data-work="${esc(w.id)}">一键克隆</button>` : `<button class="btn small primary" data-so="xclone" data-id="${esc(p.id)}">一键克隆</button><button class="btn small" data-so="xclonebase" data-id="${esc(p.id)}">换素体克隆</button><button class="btn small" data-so="xalong" data-id="${esc(p.id)}">照着装</button><button class="btn small" data-so="xrecipe" data-id="${esc(p.id)}">装配方案</button>` : ""}<button class="btn small" data-so="xcredits" data-id="${esc(p.id)}">复制使用素材</button></div></section>` : "";
   const quote = p.quote ? `<div class="sxquote">${soPostCard(p.quote, false, true)}</div>` : p.quote_of || p.quote_unavailable ? `<div class="sxquote sxdeleted">此帖已不可用</div>` : !embedded ? soSharedCard(p) : "";
   const group = p.group && p.group_name && !(SO.nav === "group" && !SO.page && SO.group?.id === p.group) ? `<button class="sxingroup" data-so="groupopen" data-id="${esc(p.group)}">${SO_ICON.creators}<span data-i18n="off">${esc(p.group_name)}</span></button>` : "";
-  return `<article class="sxpost${large ? " large" : ""}${embedded ? " embedded" : ""}" data-so="post" data-id="${esc(p.id)}" data-view-post="${esc(p.id)}" tabindex="0">
-    ${group}${p.parent_deleted ? `<div class="sxdeleted">此帖已删除</div>` : ""}<div class="sxposthead">${soProfileBtn(a.id?.startsWith("gh:") ? "" : a.id, a.github || (a.id?.startsWith("gh:") ? a.id.slice(3) : ""), a.nickname, p.authorPic, false, a.booth)}${soBotMark(a)}<span class="sxhandle" data-i18n="off">@${esc(a.handle || a.github || "")}</span><span class="sxwhen">· <span>${esc(soRelative(p.created))}</span></span>${p.promoted ? `<span class="sxad">推广</span>` : ""}${!embedded ? `<button class="wb sxmenu" data-so="xmenu" data-id="${esc(p.id)}" title="更多" aria-label="更多">⋯</button>` : ""}</div>
+  return `<article class="sxpost${large ? " large" : ""}${embedded ? " embedded" : ""}${p.featured && !embedded ? " featured" : ""}" data-so="post" data-id="${esc(p.id)}" data-view-post="${esc(p.id)}" tabindex="0">
+    ${p.featured && !embedded ? `<div class="sxfeatured">${SO_ACT.featured}<span>精选</span></div>` : ""}${group}${p.parent_deleted ? `<div class="sxdeleted">此帖已删除</div>` : ""}<div class="sxposthead">${soProfileBtn(a.id?.startsWith("gh:") ? "" : a.id, a.github || (a.id?.startsWith("gh:") ? a.id.slice(3) : ""), a.nickname, p.authorPic, false, a.booth)}${soBotMark(a)}<span class="sxhandle" data-i18n="off">@${esc(a.handle || a.github || "")}</span><span class="sxwhen">· <span>${esc(soRelative(p.created))}</span></span>${p.promoted ? `<span class="sxad">推广</span>` : ""}${!embedded ? `<button class="wb sxmenu" data-so="xmenu" data-id="${esc(p.id)}" title="更多" aria-label="更多">⋯</button>` : ""}</div>
     ${author && a.id === author ? `<span class="sxauthor">作者</span>` : ""}${soAskMarksHTML(p, ask)}<div class="sxtext" data-i18n="off">${soPostText(p.text || "", p.mentions)}</div>
-    ${soPollHTML(p, embedded)}
+    ${embedded ? "" : soTranslateHTML(p)}${soPollHTML(p, embedded)}
     ${soSensWrap(p, pics.length ? `<div class="sxmedia n${Math.min(pics.length, 4)}">${pics.slice(0, 4).map((src, i) => `<button data-so="xpicture" data-id="${esc(p.id)}" data-i="${i}" aria-label="${i + 1}"><img src="${esc(src)}" alt="" loading="lazy" decoding="async"></button>`).join("")}</div>` : "")}
     ${soBoothCardsHTML(p)}${soAssetItemsHTML(p)}${work}${quote}${soAnswerButtonHTML(p, ask, embedded)}${large ? `<time class="sxdate" data-i18n="off" datetime="${esc(p.created)}">${esc(new Date(p.created).toLocaleString())}</time>${!p.mine && soPostTarget(p) ? soFollowBtn(soPostTarget(p), SO.follows[soPostTarget(p)] ?? p.followed, false) : ""}` : ""}
     ${!embedded ? `<div class="sxactions">${action("reply", "reply", "回复", p.replies)}${action("repostmenu", "repost", "转帖", p.reposts, p.reposted)}${action("like", "like", "喜欢", p.likes, p.liked)}<span class="sxact a-views" title="浏览" aria-label="浏览"><span class="sxi">${SO_ACT.views}</span><span class="num sxviews">${soCountHTML(p.views)}</span></span><span class="sxacttail">${action("bookmark", "bookmark", "书签", undefined, p.bookmarked)}${action("share", "share", "分享")}</span></div>` : ""}</article>`;
@@ -2092,7 +2776,7 @@ async function soSearchLoad(reset = false) {
 }
 function soSearchDraw() {
   soBar(null); const p = SO.posts;
-  gridPut(`<div class="sxtimeline">${SO.nav === "bookmarks" ? `<h2 class="sxpagetitle">书签</h2>` : soSearchBox() + soThemesForTag() + soTabs([["top", "热门"], ["latest", "最新"], ["people", "用户"], ["media", "媒体"]], SO.searchType, "searchtab")}${SO.nav === "search" && SO.searchType === "people" ? `${(p?.accounts || []).map(soPersonRow).join("") || soEmpty(p?.loaded ? "暂无内容" : "正在读取…")}${p?.error ? `<p class="warnc">${esc(p.error)}</p>` : ""}${p?.next ? `<button class="btn" data-so="xsearchmore">加载更多</button>` : ""}` : soPostListHTML(p, SO.nav === "search" && SO.searchType === "media", "xsearchmore")}</div>`);
+  gridPut(`<div class="sxtimeline">${SO.nav === "bookmarks" ? `<h2 class="sxpagetitle">书签</h2>` : soSearchBox() + soThemesForTag() + soTabs([["top", "热门", "hot"], ["latest", "最新", "clock"], ["people", "用户", "person"], ["media", "媒体", "posts"]], SO.searchType, "searchtab")}${SO.nav === "search" && SO.searchType === "people" ? `${(p?.accounts || []).map(soPersonRow).join("") || soEmpty(p?.loaded ? "暂无内容" : "正在读取…")}${p?.error ? `<p class="warnc">${esc(p.error)}</p>` : ""}${p?.next ? `<button class="btn" data-so="xsearchmore">加载更多</button>` : ""}` : soPostListHTML(p, SO.nav === "search" && SO.searchType === "media", "xsearchmore")}</div>`);
 }
 function soPostTagOpen(tag) { SO.q = "#" + tag; SO.searchType = "top"; SO.nav = "search"; SO.page = null; closeModal(); if ($("#q")) $("#q").value = SO.q; soThemesLoad(false); soSearchLoad(true); }
 async function soUnreadLoad() {
@@ -2109,7 +2793,7 @@ async function soNoticesLoad() {
 // each kind of notice with its icon on the left, as X shows them (a like's heart, a repost's arrows, a follow's
 // person); a reply, a quote or a mention is the post itself under a line that says which it is
 const SO_NOTICE = {like: ["like", "喜欢了你的帖子"], repost: ["repost", "转帖了你的帖子"], quote: ["quote", "引用了你的帖子"], reply: ["reply", "回复了你的帖子"],
-  mention: ["mention", "提到了你"], follow: ["follow", "关注了你"], answer: ["answer", "将你的回复设为答案"]};
+  mention: ["mention", "提到了你"], follow: ["follow", "关注了你"], answer: ["answer", "将你的回复设为答案"], featured: ["featured", "你的帖子被选为精选"]};
 function soNoticesDraw() {
   const r = SO.notices;
   soBar(null);
@@ -2117,14 +2801,14 @@ function soNoticesDraw() {
     const [icon, label] = SO_NOTICE[n.kind] || SO_NOTICE.mention;
     const actors = n.from || [], first = actors[0], extra = Math.max(0, (n.count || actors.length) - 1);
     const mark = `<span class="sxnicon k-${esc(icon)}" aria-hidden="true">${SO_ACT[icon]}</span>`;
-    const who = `<b data-i18n="off">${esc(first?.nickname || "")}</b>${extra ? ` <span>${esc(`和另外 ${extra} 人`)}</span>` : ""} <span>${label}</span>`;
+    const who = !first ? `<span>${label}</span>` : `<b data-i18n="off">${esc(first?.nickname || "")}</b>${extra ? ` <span>${esc(`和另外 ${extra} 人`)}</span>` : ""} <span>${label}</span>`;
     if (["quote", "reply", "mention"].includes(n.kind) && n.item)
       return `<section class="sxnotice withpost${n.unread ? " unread" : ""}" data-kind="${esc(n.kind)}" data-post="${esc(n.post || "")}" data-seq="${esc(n.seq)}"><div class="sxnoticeline">${mark}<span>${who}</span></div>${soPostCard(n.item)}</section>`;
     const group = `<div class="sxactors">${actors.map(a => soProfileBtn(a.id?.startsWith("gh:") ? "" : a.id, a.github, a.nickname, a.pic)).join("")}</div><div class="sxnoticewho">${who}</div>`;
     return `<section class="sxnotice${n.unread ? " unread" : ""}" data-kind="${esc(n.kind)}" data-post="${esc(n.post || "")}" data-seq="${esc(n.seq)}">${mark}<div class="sxnoticebody">${group}${n.item ? `<button class="sxnoticepost" data-so="post" data-id="${esc(n.post)}"><span class="sxtext" data-i18n="off">${esc(n.item.text || n.item.workCard?.title || "")}</span></button>` : ""}</div></section>`;
   }).join("");
   const unread = (r?.notices || []).some(n => n.unread) || (SO.unread.notices || 0) > 0;
-  gridPut(`<div class="sxtimeline"><div class="sxpagehead"><h2>通知</h2><button class="btn small" data-so="noticesread"${unread ? "" : " disabled"}>全部已读</button></div>${soTabs([["all", "全部", "notices"], ["mentions", "提及", "mention"]], SO.noticeTab, "noticetab")}${r?.ok ? rows || soEmpty("暂无通知") : soEmpty(esc(r?.err || "正在读取…"))}</div>`);
+  gridPut(`<div class="sxtimeline">${soPushOffer()}<div class="sxpagehead"><h2>通知</h2><button class="btn small" data-so="noticesread"${unread ? "" : " disabled"}>全部已读</button></div>${soTabs([["all", "全部", "notices"], ["mentions", "提及", "mention"]], SO.noticeTab, "noticetab")}${r?.ok ? rows || soEmpty("暂无通知") : soEmpty(esc(r?.err || "正在读取…"))}</div>`);
 }
 // 全部已读: every notice up to the newest counts as seen on this account (the newest comes first in 「全部」)
 async function soNoticesReadAll(btn) {
@@ -2411,6 +3095,8 @@ async function soXAction(b, e) {
     case "xtab": SO.timelineTab = b.dataset.tab; return soTimelineLoad(false, true);
     case "xfilter": SO.timelineFilter = b.dataset.filter || ""; try { localStorage.setItem("so-for-you", SO.timelineFilter); } catch (x) {} $(".main").scrollTop = 0; return soTimelineLoad(false, true);
     case "xretry": case "xnew": return soTimelineLoad(false, true);
+    case "xtranslate": return soTranslate(id);
+    case "xtranslatehide": SO.trans.delete(id); return soTranslateDraw(id);
     case "xmore": return soTimelineLoad(true);
     case "xthreadmore": return soThreadLoad(true);
     case "xthreadretry": return soThreadLoad(false);
@@ -2418,7 +3104,12 @@ async function soXAction(b, e) {
     case "xreply": return soComposeOpen("reply", p);
     case "xquote": { const q = $("#so_pop")?._data; soPopClose(); return soComposeOpen("quote", q); }
     case "xrepostmenu": return soPop(b, [["xrepost", p.reposted ? "撤销转帖" : "转帖"], ["xquote", "引用"]], p);
-    case "xmenu": return soPop(b, [...(soCanPin(p, b) ? [SO.group.data.pinned?.id === p.id ? ["xunpin", "取消置顶"] : ["xpin", "置顶"]] : []), ...(p.mine ? [["xdelete", "删除"]] : [["xreport", "举报"], ...(p.author?.id?.startsWith("u") ? [["xblock", `拉黑 @${p.author.handle}`]] : [])]), ["xcopy", "复制链接文字"]], p);
+    case "xmenu": return soPop(b, [...(soCanPin(p, b) ? [SO.group.data.pinned?.id === p.id ? ["xunpin", "取消置顶"] : ["xpin", "置顶"]] : []), ...(p.mine ? [["xdelete", "删除"]] : [["xreport", "举报"], ...(p.author?.id?.startsWith("u") ? [["xblock", `拉黑 @${p.author.handle}`]] : [])]), ["xcopy", "复制链接文字"], ...soStaffPostMenu(p)], p);
+    case "xstaffhide": case "xstaffsens": case "xstaffunsens": case "xstaffdelete": case "xstafffeature": case "xstaffunfeature": {
+      const q = $("#so_pop")?._data; soPopClose();
+      if (q) return soStaffPost(q, {xstaffhide: "hide", xstaffsens: "sensitive", xstaffunsens: "unsensitive", xstaffdelete: "delete", xstafffeature: "feature", xstaffunfeature: "unfeature"}[b.dataset.so]);
+      return;
+    }
     case "xpin": case "xunpin": { const q = $("#so_pop")?._data; soPopClose(); if (q) return soGroupPin(q, b.dataset.so === "xpin"); return; }
     case "xvote": return soVote(p, +b.dataset.i);
     case "xpoll": if (!c.busy && !c.pictures.length && !c.poll) { c.poll = {options: ["", ""], days: 1}; soComposeDraw(key); $(`[data-composer="${key}"] .sxpollinput`)?.focus(); } return;
@@ -2607,7 +3298,7 @@ if (typeof MutationObserver !== "undefined" && $("#modal")) new MutationObserver
 // Profile, discovery and private messages share the same account session.
 // tabs, each [key, label] or [key, label, icon] (an icon of SO_ACT or SO_TOOL, before the label)
 function soTabs(tabs, selected, action) {
-  const icon = k => k ? `<span class="sxtabicon" aria-hidden="true">${SO_ACT[k] || SO_TOOL[k] || SO_ICON[k] || ""}</span>` : "";
+  const icon = k => k ? `<span class="sxtabicon" aria-hidden="true">${soIconSVG(k)}</span>` : "";
   return `<div class="sxtabs${tabs.some(t => t[2]) ? " withicons" : ""}" role="tablist">${tabs.map(([key, label, i]) => `<button role="tab" aria-selected="${selected === key}" data-so="${action}" data-tab="${key}">${icon(i)}<span>${label}</span></button>`).join("")}</div>`;
 }
 function soPersonRow(a, action = "profile") {
@@ -2682,25 +3373,29 @@ async function soSettingsLoad() {
   const [r, prefs, booth] = SO.service?.account ? await Promise.all([soServiceAPI("people", {kind: "blocks"}), soServiceAPI("prefs"), soServiceAPI("booth")]) : [null, null, null];
   if (session !== SO.session) return;
   SO.settings = r; SO.prefs = prefs?.ok ? prefs : SO.prefs; SO.booth = booth; soDraw();
+  if (SO_WEB) soPushLoad();
 }
+// a section of 设置 with its icon before the name, as X's settings list has
+function soSetHead(icon, text) { return `<h3 class="sxsethead"><span class="soi" data-i="${icon}" aria-hidden="true">${soIconSVG(icon)}</span><span>${text}</span></h3>`; }
 function soSettingsDraw() {
   soBar(null);
   const a = SO.service?.account, blocks = SO.settings;
   if (!a) { gridPut(`<div class="sxtimeline sxsettings"><h2 class="sxpagetitle">设置</h2>${soAccountHTML()}</div>`); return; }
   gridPut(`<div class="sxtimeline sxsettings"><h2 class="sxpagetitle">设置</h2>${soAccountHTML()}
-    <section class="sxset"><h3>Booth 店铺认证</h3><div class="soform" id="sx_booth">${soBoothHTML()}</div></section>
-    <section class="sxset"><h3>隐私</h3>
+    <section class="sxset">${soSetHead("booth", "Booth 店铺认证")}<div class="soform" id="sx_booth">${soBoothHTML()}</div></section>
+    <section class="sxset">${soSetHead("shield", "隐私")}
       ${soSetRow(`<label for="sx_requests">消息请求</label>`, "", `<select id="sx_requests"><option value="everyone"${a.allow_requests !== "none" ? " selected" : ""}>所有人</option><option value="none"${a.allow_requests === "none" ? " selected" : ""}>不接收</option></select>`)}
       ${soSwitchRow("sx_following", "公开我的关注列表", a.show_following)}
       ${soSwitchRow("sx_sensitive", "总是显示敏感内容", a.show_sensitive)}
       <p class="sxsetstatus" id="sx_setting_status" role="status"></p></section>
-    <section class="sxset"><h3>通知</h3>
+    ${soTransSetHTML()}
+    ${SO_WEB ? `<section class="sxset">${soSetHead("bell", "通知")}${soPushHTML()}</section>` : `<section class="sxset">${soSetHead("bell", "通知")}
       ${soSwitchRow("sx_notify", "系统通知", SO.prefs?.notify !== false, "", !SO.prefs)}
-      <p class="sxsetstatus" id="sx_notify_status" role="status"></p></section>
-    <section class="sxset"><h3>数据</h3>
+      <p class="sxsetstatus" id="sx_notify_status" role="status"></p></section>`}
+    <section class="sxset">${soSetHead("download", "数据")}
       ${soSetRow("导出我的数据", "", `<button class="btn small" data-so="accountexport">导出</button>`)}
       <p class="sxsetstatus" id="sx_export_status" role="status"></p></section>
-    <section class="sxset"><h3>已拉黑的账号</h3>${blocks?.ok ? blocks.accounts.map(p => soPersonRow(p, "unblock")).join("") || `<p class="sxsetnote">暂无内容</p>` : `<p class="warnc">${esc(blocks?.err || "正在读取…")}</p>`}</section>
+    <section class="sxset">${soSetHead("block", "已拉黑的账号")}${blocks?.ok ? blocks.accounts.map(p => soPersonRow(p, "unblock")).join("") || `<p class="sxsetnote">暂无内容</p>` : `<p class="warnc">${esc(blocks?.err || "正在读取…")}</p>`}</section>
     <section class="sxset sxsetend"><button class="btn" data-so="accountlogout">退出登录</button><button class="btn sxdanger" data-so="accountdelete"${!SO.service.available ? " disabled" : ""}>注销账号</button></section>
   </div>`);
 }
@@ -2926,7 +3621,8 @@ async function soPageAction(b, e) {
     case "pagepostmore": return soProfilePosts(true);
     case "pageworkmore": return soProfileWorks(true);
     case "pagepeople": return soPeopleOpen(b.dataset.kind);
-    case "pagemenu": { const r = SO.page.data; return soPop(b, [["pagereport", "举报"], ...(!r.readOnly ? [[r.profile.blocked ? "pageunblock" : "pageblock", r.profile.blocked ? "取消拉黑" : "拉黑"]] : []), ["pagecopy", "复制链接文字"]], r); }
+    case "pagemenu": { const r = SO.page.data; return soPop(b, [["pagereport", "举报"], ...(!r.readOnly ? [[r.profile.blocked ? "pageunblock" : "pageblock", r.profile.blocked ? "取消拉黑" : "拉黑"]] : []), ["pagecopy", "复制链接文字"], ...soStaffProfileMenu(r)], r); }
+    case "pagestaffban": { const r = $("#so_pop")?._data; soPopClose(); if (r) return soStaffBan(r.profile); return; }
     case "pagereport": { const r = $("#so_pop")?._data; soPopClose(); if (r) soReport("profile", r.target, r.nickname); return; }
     case "pagecopy": { const r = $("#so_pop")?._data; soPopClose(); if (r) copyText(`${r.nickname} (@${r.profile.handle || r.github}) — MioVRCA`, "已复制"); return; }
     case "pageblock": case "pageunblock": { const id = b.dataset.id || $("#so_pop")?._data?.id; soPopClose(); if (id) return soBlock(id, what === "pageblock"); return; }
@@ -2967,6 +3663,8 @@ document.addEventListener("input", e => {
 document.addEventListener("change", e => {
   if (["sx_requests", "sx_following", "sx_sensitive"].includes(e.target.id)) soSettingSave();
   if (e.target.id === "sx_notify") soPrefsSave();
+  if (e.target.id === "sx_push") soPushSwitch(e.target);
+  if (e.target.id?.startsWith("sx_push_")) soPushKindsSave();
 });
 document.addEventListener("keydown", e => {
   if (e.target.id === "sx_dm_text" && e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); e.stopImmediatePropagation(); soDMSend(); }
@@ -3240,7 +3938,7 @@ document.addEventListener("change", e => {
 // An ask (「求同款」 beside 「发帖」) is a post with pictures asking what an outfit is; replies answer it with a work card
 // (「用作品回答」) or Booth items (「附上 Booth 商品」), and the asker marks the one that solved it (「设为答案」), which
 // then leads the thread as 「就是这套」 (internal/social/asks.go). 探索 「求同款」 lists them, the open ones first.
-const SO_ATABS = [["all", "全部"], ["open", "待解决"], ["solved", "已解决"]];
+const SO_ATABS = [["all", "全部", "list"], ["open", "待解决", "help"], ["solved", "已解决", "answer"]];
 // soAnswering: the draft is a direct reply to an ask, which may answer it with a work card or Booth items
 function soAnswering(c) { return !!(c?.reply_to && c.target?.ask && c.target.id === c.reply_to); }
 function soAskMarksHTML(p, ask) {

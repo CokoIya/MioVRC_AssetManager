@@ -188,7 +188,8 @@ html .top .views.sotight button { padding: 0 3px; } /* (over i18n.css, which nar
 .soaccount b { overflow-wrap: anywhere; min-width: 0; }
 .soaccount > button { margin-top: 12px; }
 .sodevicecode { display: block; font-size: 24px; letter-spacing: 3px; padding-top: 12px; }
-#modal[data-kind="soaccount"], #modal[data-kind="soreport"] { width: 460px; max-width: calc(100vw - 32px); }
+#modal[data-kind="soreport"] { width: 460px; max-width: calc(100vw - 32px); }
+#modal[data-kind="soaccount"] { width: 520px; max-width: calc(100vw - 32px); }
 @media (max-width: 1080px) {
   .someedit { grid-template-columns: minmax(0, 1fr); }
   .sopreview { position: static; }
@@ -299,6 +300,26 @@ html .top .views.sotight button { padding: 0 3px; } /* (over i18n.css, which nar
 .sxtext { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.65; margin: 9px 0; }
 .sxtext .linkbtn { padding: 0; display: inline; font: inherit; white-space: inherit; overflow-wrap: anywhere; vertical-align: baseline; }
 .sxpost.large > .sxtext { font-size: 19px; }
+/* 精选: the maintainer's pick, a gold line above the author (as X puts 已置顶) and a gold edge with a faint wash */
+:root { --feat: #e8b52c; --feat-text: #f2c14e; }
+:root[data-theme="light"] { --feat: #d99a00; --feat-text: #9a6b00; }
+.sxpost.featured { box-shadow: inset 3px 0 0 var(--feat); background: linear-gradient(100deg, color-mix(in srgb, var(--feat) 9%, transparent), transparent 55%); }
+.sxpost.featured:hover { background: linear-gradient(100deg, color-mix(in srgb, var(--feat) 13%, transparent), var(--hover-weak, transparent) 55%); }
+.sxfeatured { display: flex; align-items: center; gap: 6px; margin: -4px 0 6px; color: var(--feat-text); font-size: 13px; font-weight: 700; }
+.sxfeatured svg { width: 15px; height: 15px; fill: var(--feat); stroke: var(--feat); }
+.sxfilter[data-filter="featured"] svg { color: var(--feat); }
+.sxnicon.k-featured { --c: var(--feat); }
+.sxnicon.k-featured svg path { fill: currentColor; }
+/* 翻译帖子: the link under the text, then the translation with where it came from */
+.sxtrans { margin: 6px 0 2px; }
+.sxtrans .linkbtn { border: 0; background: none; padding: 0; color: var(--accent-text); font: inherit; font-size: 13px; cursor: pointer; }
+.sxtrans .linkbtn:hover { text-decoration: underline; }
+.sxtransby { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 4px; color: var(--muted); font-size: 12px; }
+.sxtransby .spin { width: 12px; height: 12px; }
+.sxtranstext { padding: 8px 0 2px; border-top: 1px solid var(--line); }
+.sxtransai { display: grid; gap: 8px; padding: 4px 0 12px; }
+.sxtransai .row { margin: 0; }
+.sxtransai .btn { justify-self: start; }
 .sxmedia { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; border-radius: 16px; overflow: hidden; margin: 10px 0; max-height: 440px; }
 .sxmedia button { padding: 0; border: 0; background: var(--raised); overflow: hidden; min-height: 0; cursor: pointer; }
 .sxmedia img { display: block; width: 100%; height: 100%; object-fit: cover; }
@@ -844,3 +865,193 @@ span.sxact { cursor: default; }
 .sxtrendpin { display: inline-flex; align-items: center; gap: 4px; color: var(--accent) !important; font-size: 12px; }
 .sxtrendpin svg { width: 13px; height: 13px; }
 .sxtrend .sxtrendpin span { color: inherit; }
+
+/* a menu's line between groups (the moderators' part of a post's menu) */
+.sopopsep { height: 1px; margin: 4px 6px; background: var(--line); }
+
+/* a question over the page (soAsk), as X asks before deleting: the title, a line, and the answers one under the other */
+.soask { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 16px; background: rgba(0, 0, 0, .45); opacity: 0; transition: opacity var(--dur-fast) var(--ease); }
+.soask.on { opacity: 1; }
+.soaskbox { width: min(320px, 100%); display: flex; flex-direction: column; gap: 10px; padding: 24px 24px 20px; border-radius: 18px; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 18px 50px rgba(0, 0, 0, .45);
+  transform: scale(.96); transition: transform var(--dur) var(--ease-spring); }
+.soask.on .soaskbox { transform: none; }
+.soaskbox b { font-size: 19px; line-height: 1.3; }
+.soaskbox p { margin: 0; color: var(--text-2); font-size: 14px; }
+.soaskreason { height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--bg); color: var(--text); font: inherit; }
+.soaskbtns { display: grid; gap: 10px; margin-top: 8px; }
+.soaskbtns .btn { height: 44px; border-radius: 22px; font-weight: 700; font-size: 15px; }
+.btn.sxdangerfill { background: #f4212e; border-color: #f4212e; color: #fff; }
+.btn.sxdangerfill:hover:not(:disabled) { background: #dc1e29; }
+:root[data-motion="reduce"] :is(.soask, .soaskbox) { transition: none; }
+
+/* 通知: the offer to turn push notices on (the page in a browser) */
+.sxpushoffer { display: flex; align-items: center; gap: 10px; margin: 12px 16px 4px; padding: 10px 8px 10px 14px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--panel); font-size: 13.5px; }
+.sxpushoffer > span:nth-child(2) { flex: 1; min-width: 0; }
+.sxpushoffer > .soi svg { width: 20px; height: 20px; color: var(--accent); }
+
+/* 扫码登录: the code beside the email form on a computer (the dialog in two columns), the code in 「在手机上登录」,
+   what a phone shows once it scanned one, and 扫一扫 (the camera with a frame) */
+#modal[data-kind="soaccount"].withqr { width: 780px; }
+.soaccountbody { display: flex; gap: 28px; align-items: flex-start; }
+.soaccountbody > .soform { flex: 1; min-width: 0; }
+.soqrside { flex: none; width: 224px; display: flex; flex-direction: column; align-items: center; gap: 10px; padding-left: 28px; border-left: 1px solid var(--line); min-height: 250px; }
+#so_qr_handoff { border: 0; padding: 8px 0 4px; margin: 0 auto; width: 260px; }
+.soqr { position: relative; width: 200px; height: 200px; }
+.soqrcode { width: 200px; height: 200px; display: grid; place-items: center; padding: 8px; border-radius: 16px; background: #fff; box-shadow: 0 0 0 1px var(--line); }
+.soqrcode svg { width: 100%; height: 100%; display: block; }
+.soqrcode .spin { border-color: rgba(0, 0, 0, .15); border-top-color: #555; }
+.soqr.dim .soqrcode svg { opacity: .08; filter: blur(2px); }
+.soqrover { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 12px; text-align: center; color: #14151f; }
+.soqrover .soi svg { width: 34px; height: 34px; stroke-width: 2.2; color: var(--accent-fill); }
+.soqrover b { font-size: 14px; }
+.soqrover .btn { background: #14151f; border-color: #14151f; color: #fff; }
+.soqrcap { margin: 0; color: var(--text-2); font-size: 13px; text-align: center; }
+.soqrask, .soqrscanned { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 8px 8px; text-align: center; }
+.soqrscanned > .spin { margin: 40px auto; }
+.soqrask b { font-size: 17px; }
+.soqrask p { margin: 0; color: var(--text-2); }
+.soqrdevice { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: color-mix(in srgb, var(--accent-fill) 14%, transparent); color: var(--accent); }
+.soqrdevice .soi svg { width: 30px; height: 30px; }
+.soqrdevice.ok { color: #00ba7c; background: color-mix(in srgb, #00ba7c 14%, transparent); }
+.soqrwho { display: inline-flex; align-items: center; gap: 8px; }
+.soqrbtns { display: flex; gap: 10px; margin-top: 6px; }
+.soqrbtns .btn { min-width: 108px; height: 40px; border-radius: 20px; }
+.soqrscanbtn { width: 100%; height: 42px; margin-top: 14px; border-radius: 21px; }
+#modal .mbody.soscan { position: relative; display: grid; place-items: center; padding: 0; background: #000; overflow: hidden; }
+.soscan video { width: 100%; height: 100%; max-height: 70vh; object-fit: cover; display: block; }
+.soscanframe { position: absolute; left: 50%; top: 45%; width: min(64vw, 260px); aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 22px;
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .45); outline: 3px solid rgba(255, 255, 255, .9); outline-offset: -3px; }
+.soscanframe::after { content: ""; position: absolute; left: 10%; right: 10%; top: 12%; height: 2px; border-radius: 1px; background: var(--accent-fill); box-shadow: 0 0 12px var(--accent-fill); animation: soscanline 2s ease-in-out infinite; }
+@keyframes soscanline { 50% { top: 86%; } }
+.soscantip { position: absolute; left: 0; right: 0; bottom: 18px; margin: 0; color: #fff; text-align: center; font-size: 14px; text-shadow: 0 1px 4px rgba(0, 0, 0, .6); }
+/* 注册 / 登录, as X: a close or back button and the mark on top, a large title, buttons as wide as the form, the quick
+   sign-ins above 「或」, and the way to the other window under it */
+#modal[data-kind="soaccount"] .soacchead { position: relative; display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 12px 0; }
+.soaccnav, .soaccnav.wmback { display: grid; place-items: center; flex: none; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--text); cursor: pointer; }
+.soaccnav:hover { background: var(--hover-weak); }
+.soaccnav svg { width: 20px; height: 20px; }
+.soaccmark { position: absolute; left: 50%; top: calc(50% + 4px); transform: translate(-50%, -50%); display: grid; }
+.soaccmark img { width: 32px; height: 32px; border-radius: 8px; display: block; }
+.soaccstep { color: var(--faint); font-size: 13px; font-weight: 600; }
+.soacc { width: 100%; max-width: 380px; margin: 0 auto; padding: 4px 0 20px; }
+.withqr .soacc { margin: 0; }
+.soacc h2 { margin: 8px 0 24px; font-size: 26px; font-weight: 800; line-height: 1.25; }
+.soacc .row input { height: 44px; font-size: 15px; }
+.soaccbig { width: 100%; height: 42px; margin: 0 0 12px; border-radius: 21px; display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 700; }
+.soaccprov { background: var(--panel); border-color: var(--line2, var(--line)); color: var(--text); }
+.soaccprov:hover { background: var(--hover-weak); }
+.soaccprov svg { width: 18px; height: 18px; flex: none; }
+.soaccor { display: flex; align-items: center; gap: 10px; margin: 2px 0 14px; color: var(--faint); font-size: 13px; }
+.soaccor::before, .soaccor::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.soacc .soqrscanbtn { margin-top: 0; }
+.soacc .linkbtn { border: 0; background: none; padding: 0; color: var(--accent-text); font: inherit; font-weight: 600; cursor: pointer; }
+.soacc .linkbtn:hover { text-decoration: underline; }
+.soacc .linkbtn:disabled { color: var(--faint); cursor: default; text-decoration: none; }
+.soaccswitch { margin: 24px 0 0; color: var(--muted); font-size: 14px; }
+.soacclegal { margin: -2px 0 0; color: var(--faint); font-size: 12px; }
+.soacclegal .linkbtn { font-weight: 400; }
+.soacclead { margin: -14px 0 4px; color: var(--text-2); overflow-wrap: anywhere; }
+.soacclead + .small { margin: 0 0 18px; }
+.soacclead:has(+ .row) { margin-bottom: 18px; }
+.soaccresend { display: block; margin: 2px auto 0; font-size: 13px; }
+.soaccwait { display: grid; place-items: center; gap: 14px; padding: 24px 0 28px; color: var(--text-2); }
+.soaccwait p { margin: 0; }
+@media (max-width: 760px) {
+  #modal[data-kind="soaccount"].withqr { width: 520px; }
+  .soaccountbody { display: block; }
+  .soqrside { display: none; }
+}
+:root[data-motion="reduce"] .soscanframe::after { animation: none; }
+
+/* The icons soIconize puts before a button's label (social.js SO_BTN), and their moves: pressing plays the icon's own
+   move as X does with its actions (the send arrow flies off and comes back, the bin's lid lifts, a check draws itself,
+   refresh turns once, a cross turns a quarter); a few also hint on hover. Nothing moves when motion is reduced. */
+.soi { display: inline-grid; place-items: center; flex: none; line-height: 0; }
+.soi svg { width: 16px; height: 16px; overflow: visible; }
+.soi svg.fill { fill: currentColor; stroke: none; }
+.soi.sotwo > span { display: inline-grid; place-items: center; }
+.soi.sotwo > .son, .on > .soi.sotwo > .soff, [aria-pressed=true] > .soi.sotwo > .soff { display: none; }
+.on > .soi.sotwo > .son, [aria-pressed=true] > .soi.sotwo > .son { display: inline-grid; }
+:where(button, [role=button]):has(> .soi:not(:only-child)) { display: inline-flex; align-items: center; gap: 6px; }
+.btn:has(> .soi) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.btn:not(.small) > .soi svg { width: 17px; height: 17px; }
+.chip:has(> .soi) { display: inline-flex; align-items: center; gap: 5px; }
+.chip > .soi svg { width: 14px; height: 14px; }
+.linkbtn:has(> .soi) { display: inline-flex; align-items: center; gap: 5px; vertical-align: middle; }
+.navitem:has(> .soi) { display: flex; justify-content: flex-start; gap: 10px; }
+.navitem > .soi svg { width: 18px; height: 18px; }
+.sxdmrequests:has(> .soi) { display: flex; align-items: center; gap: 12px; }
+.sxdmrequests > .soi svg { width: 20px; height: 20px; }
+.soiconly > .soi svg { width: 18px; height: 18px; }
+.sxsethead { display: flex; align-items: center; gap: 9px; }
+.sxsethead .soi svg { width: 19px; height: 19px; color: var(--accent); }
+.sxtabs button .sxtabicon svg { transition: transform var(--dur) var(--ease-spring); }
+.soi .mv, .soi .lid, .soi svg { transform-box: fill-box; transform-origin: center; transition: transform var(--dur) var(--ease); }
+.soi .dr { stroke-dasharray: 1; stroke-dashoffset: 0; }
+
+/* hover: a hint of the move */
+:is(button, [role=button]):not(:disabled):hover > .soi[data-i=send] .mv { transform: translate(1.5px, -1.5px); }
+:is(button, [role=button]):not(:disabled):hover > .soi:is([data-i=x], [data-i=plus], [data-i=join]) .mv { transform: rotate(90deg); }
+:is(button, [role=button]):not(:disabled):hover > .soi[data-i=refresh] .mv { transform: rotate(60deg); }
+:is(button, [role=button]):not(:disabled):hover > .soi:is([data-i=logout], [data-i=login], [data-i=next]) .mv { transform: translateX(2px); }
+:is(button, [role=button]):not(:disabled):hover > .soi:is([data-i=back], [data-i=prev]) .mv { transform: translateX(-2px); }
+:is(button, [role=button]):not(:disabled):hover > .soi:is([data-i=download], [data-i=more]) .mv { transform: translateY(2px); }
+:is(button, [role=button]):not(:disabled):hover > .soi[data-i=trend] .mv { transform: translate(1px, -1px); }
+:is(button, [role=button]):not(:disabled):hover > .soi[data-i=trash] .lid { transform: translateY(-1.5px) rotate(-8deg); }
+:is(button, [role=button]):not(:disabled):hover > .soi[data-i=edit] .mv { transform: rotate(-8deg); }
+
+/* pressing: an icon springs, or moves in its own way */
+.soi.pop svg, svg.pop, .sxtabicon.pop svg { animation: soipop .45s var(--ease-spring); }
+.soi.pop:is([data-i=send], [data-i=trash], [data-i=refresh], [data-i=x], [data-i=plus], [data-i=join], [data-i=copy], [data-i=clone], [data-i=edit], [data-i=logout],
+  [data-i=login], [data-i=download], [data-i=more], [data-i=back], [data-i=prev], [data-i=next], [data-i=undo], [data-i=eye], [data-i=globe], [data-i=block], [data-i=chat],
+  [data-i=bell], [data-i=scan], [data-i=star], [data-i=unlink], [data-i=trend], [data-i=video], [data-i=mail], [data-i=inbox], [data-i=list], [data-i=help]) svg { animation: none; }
+.soi.pop[data-i=send] .mv { animation: soisend .6s var(--ease); }
+.soi.pop[data-i=trash] .lid { animation: soilid .55s var(--ease-spring); transform-origin: 0% 100%; }
+.soi.pop[data-i=refresh] .mv { animation: soispin .6s var(--ease); }
+.soi.pop:is([data-i=x], [data-i=plus], [data-i=join], [data-i=block]) .mv { animation: soiquarter .42s var(--ease-spring); }
+.soi.pop:is([data-i=copy], [data-i=clone]) .mv { animation: soicopy .45s var(--ease-spring); }
+.soi.pop[data-i=edit] .mv { animation: soiwiggle .5s var(--ease); transform-origin: 0% 100%; }
+.soi.pop:is([data-i=logout], [data-i=login], [data-i=next], [data-i=video], [data-i=list]) .mv { animation: soiright .42s var(--ease); }
+.soi.pop:is([data-i=back], [data-i=prev]) .mv { animation: soileft .42s var(--ease); }
+.soi.pop:is([data-i=download], [data-i=more]) .mv { animation: soidown .5s var(--ease); }
+.soi.pop[data-i=undo] .mv { animation: soiundo .5s var(--ease); }
+.soi.pop[data-i=eye] .mv { animation: soiblink .4s var(--ease); }
+.soi.pop[data-i=globe] .mv { animation: soiglobe .6s var(--ease); }
+.soi.pop:is([data-i=chat], [data-i=help]) .mv { animation: soiwobble .5s var(--ease); }
+.soi.pop[data-i=bell] .mv { animation: soiring .6s var(--ease); transform-origin: 50% 0%; }
+.soi.pop[data-i=scan] .mv { animation: soiscan .6s var(--ease); }
+.soi.pop[data-i=star] .mv { animation: soistar .55s var(--ease-spring); }
+.soi.pop[data-i=unlink] .mv { animation: soicut .4s var(--ease); }
+.soi.pop[data-i=link] svg { animation: soilink .45s var(--ease); }
+.soi.pop[data-i=flag] svg { animation: soiflag .5s var(--ease); transform-origin: 0% 100%; }
+.soi.pop[data-i=pin] svg { animation: soipin .45s var(--ease-spring); }
+.soi.pop[data-i=trend] .mv { animation: soitrend .45s var(--ease); }
+.soi.pop:is([data-i=mail], [data-i=inbox]) .mv { animation: soidrop .45s var(--ease-spring); }
+.soi.pop .dr { animation: soidraw .45s var(--ease) both; }
+.soi.pop .dr.d2 { animation-delay: .12s; }
+@keyframes soipop { 0% { transform: scale(1); } 30% { transform: scale(.8); } 65% { transform: scale(1.14); } 100% { transform: scale(1); } }
+@keyframes soisend { 0% { transform: none; opacity: 1; } 45% { transform: translate(10px, -10px); opacity: 0; } 46% { transform: translate(-8px, 8px); opacity: 0; } 100% { transform: none; opacity: 1; } }
+@keyframes soilid { 0% { transform: none; } 40% { transform: translateY(-3px) rotate(-18deg); } 100% { transform: none; } }
+@keyframes soispin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+@keyframes soiquarter { from { transform: rotate(-90deg) scale(.7); } to { transform: none; } }
+@keyframes soicopy { 0% { transform: none; } 40% { transform: translate(-3px, -3px) scale(.92); } 100% { transform: none; } }
+@keyframes soiwiggle { 0%, 100% { transform: none; } 25% { transform: rotate(-14deg); } 55% { transform: rotate(9deg); } 80% { transform: rotate(-4deg); } }
+@keyframes soiright { 0%, 100% { transform: none; } 40% { transform: translateX(4px); } }
+@keyframes soileft { 0%, 100% { transform: none; } 40% { transform: translateX(-4px); } }
+@keyframes soidown { 0%, 100% { transform: none; } 35% { transform: translateY(4px); } 70% { transform: translateY(-1px); } }
+@keyframes soiundo { 0% { transform: none; } 45% { transform: rotate(-40deg); } 100% { transform: none; } }
+@keyframes soiblink { 0%, 100% { transform: none; } 45% { transform: scaleY(.1); } }
+@keyframes soiglobe { 0% { transform: none; } 50% { transform: scaleX(-1); } 100% { transform: scaleX(1); } }
+@keyframes soiwobble { 0%, 100% { transform: none; } 25% { transform: rotate(-12deg); } 60% { transform: rotate(8deg); } }
+@keyframes soiring { 0%, 100% { transform: none; } 15% { transform: rotate(16deg); } 35% { transform: rotate(-14deg); } 55% { transform: rotate(9deg); } 75% { transform: rotate(-5deg); } }
+@keyframes soiscan { 0%, 100% { transform: none; } 30% { transform: translateY(-6px); } 70% { transform: translateY(6px); } }
+@keyframes soistar { 0% { transform: rotate(-72deg) scale(.6); } 100% { transform: none; } }
+@keyframes soicut { from { stroke-dasharray: 23; stroke-dashoffset: 23; } to { stroke-dasharray: 23; stroke-dashoffset: 0; } }
+@keyframes soilink { 0% { transform: none; } 45% { transform: rotate(-45deg) scale(.9); } 100% { transform: none; } }
+@keyframes soiflag { 0%, 100% { transform: none; } 30% { transform: skewY(-10deg); } 65% { transform: skewY(6deg); } }
+@keyframes soipin { 0% { transform: translateY(-5px) scale(.8); } 100% { transform: none; } }
+@keyframes soitrend { 0% { transform: translate(-3px, 3px); opacity: .3; } 100% { transform: none; opacity: 1; } }
+@keyframes soidrop { 0% { transform: translateY(-4px); } 100% { transform: none; } }
+@keyframes soidraw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+:root[data-motion="reduce"] :is(.soi, .soi *, svg.pop, .sxtabicon svg) { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) { :is(.soi, .soi *, svg.pop, .sxtabicon svg) { animation: none !important; transition: none !important; } }

@@ -1,0 +1,181 @@
+/* SPDX-License-Identifier: GPL-3.0-only OR PolyForm-Noncommercial-1.0.0
+   Copyright (c) 2026 天川澪 (Coko_Iya). Part of MioVRCA: https://github.com/CokoIya/MioVRC_AssetManager (terms in LICENSE.md) */
+/* The community in a browser (web.js, web-start.js) over the program's look (app.css, social.css):
+   - wide: the side bar, the timeline, a column with search and the download, side by side and centred;
+   - narrower: the side bar as icons, the timeline;
+   - a phone: the timeline alone, a bar at the top (the account opens the side bar as a drawer), tabs at the bottom,
+     the pen above them, and dialogs over the whole screen.
+   The page scrolls as a whole (the program scrolls its main area): a phone's browser then hides its address bar. */
+
+html, body.web { height: auto; min-height: 100%; }
+body.web { overflow-x: hidden; overflow-y: auto; -webkit-text-size-adjust: 100%; }
+body.web.wsideon { overflow: hidden; }
+.web .main { overflow: visible; padding: 0; flex: 1; min-width: 0; }
+
+.wpage { display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; margin: 0 auto; max-width: 1280px; }
+.web #side { position: sticky; top: 0; bottom: auto; height: 100vh; width: 260px; flex: none; padding: 14px 12px 14px 16px; border-right: 0; background: transparent; overflow-y: auto;
+  transform: none; visibility: visible; box-shadow: none; } /* (not the program's drawer below 860px: app.css) */
+.web .main { max-width: 640px; min-height: 100vh; border-inline: 1px solid var(--line); }
+.web .sxtimeline { width: 100%; border-inline: 0; }
+.web .resultbar { position: sticky; top: 0; z-index: 5; margin: 0; padding: 8px 14px; min-height: 52px; background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+.web .resultbar:empty { display: none; }
+.web .grid { display: block; padding: 0; }
+.web .grid > .empty { padding: 60px 20px; }
+.web .sowrap { padding: 0 16px 24px; }
+
+.wright { position: sticky; top: 0; width: 320px; flex: none; padding: 12px 16px 16px 24px; display: flex; flex-direction: column; gap: 14px; }
+.wright .sxsearch { margin: 0; }
+.wcard { padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); }
+.wdl { width: 100%; height: 40px; border-radius: 20px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.wlinks { display: flex; flex-wrap: wrap; gap: 10px 16px; }
+.linkbtn { border: 0; background: none; padding: 0; color: var(--accent-text); cursor: pointer; font: inherit; }
+.linkbtn:hover { text-decoration: underline; }
+.wtrends { padding: 12px 0 6px; }
+.wtrends h3 { margin: 0 16px 4px; font-size: 18px; font-weight: 800; }
+.wtrend { display: grid; gap: 1px; width: 100%; padding: 9px 16px; border: 0; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.wtrend:hover { background: var(--hover-weak); }
+.wtrend small { display: flex; align-items: center; gap: 4px; color: var(--accent-text); font-size: 12px; }
+.wtrend small svg { width: 12px; height: 12px; }
+.wtrend b { overflow-wrap: anywhere; }
+.wtrend > span { color: var(--faint); font-size: 13px; }
+
+.wsidebrand { display: flex; align-items: center; gap: 10px; height: 44px; margin: 0 0 8px; padding: 0 10px; border: 0; border-radius: 22px; background: none;
+  color: var(--text); font: inherit; font-size: 18px; font-weight: 800; cursor: pointer; width: max-content; }
+.wsidebrand:hover { background: var(--hover-weak); }
+.wsidebrand img { width: 30px; height: 30px; border-radius: 8px; display: block; }
+.wsidefoot { margin: 12px 4px 4px; display: grid; gap: 10px; }
+/* 为你推荐 / 正在关注 across the bar, 刷新 as an icon at its end */
+.web .resultbar:has(.sxtabs) { padding: 0 46px 0 0; }
+.web .resultbar:has(.sxtabs) > .btn { position: absolute; display: grid; place-items: center; right: 6px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; padding: 0; margin: 0; border-color: transparent; }
+.web .resultbar:has(.sxtabs) > .btn span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.wmback { display: none; }
+.wsidefoot .row { display: grid; gap: 6px; margin: 0; }
+.wsidefoot .row label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--faint); }
+.wsidefoot .row label .soi svg { width: 14px; height: 14px; }
+.wsidefoot select { width: 100%; }
+.wsiderow { display: flex; gap: 6px; flex-wrap: wrap; }
+.wtheme .ico-light, :root[data-theme="light"] .wtheme .ico-dark { display: none; }
+:root[data-theme="light"] .wtheme .ico-light { display: inline; }
+.webapp p { margin: 6px 0 12px; color: var(--text-2); }
+.modal .mfoot a.btn { display: inline-flex; align-items: center; text-decoration: none; color: #fff; }
+
+/* signed out, as X: a bar along the bottom with 登录 and 注册, and 「第一次来？」 beside the timeline */
+.wjoin { position: fixed; z-index: 14; left: 0; right: 0; bottom: 0; background: var(--accent-fill); color: #fff; }
+.wjoin[hidden] { display: none; }
+.wjoinin { max-width: 1000px; margin: 0 auto; display: flex; align-items: center; gap: 16px; padding: 12px 24px; }
+.wjointext { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.wjointext b { font-size: 20px; font-weight: 800; }
+.wjointext span { font-size: 14px; opacity: .9; }
+.wjoinbtns { display: flex; gap: 12px; flex: none; }
+.wjoinbtns .btn { height: 38px; padding: 0 20px; border-radius: 19px; font-weight: 700; }
+.wjoinlogin { background: transparent; border: 1px solid rgba(255, 255, 255, .7); color: #fff; }
+.wjoinlogin:hover { background: rgba(255, 255, 255, .12); }
+.wjoinsignup { background: #fff; border-color: #fff; color: #0f1419; }
+.wjoinsignup:hover { background: #e9e9ea; }
+.web.wout .main { padding-bottom: 72px; }
+.wnew h3 { margin: 0 0 4px; font-size: 18px; font-weight: 800; }
+.wnew p { margin: 0 0 14px; color: var(--text-2); font-size: 14px; }
+.wnew .soaccbig { margin-bottom: 10px; }
+.wnew .soaccbig:last-child { margin-bottom: 0; }
+
+/* the phone's bar, tabs and pen: only on a phone */
+.wtop, .wtabs, .wfab { display: none; }
+.whome { margin: 10px 12px 2px; display: flex; align-items: center; gap: 10px;
+  padding: 10px 10px 10px 14px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--panel); font-size: 13px; }
+.whome[hidden] { display: none; }
+/* without a connection: a line kept in sight at the bottom (above the tabs on a phone) */
+.woffline { position: fixed; z-index: 40; left: 50%; bottom: 20px; transform: translateX(-50%); max-width: calc(100vw - 32px); padding: 8px 16px; border-radius: 18px;
+  background: color-mix(in srgb, var(--warn, #e0a83e) 22%, var(--panel)); border: 1px solid color-mix(in srgb, var(--warn, #e0a83e) 45%, transparent);
+  color: var(--text); font-size: 13px; box-shadow: 0 6px 18px rgba(0, 0, 0, .3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.woffline[hidden] { display: none; }
+.whome span { flex: 1; }
+.whome .wb { flex: none; }
+
+/* narrower: the side bar as icons */
+@media (min-width: 1181px) {
+  .wsidefoot [data-web="download"] { display: none; } /* (the column beside the timeline has it) */
+}
+@media (max-width: 1180px) {
+  .wright { display: none; }
+}
+@media (max-width: 960px) {
+  .web #side { width: 88px; padding: 12px 8px; }
+  .web #side .navitem .nm, .web #side .sxbadge, .web #side .soside .btn span, .web #side .sxaccount span, .web #side .wsidefoot, .web #side h3, .web #side .sobases { display: none; }
+  .web #side .navitem { justify-content: center; padding: 0; }
+  .web #side .soside .btn { padding: 0; }
+  .web #side .sxaccount { justify-content: center; width: auto; margin: auto 0 8px; }
+  .wsidebrand { margin: 0 auto 8px; padding: 0 7px; }
+  .wsidebrand span { display: none; }
+}
+
+/* a phone */
+@media (max-width: 700px) {
+  .wpage { display: block; }
+  .web .main { max-width: none; border: 0; padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+  .web #side { position: fixed; z-index: 30; left: 0; top: 0; bottom: 0; height: auto; width: min(300px, 84vw); padding: calc(14px + env(safe-area-inset-top)) 14px 14px;
+    background: var(--panel); border-right: 1px solid var(--line); transform: translateX(-102%); visibility: hidden; transition: transform var(--dur, .2s) ease-out, visibility 0s var(--dur, .2s); }
+  .web.wsideon #side { transform: none; visibility: visible; box-shadow: 10px 0 28px rgba(0, 0, 0, .35); transition: transform var(--dur, .2s) ease-out; }
+  .web #side .navitem .nm, .web #side .soside .btn span, .web #side .sxaccount span, .web #side .wsidefoot, .web #side h3, .web #side .sobases { display: revert; }
+  .web #side .navitem { justify-content: flex-start; padding: 0 14px; }
+  .web #side .soside .btn { padding: 0 12px; }
+  .web #side .sxaccount { justify-content: flex-start; width: calc(100% - 20px); margin: auto 10px 12px; }
+  .wsidebrand { margin: 0 0 8px; padding: 0 10px; }
+  .wsidebrand span { display: inline; }
+
+  .wtop { display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 10; height: calc(52px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 12px 0;
+    background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+  .wtopme { width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--text); display: grid; place-items: center; cursor: pointer; }
+  .wtopme .soav { width: 32px; height: 32px; }
+  .wtopbrand { position: absolute; left: 50%; transform: translateX(-50%); bottom: 11px; display: grid; }
+  .wtopbrand img { width: 30px; height: 30px; border-radius: 8px; display: block; }
+  .wtopgap { flex: 1; }
+  .wtopscan { width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--text); display: grid; place-items: center; cursor: pointer; }
+  .wtopscan[hidden] { display: none; }
+  .wtopscan .soi svg { width: 22px; height: 22px; }
+  .web #modal[data-kind="sxscan"] .mbody { flex: 1; }
+  .web #modal[data-kind="sxscan"] .soscan video { max-height: none; }
+  .web .resultbar { top: calc(52px + env(safe-area-inset-top)); padding: 6px 12px; min-height: 46px; }
+
+  .wtabs { display: flex; position: fixed; z-index: 15; left: 0; right: 0; bottom: 0; height: calc(56px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom);
+    background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-top: 1px solid var(--line); }
+  .wtab { flex: 1; position: relative; display: grid; place-items: center; border: 0; background: none; color: var(--muted); cursor: pointer; }
+  .wtab svg { width: 24px; height: 24px; }
+  .wtab.on { color: var(--text); }
+  .wtab.on svg { stroke-width: 2.4; }
+  .wbadge { position: absolute; top: 7px; left: calc(50% + 6px); min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; background: #e5484d; color: #fff; font-size: 11px; font-weight: 700; line-height: 17px; text-align: center; }
+
+  .wfab { display: grid; place-items: center; position: fixed; z-index: 16; right: 16px; bottom: calc(72px + env(safe-area-inset-bottom)); width: 56px; height: 56px; border: 0; border-radius: 50%;
+    background: var(--accent-fill); color: #fff; box-shadow: 0 6px 18px rgba(0, 0, 0, .35); cursor: pointer; }
+  .wfab[hidden] { display: none; }
+  .wfab svg { width: 24px; height: 24px; }
+
+  .wout .wtabs, .wout .wfab { display: none; }
+  .wjoinin { padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); gap: 10px; }
+  .wjointext b { font-size: 15px; }
+  .wjointext span { display: none; }
+  .wjoinbtns { gap: 8px; }
+  .wjoinbtns .btn { height: 34px; padding: 0 14px; }
+  .web.wout .main { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+
+  /* dialogs over the whole screen */
+  .web .modal { left: 0; top: 0; width: 100vw; max-width: 100vw; height: 100%; max-height: 100%; border-radius: 0; border: 0; transform: none;
+    padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+  .web .modal.on { transform: none; }
+  .web #modal[data-kind="soaccount"], .web #modal[data-kind="soreport"] { width: 100vw; max-width: 100vw; }
+  .web .modal .mbody { flex: 1; }
+  .web .modal .mhead:has(.wmback) { display: flex; align-items: center; gap: 8px; padding: 10px 14px 6px 8px; }
+  .wmback { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; color: var(--text); }
+  .wmback svg { width: 20px; height: 20px; }
+  .web .modal .mfoot:has(> [data-m="close"]:only-child) { display: none; }
+  .toast { bottom: calc(76px + env(safe-area-inset-bottom)); max-width: calc(100vw - 32px); }
+  .woffline { left: 16px; right: 88px; transform: none; max-width: none; bottom: calc(78px + env(safe-area-inset-bottom)); } /* (beside the pen) */
+
+  /* touch: room for a finger */
+  .web .btn.small { height: 34px; }
+  .web input, .web select, .web textarea { font-size: 16px; } /* (iOS zooms into a smaller field) */
+}
+
+/* the parts of the community only the program has (web.js webOnlyInApp says so where one is reached) */
+.web [data-so="assetlib"], .web [data-so="assetproject"], .web [data-so="assetrecipe"], .web #sw_libpick, .web [data-so="wishmissing"],
+.web [data-so="showcasewish"], .web [data-so="followshop"] { display: none; }

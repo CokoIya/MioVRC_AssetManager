@@ -8,6 +8,7 @@ Windows 上的 VRChat 改模素材管理工具。把本地文件夹、Booth / Gu
 
 ## 功能
 
+- **2.0.2 试衣间更新**：修复试穿已导入衣服的报错，自建文件夹内的衣服可分别显示，头发和配饰可开关；修复部分 lilToon 头发显示及连续切换刷新问题。Unity 插件更新为 1.6.7，并新增素体 Lapwing 的识别。
 - **2.0.0 一键改模**：把素体和素材加入「改模篮」，查看兼容性、同步参数和磁盘空间预估，再一键新建或选择工程、导入、穿戴、生成菜单并验收，结果页可继续上传到 VRChat、创建 Quest 版或撤销本次改动。
 - **素材库**：扫描素材文件夹、unitypackage 和压缩包，自动分类、识别适配素体、关联 Booth 商品；同款合并、风格标签、搜索筛选；标出每个素材用在哪些 Unity 工程里。
 - **购买和下载**：在软件里逛 Booth，同步并下载 Booth、Gumroad 已购；读取并下载百度网盘、Google Drive、Dropbox 分享；闲鱼在独立窗口中打开；愿望单降价提醒。
@@ -66,6 +67,7 @@ Windows 上的 VRChat 改模素材管理工具。把本地文件夹、Booth / Gu
 | [mp4-muxer](https://github.com/Vanilagy/mp4-muxer) 5.2.2 | [MIT](web/vendor/LICENSE-mp4-muxer.txt) |
 | [webm-muxer](https://github.com/Vanilagy/webm-muxer) 5.1.4 | [MIT](web/vendor/LICENSE-webm-muxer.txt) |
 | [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) 2.0.4 | [MIT](web/vendor/LICENSE-qrcode-generator.txt) |
+| [jsQR](https://github.com/cozmo/jsQR) 1.4.0 | [Apache-2.0](web/vendor/LICENSE-jsqr.txt) |
 | [TensorFlow.js](https://github.com/tensorflow/tfjs) 4.22.0 | [Apache-2.0](web/vendor/LICENSE-tfjs.txt) |
 | [NSFWJS](https://github.com/infinitered/nsfwjs) 4.4.0 MobileNetV2 模型 | [MIT](web/vendor/LICENSE-nsfwjs.txt) |
 

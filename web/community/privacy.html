@@ -1,0 +1,223 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only OR PolyForm-Noncommercial-1.0.0 · Copyright (c) 2026 Coko_Iya. Part of MioVRCA: https://github.com/CokoIya/MioVRC_AssetManager (terms in LICENSE.md) -->
+<!-- The community's privacy policy (/privacy.html), in Chinese, English and Japanese on one page: linked from 注册 and
+     from the side of the page, and named in the Google and Discord sign-in settings. The service worker lets it through. -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>隐私政策 · Privacy Policy · MioVRCA</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+  :root { --bg: #fff; --text: #1a1c23; --muted: #5d6270; --line: #e4e6eb; --accent: #d63e52; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #14151f; --text: #e8eaf0; --muted: #a3a8b5; --line: #2a2f3d; --accent: #ff6b7a; } }
+  html { background: var(--bg); }
+  body { margin: 0 auto; max-width: 760px; padding: 32px 20px 64px; color: var(--text); font: 15px/1.75 system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans", "Microsoft YaHei", sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+  header img { width: 36px; height: 36px; border-radius: 9px; }
+  header a { color: var(--text); font-weight: 800; font-size: 20px; text-decoration: none; }
+  nav { display: flex; gap: 16px; margin: 0 0 28px; font-size: 14px; }
+  a { color: var(--accent); }
+  h1 { font-size: 26px; line-height: 1.3; margin: 40px 0 4px; }
+  h2 { font-size: 18px; margin: 28px 0 8px; }
+  .date { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+  ul { padding-left: 1.3em; margin: 6px 0; }
+  li { margin: 4px 0; }
+  section + section { border-top: 1px solid var(--line); margin-top: 48px; }
+</style>
+</head>
+<body>
+<header><img src="icon.svg" alt=""><a href="/">MioVRCA</a></header>
+<nav><a href="#zh">简体中文</a><a href="#en">English</a><a href="#ja">日本語</a></nav>
+
+<section id="zh" lang="zh-CN">
+<h1>隐私政策</h1>
+<p class="date">最后更新：2026 年 10 月 27 日</p>
+<p>MioVRCA 社区（miovrc.net，以及 MioVRCA 程序中的「社区」）由天川澪（Coko_Iya）个人运营。本政策说明社区收集哪些信息、如何使用，以及你可以如何管理它们。</p>
+
+<h2>收集的信息</h2>
+<ul>
+  <li>账号：邮箱地址、昵称、用户名，以及你选择填写的简介、头像、生日和联系方式。</li>
+  <li>你发布的内容：帖子、回复、作品、图片、投票和私信。</li>
+  <li>互动：关注、喜欢、书签、举报和屏蔽。</li>
+  <li>使用 Google 或 Discord 登录时：该平台提供的账号标识、已验证的邮箱和显示名称。</li>
+  <li>开启推送通知时：浏览器为本站生成的推送地址。</li>
+  <li>MioVRCA 程序在一键改模失败时发送的步骤和错误信息，不关联账号。</li>
+</ul>
+
+<h2>如何保存</h2>
+<ul>
+  <li>邮箱只以无法还原的形式和部分遮挡的形式（如 ao***@example.com）保存，用于登录和识别账号。</li>
+  <li>使用 Google 或 Discord 登录时，只保存无法还原的账号标识，用于下次登录。平台的授权在读取上述资料后即被丢弃，社区不会代你发布内容，也不会读取这些平台上的其他数据。</li>
+  <li>私信保存在服务器上，未采用端到端加密。管理员仅在处理举报时查看被举报的消息及前后少量上下文。</li>
+  <li>访问时的网络地址用于防止滥用。连接出错时，它可能出现在服务器的系统日志中，仅用于排查故障。</li>
+  <li>服务器位于日本。</li>
+</ul>
+
+<h2>谁能看到</h2>
+<ul>
+  <li>资料、帖子、回复和作品对所有人可见；生日和关注列表按你的设置公开。</li>
+  <li>喜欢、书签和关注者列表仅你本人可见。</li>
+  <li>邮箱不向其他玩家显示。</li>
+</ul>
+
+<h2>用途</h2>
+<ul>
+  <li>提供登录、发帖、私信和通知等社区功能，发送登录验证码。</li>
+  <li>防止垃圾信息和滥用，处理举报。</li>
+  <li>不出售个人信息，不投放广告，不使用第三方统计或跟踪。</li>
+</ul>
+
+<h2>第三方服务</h2>
+<ul>
+  <li>验证码邮件通过邮件服务商发送。</li>
+  <li>推送通知经由浏览器厂商的推送服务（如 Google、Apple、Mozilla）送达。</li>
+  <li>Google 和 Discord 仅在你选择用它们登录或关联时使用。</li>
+  <li>点击「翻译帖子」时，帖子文字会发送给翻译服务（DeepL、Microsoft 或 MyMemory）；选择 AI 翻译时，发送给你选择的 AI 服务商。网页中填写的 API Key 只保存在你的浏览器中，经服务器转发时不会被保存。</li>
+  <li>Booth 等外部链接由对应网站处理。</li>
+</ul>
+
+<h2>浏览器本地存储</h2>
+<p>网页使用浏览器的本地存储保存登录状态、语言和最近读取的内容，以便快速打开。不使用跟踪 Cookie。</p>
+
+<h2>你可以做什么</h2>
+<ul>
+  <li>在「设置」中修改资料、更换邮箱、关联或取消关联 Google 和 Discord、导出数据、关闭推送通知。</li>
+  <li>在「设置」中注销账号：7 天内重新登录可以撤销；之后账号及其帖子、作品、私信和互动记录会被删除，用户名保留 30 天以防被冒用。服务器的每日备份最多保存 30 天，期满后不再包含这些数据。</li>
+</ul>
+
+<h2>联系</h2>
+<p>在社区中私信 <a href="/#/u/u236vnim6p2nf">@Coko_Iya</a>，或通过 <a href="https://qm.qq.com/q/9wErKBClA4" rel="noreferrer">QQ 交流群</a>、<a href="https://discord.gg/CD8NVJwBA" rel="noreferrer">Discord</a> 联系。</p>
+
+<h2>变更</h2>
+<p>本政策更新时，会修改本页的日期。</p>
+</section>
+
+<section id="en" lang="en">
+<h1>Privacy Policy</h1>
+<p class="date">Last updated: October 27, 2026</p>
+<p>The MioVRCA community (miovrc.net, and Community in the MioVRCA app) is run by an individual, 天川澪 (Coko_Iya). This policy explains what the community collects, how it is used, and how you can manage it.</p>
+
+<h2>What we collect</h2>
+<ul>
+  <li>Account: your email address, nickname and username, and the bio, avatar, birthday and contact details you choose to add.</li>
+  <li>What you post: posts, replies, works, pictures, polls and direct messages.</li>
+  <li>Interactions: follows, likes, bookmarks, reports and blocks.</li>
+  <li>If you sign in with Google or Discord: the account identifier, verified email and display name that service provides.</li>
+  <li>If you turn on push notifications: the push address your browser creates for this site.</li>
+  <li>The step and error the MioVRCA app sends when a one-click avatar build fails, not tied to any account.</li>
+</ul>
+
+<h2>How it is kept</h2>
+<ul>
+  <li>Your email is kept only in a form that cannot be turned back into the address, and in a masked form (such as ao***@example.com), for signing in and recognising your account.</li>
+  <li>For Google or Discord sign-in, only an identifier that cannot be reversed is kept, to sign you in next time. The service's authorization is discarded once the details above are read: the community never posts for you or reads anything else from those services.</li>
+  <li>Direct messages are stored on the server and are not end-to-end encrypted. The administrator sees a reported message, with a few messages around it, only when handling the report.</li>
+  <li>Network addresses are used to prevent abuse. When a connection fails, one may appear in the server's system log, which is used only to troubleshoot.</li>
+  <li>The server is in Japan.</li>
+</ul>
+
+<h2>Who can see what</h2>
+<ul>
+  <li>Your profile, posts, replies and works are public; your birthday and the list of who you follow follow your settings.</li>
+  <li>Your likes, bookmarks and followers lists are visible only to you.</li>
+  <li>Your email is never shown to other players.</li>
+</ul>
+
+<h2>How it is used</h2>
+<ul>
+  <li>To provide sign-in, posting, messages and notifications, and to send sign-in codes.</li>
+  <li>To prevent spam and abuse, and to handle reports.</li>
+  <li>Personal information is never sold. There are no ads, no third-party analytics and no tracking.</li>
+</ul>
+
+<h2>Third-party services</h2>
+<ul>
+  <li>Sign-in codes are sent by an email provider.</li>
+  <li>Push notifications are delivered through the browser vendor's push service (such as Google, Apple or Mozilla).</li>
+  <li>Google and Discord are used only when you choose to sign in with them or link them.</li>
+  <li>When you choose Translate post, the post's text is sent to a translation service (DeepL, Microsoft or MyMemory), or to the AI provider you picked if you chose AI translation. An API key entered on the site stays in your browser and is not kept when the server passes it on.</li>
+  <li>Links to Booth and other sites are handled by those sites.</li>
+</ul>
+
+<h2>Browser storage</h2>
+<p>The site keeps your sign-in, language and recently loaded content in your browser's local storage so it opens quickly. No tracking cookies are used.</p>
+
+<h2>Your choices</h2>
+<ul>
+  <li>In Settings you can edit your profile, change your email, link or unlink Google and Discord, export your data and turn off push notifications.</li>
+  <li>You can delete your account in Settings. Signing in within 7 days cancels the deletion; after that, the account and its posts, works, messages and interactions are deleted, and the username is held for 30 days so no one can impersonate you. Daily server backups are kept for at most 30 days, after which they no longer contain this data.</li>
+</ul>
+
+<h2>Contact</h2>
+<p>Send a direct message to <a href="/#/u/u236vnim6p2nf">@Coko_Iya</a> in the community, or reach us through the <a href="https://qm.qq.com/q/9wErKBClA4" rel="noreferrer">QQ group</a> or <a href="https://discord.gg/CD8NVJwBA" rel="noreferrer">Discord</a>.</p>
+
+<h2>Changes</h2>
+<p>When this policy changes, the date on this page is updated.</p>
+</section>
+
+<section id="ja" lang="ja">
+<h1>プライバシーポリシー</h1>
+<p class="date">最終更新：2026 年 10 月 27 日</p>
+<p>MioVRCA コミュニティ（miovrc.net、および MioVRCA アプリの「コミュニティ」）は、天川澪（Coko_Iya）が個人で運営しています。本ポリシーでは、コミュニティが収集する情報、その利用方法、および管理方法について説明します。</p>
+
+<h2>収集する情報</h2>
+<ul>
+  <li>アカウント：メールアドレス、ニックネーム、ユーザー名、および任意で入力した自己紹介、アイコン、誕生日、連絡先。</li>
+  <li>投稿した内容：投稿、返信、作品、画像、投票、DM。</li>
+  <li>やり取り：フォロー、いいね、ブックマーク、通報、ブロック。</li>
+  <li>Google または Discord でログインした場合：そのサービスが提供するアカウント識別子、確認済みのメールアドレス、表示名。</li>
+  <li>プッシュ通知をオンにした場合：ブラウザがこのサイト用に作成するプッシュ通知の宛先。</li>
+  <li>MioVRCA アプリでワンクリック改変が失敗したときに送信される工程とエラー（アカウントとは結び付きません）。</li>
+</ul>
+
+<h2>保存方法</h2>
+<ul>
+  <li>メールアドレスは、元に戻せない形式と一部を伏せた形式（例：ao***@example.com）でのみ保存し、ログインとアカウントの識別に使います。</li>
+  <li>Google または Discord でのログインでは、元に戻せない識別子のみを保存し、次回のログインに使います。各サービスの認可は上記の情報を読み取った後に破棄され、コミュニティがあなたの代わりに投稿したり、他のデータを読み取ったりすることはありません。</li>
+  <li>DM はサーバーに保存され、エンドツーエンド暗号化はされていません。管理者は通報を処理する場合に限り、通報されたメッセージとその前後の数件を確認します。</li>
+  <li>アクセス時のネットワークアドレスは不正利用の防止に使います。接続エラーの際にサーバーのシステムログに残ることがありますが、障害の調査にのみ使います。</li>
+  <li>サーバーは日本にあります。</li>
+</ul>
+
+<h2>公開範囲</h2>
+<ul>
+  <li>プロフィール、投稿、返信、作品は誰でも見ることができます。誕生日とフォロー一覧は設定に従って公開されます。</li>
+  <li>いいね、ブックマーク、フォロワー一覧は本人のみが見られます。</li>
+  <li>メールアドレスは他のプレイヤーに表示されません。</li>
+</ul>
+
+<h2>利用目的</h2>
+<ul>
+  <li>ログイン、投稿、DM、通知などの機能の提供、およびログイン用コードの送信。</li>
+  <li>スパムや不正利用の防止、通報への対応。</li>
+  <li>個人情報を販売することはなく、広告、外部の解析ツール、トラッキングは使用しません。</li>
+</ul>
+
+<h2>外部サービス</h2>
+<ul>
+  <li>ログイン用コードのメールはメール配信サービスを通じて送信します。</li>
+  <li>プッシュ通知はブラウザ提供元のプッシュサービス（Google、Apple、Mozilla など）を通じて届きます。</li>
+  <li>Google と Discord は、ログインまたは連携を選んだ場合にのみ使います。</li>
+  <li>「投稿を翻訳」を押すと、投稿の文章が翻訳サービス（DeepL、Microsoft、MyMemory のいずれか）に、AI 翻訳を選んだ場合は選んだ AI サービスに送られます。サイトで入力した API キーはブラウザ内にのみ保存され、サーバーが転送する際にも保存されません。</li>
+  <li>Booth などへのリンク先は、それぞれのサイトが取り扱います。</li>
+</ul>
+
+<h2>ブラウザのローカルストレージ</h2>
+<p>すばやく開けるよう、ログイン状態、言語、最近読み込んだ内容をブラウザのローカルストレージに保存します。トラッキング Cookie は使用しません。</p>
+
+<h2>あなたができること</h2>
+<ul>
+  <li>「設定」から、プロフィールの編集、メールアドレスの変更、Google と Discord の連携と解除、データのエクスポート、プッシュ通知のオフができます。</li>
+  <li>「設定」からアカウントを削除できます。7 日以内に再びログインすると取り消せます。それ以降はアカウントとその投稿、作品、DM、やり取りの記録が削除され、なりすまし防止のためユーザー名は 30 日間確保されます。サーバーの日次バックアップは最長 30 日間保存され、期限後はこれらのデータを含みません。</li>
+</ul>
+
+<h2>お問い合わせ</h2>
+<p>コミュニティで <a href="/#/u/u236vnim6p2nf">@Coko_Iya</a> に DM を送るか、<a href="https://discord.gg/CD8NVJwBA" rel="noreferrer">Discord</a> からご連絡ください。</p>
+
+<h2>変更</h2>
+<p>本ポリシーを変更した場合は、このページの日付を更新します。</p>
+</section>
+</body>
+</html>

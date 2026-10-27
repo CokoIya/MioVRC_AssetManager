@@ -1,0 +1,56 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only OR PolyForm-Noncommercial-1.0.0 · Copyright (c) 2026 Coko_Iya. Part of MioVRCA: https://github.com/CokoIya/MioVRC_AssetManager (terms in LICENSE.md) -->
+<!-- The community in a browser: the program's community (social.js) in a shell of its own (web.js), served by the
+     community service. Every file sits beside this page: the shared scripts load each other by name. -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14151f">
+<meta name="color-scheme" content="dark light">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MioVRCA">
+<title>MioVRCA</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<script src="boot.js"></script>
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="social.css">
+<link rel="stylesheet" href="web.css">
+<script src="i18n.js"></script>
+</head>
+<body class="web">
+<div class="wpage">
+  <aside class="side" id="side" aria-label="导航"></aside>
+  <main class="main" id="main">
+    <header class="wtop" id="wtop">
+      <button class="wtopme" id="wme" aria-label="菜单" aria-controls="side" aria-expanded="false"></button>
+      <span class="wtopbrand" aria-hidden="true"><img src="icon.svg" alt=""></span>
+      <span class="wtopgap"></span>
+      <button class="wtopscan" id="wscan" data-so="qrscan" aria-label="扫一扫" hidden></button>
+    </header>
+    <div class="whome" id="whome" role="status" hidden></div>
+    <div class="woffline" id="woffline" role="status" hidden>暂时无法更新，显示的是之前读取的内容</div>
+    <div class="resultbar" id="resultbar"></div>
+    <div class="grid" id="grid"></div>
+  </main>
+  <aside class="wright" id="wright"></aside>
+</div>
+<div class="wjoin" id="wjoin" hidden></div>
+<nav class="wtabs" id="wtabs" aria-label="导航"></nav>
+<button class="wfab" id="wfab" data-so="compose" aria-label="发帖"></button>
+<div class="scrim" id="scrim"></div>
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-hidden="true" tabindex="-1"></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script src="theme.js"></script>
+<script src="adapter.js"></script>
+<script src="web.js"></script>
+<script src="nsfw.js"></script>
+<script src="social.js"></script>
+<script src="web-start.js"></script>
+</body>
+</html>

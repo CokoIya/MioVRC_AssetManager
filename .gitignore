@@ -18,6 +18,8 @@ webview/
 __pycache__/
 
 # Non-UI application implementation is maintained outside this public repository.
+# Go embedding helpers, including those under web/, are not UI source.
+*.go
 /assets.go
 /go.mod
 /go.sum
