@@ -337,11 +337,6 @@ img.sxsensimg { filter: blur(10px) saturate(.6); }
 .sxcnt.over { color: var(--err); font-weight: 600; }
 .sxtools .spacer { flex: 1; }
 .sxsend { height: 34px; padding: 0 20px; border-radius: 17px; }
-.sxactions { display: flex; align-items: center; justify-content: space-between; gap: 5px; flex-wrap: wrap; margin-top: 14px; color: var(--muted); font-size: 12px; }
-.sxactions > span { padding: 5px; }
-.sxactions button { border: 0; border-radius: 14px; padding: 5px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
-.sxactions button:hover, .sxactions [aria-pressed=true] { color: var(--accent); background: var(--accent-soft); }
-.sxactions [data-so=xlike][aria-pressed=true] { color: #e0245e; }
 .sxquote, .sxwork { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; margin-top: 12px; }
 .sxquote .sxpost { border: 0; padding: 12px 12px 12px 56px; }
 .sxquote .sxposthead .soav.xs { width: 32px; height: 32px; top: 12px; left: 12px; }
@@ -368,10 +363,11 @@ img.sxsensimg { filter: blur(10px) saturate(.6); }
 .socclonepreview li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .socclonepreview .nm { flex: 1 1 150px; }
 .sxdeleted { padding: 20px; color: var(--muted); background: var(--raised); }
-.sxreposted { padding: 12px 16px 0; color: var(--muted); font-size: 12px; }
+.sxreposted { display: flex; align-items: center; gap: 6px; padding: 12px 16px 0 42px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.sxreposted svg { width: 15px; height: 15px; stroke-width: 2; }
 .sxdate { display: block; color: var(--muted); font-size: 12px; padding-top: 12px; }
 .sxcomposer { padding: 16px; border-bottom: 1px solid var(--line); }
-.sxcomposer textarea { display: block; width: 100%; resize: vertical; border: 0; background: transparent; color: var(--text); padding: 8px 0; font: inherit; font-size: 17px; line-height: 1.5; }
+.sxcomposer textarea { display: block; width: 100%; resize: none; overflow-y: auto; border: 0; background: transparent; color: var(--text); padding: 8px 0; font: inherit; font-size: 17px; line-height: 1.5; }
 .sxcomposer .sopicpick:empty { display: none; }
 .sxcomposer .sopic { width: 100px; height: 90px; }
 .sxcomposer .sopicacts { opacity: 1; }
@@ -712,3 +708,139 @@ button.sxpollopt:hover { background: var(--accent-soft); }
 .sxmini > img { flex: none; width: 72px; height: 72px; border-radius: 10px; object-fit: cover; }
 .sxmini.sxsharewait { align-items: center; color: var(--muted); }
 .sxdmbubble .linkbtn { color: inherit; text-decoration: underline; }
+
+/* A post's actions as X has them: an icon (its name in the tooltip) and the count, each in its own colour on hover
+   and when on (reply, views, bookmark and share blue, repost green, like pink); a like fills the heart with a burst,
+   a repost turns its arrows, a bookmark drops in, and a count that changes rolls to the new number. */
+.sxactions { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin: 8px -8px -6px; color: var(--muted); font-size: 13px; }
+.sxacttail { display: flex; align-items: center; }
+.sxact { --c: #1d9bf0; display: inline-flex; align-items: center; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+span.sxact { cursor: default; }
+.sxact .sxi { position: relative; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; transition: background-color var(--dur-fast) var(--ease); }
+.sxact .sxi svg { width: 19px; height: 19px; stroke-width: 1.75; transition: transform var(--dur) var(--ease-spring); }
+.sxact:hover, .sxact:focus-visible, .sxact[aria-pressed=true] { color: var(--c); }
+.sxact:focus-visible { outline: none; }
+.sxact:hover .sxi, .sxact:focus-visible .sxi { background: color-mix(in srgb, var(--c) 14%, transparent); }
+.sxact:focus-visible .sxi { box-shadow: 0 0 0 2px var(--c); }
+.sxact:active .sxi svg { transform: scale(.84); }
+.sxact.a-repost { --c: #00ba7c; }
+.sxact.a-like { --c: #f91880; }
+.sxact.a-like[aria-pressed=true] svg path, .sxact.a-bookmark[aria-pressed=true] svg path { fill: currentColor; }
+.sxact .num { position: relative; display: inline-grid; height: 20px; min-width: 2ch; padding-right: 8px; overflow: hidden; font-variant-numeric: tabular-nums; }
+.sxact .numv { grid-area: 1 / 1; line-height: 20px; white-space: nowrap; }
+.sxact .numv.out::before { content: attr(data-v); }
+.numv.in.up { animation: sxnuminup .32s var(--ease) both; }
+.numv.out.up { animation: sxnumoutup .32s var(--ease) both; }
+.numv.in.down { animation: sxnumindown .32s var(--ease) both; }
+.numv.out.down { animation: sxnumoutdown .32s var(--ease) both; }
+@keyframes sxnuminup { from { transform: translateY(100%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes sxnumoutup { to { transform: translateY(-100%); opacity: 0; } }
+@keyframes sxnumindown { from { transform: translateY(-100%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes sxnumoutdown { to { transform: translateY(100%); opacity: 0; } }
+.sxact.a-like .sxi::before { content: ""; position: absolute; inset: 6px; border-radius: 50%; border: 2px solid var(--c); opacity: 0; pointer-events: none; }
+.sxact.a-like .sxi::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; opacity: 0; pointer-events: none;
+  box-shadow: 0 -15px 0 #f91880, 11px -11px 0 #ffad1f, 15px 0 0 #1d9bf0, 11px 11px 0 #00ba7c, 0 15px 0 #f91880, -11px 11px 0 #9b6bff, -15px 0 0 #ffad1f, -11px -11px 0 #1d9bf0; }
+.sxact.a-like.pop .sxi svg { animation: sxlikepop .5s var(--ease-spring); }
+.sxact.a-like.pop .sxi::before { animation: sxlikering .45s ease-out; }
+.sxact.a-like.pop .sxi::after { animation: sxlikedots .6s ease-out .1s; }
+@keyframes sxlikepop { 0% { transform: scale(.2); } 45% { transform: scale(1.28); } 100% { transform: scale(1); } }
+@keyframes sxlikering { 0% { opacity: .9; transform: scale(.25); border-width: 10px; } 100% { opacity: 0; transform: scale(1.45); border-width: 0; } }
+@keyframes sxlikedots { 0% { opacity: 1; transform: scale(.35); } 100% { opacity: 0; transform: scale(1.35); } }
+.sxact.a-repost.pop .sxi svg { animation: sxrepost .55s var(--ease); }
+@keyframes sxrepost { from { transform: rotate(-180deg) scale(.6); } to { transform: none; } }
+.sxact.a-bookmark.pop .sxi svg { animation: sxbookmark .5s var(--ease-spring); }
+@keyframes sxbookmark { 0% { transform: translateY(-6px) scale(.5); } 60% { transform: translateY(1px) scale(1.15); } 100% { transform: none; } }
+.sxact.a-share.pop .sxi svg { animation: sxshare .45s var(--ease); }
+@keyframes sxshare { 35% { transform: translateY(-5px); } 100% { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .sxact .sxi svg, .sxact .sxi::before, .sxact .sxi::after, .numv { animation: none !important; } }
+
+/* the composer's pictures: one large, two side by side, three or four in a grid, each with 「移除」 always in sight
+   (and 「前移」「后移」 on hover); a picture still uploading is dimmed under a spinner */
+.sxcomposer .sopicpick { display: block; min-height: 0; }
+.sxpicgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 6px 0 2px; }
+.sxpicgrid.n1 { grid-template-columns: minmax(0, 1fr); }
+.sxpicgrid.n3, .sxpicgrid.n4 { grid-template-rows: 136px 136px; }
+.sxcomposer .sxpicgrid .sopic { width: auto; height: 220px; aspect-ratio: auto; border-radius: 14px; cursor: default; }
+.sxcomposer .sxpicgrid.n1 .sopic { height: auto; aspect-ratio: 16 / 10; max-height: 340px; }
+.sxcomposer .sxpicgrid.n3 .sopic, .sxcomposer .sxpicgrid.n4 .sopic { height: auto; }
+.sxpicgrid.n3 .sopic:first-child { grid-row: span 2; }
+.sxcomposer .sxpicgrid .sopic[draggable=true] { cursor: grab; }
+.sopic.pending img { opacity: .45; filter: saturate(.5); }
+.sopic.pending .spin { position: absolute; left: 50%; top: 50%; margin: -9px 0 0 -9px; }
+.sxpicx { position: absolute; top: 6px; right: 6px; z-index: 1; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%;
+  background: rgba(15, 20, 25, .75); color: #fff; cursor: pointer; backdrop-filter: blur(4px); transition: background-color var(--dur-fast) var(--ease); }
+.sxpicx:hover, .sxpicx:focus-visible { background: rgba(39, 44, 48, .92); }
+.sxpicx svg { width: 16px; height: 16px; stroke-width: 2.4; }
+.sxcomposer .sxpicgrid .sopicacts { left: 6px; right: auto; bottom: 6px; padding: 0; gap: 4px; background: none; opacity: 0; }
+.sxcomposer .sxpicgrid .sopic:hover .sopicacts, .sxcomposer .sxpicgrid .sopic:focus-within .sopicacts { opacity: 1; }
+.sxcomposer .sxpicgrid .sopicacts .wb { width: 26px; height: 26px; border-radius: 50%; background: rgba(15, 20, 25, .75); color: #fff; font-size: 15px; }
+
+/* 为你推荐's filters: a row of chips under the tabs, the one in use filled */
+.sxfilters { display: flex; gap: 8px; padding: 12px 16px; overflow-x: auto; border-bottom: 1px solid var(--line); scrollbar-width: none; }
+.sxfilters::-webkit-scrollbar { display: none; }
+.sxfilter { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px 0 11px; border: 1px solid var(--line-strong); border-radius: 16px;
+  background: transparent; color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer; transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease); }
+.sxfilter svg { width: 16px; height: 16px; }
+.sxfilter:hover { background: var(--hover-weak); border-color: var(--line-hover); }
+.sxfilter.on { background: var(--accent-fill); border-color: var(--accent-fill); color: #fff; }
+
+/* tabs with an icon before the label (个人主页, 通知) */
+.sxtabs.withicons button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.sxtabicon { display: grid; place-items: center; }
+.sxtabicon svg { width: 18px; height: 18px; }
+.sxtabs [aria-selected=true] .sxtabicon { color: var(--accent); }
+
+/* 通知: the kind's icon on the left of who and what (a filled heart for likes); above a reply, a quote or a mention
+   a line with a small icon says which it is */
+.sxnotice:not(.withpost) { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 0 14px; padding: 14px 16px; }
+.sxnoticebody { min-width: 0; }
+.sxnicon { --c: #1d9bf0; display: flex; justify-content: flex-end; color: var(--c); }
+.sxnicon svg { width: 28px; height: 28px; stroke-width: 1.8; }
+.sxnicon.k-like { --c: #f91880; }
+.sxnicon.k-like svg path { fill: currentColor; }
+.sxnicon.k-repost { --c: #00ba7c; }
+.sxnicon.k-answer { --c: var(--ok); }
+.sxnicon.k-follow { --c: var(--accent); }
+.sxactors { margin-bottom: 8px; }
+.sxnoticewho { line-height: 1.5; }
+.sxnoticepost { margin-top: 6px; }
+.sxnotice.withpost { display: block; padding: 0; }
+.sxnoticeline { display: flex; align-items: center; gap: 8px; padding: 12px 16px 0 32px; color: var(--muted); font-size: 13px; }
+.sxnoticeline .sxnicon svg { width: 18px; height: 18px; stroke-width: 2; }
+.sxnoticeline b { color: var(--text); }
+.sxnotice.withpost > .sxpost { border-bottom: 0; }
+
+/* a bot account of the service, and a promotion's label */
+.sxbot { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; background: color-mix(in srgb, var(--pan) 18%, transparent); color: var(--pan-text); flex: none; }
+.sxbot svg { width: 14px; height: 14px; stroke-width: 2; }
+.sxprofilehead h2 .sxbot { margin-left: 6px; vertical-align: 2px; }
+.sxad { padding: 0 6px; border: 1px solid var(--line-strong); border-radius: 4px; color: var(--muted); font-size: 11px; line-height: 17px; }
+
+/* Booth items a post carries: picture with the news' kind, name, shop, price (the old one struck through), base */
+.sxbooth { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 10px 0; }
+.sxbooth.one { grid-template-columns: minmax(0, 1fr); }
+.sxbitem { display: flex; gap: 10px; min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: inherit; font: inherit; text-align: left; cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease); }
+.sxbitem:hover { border-color: var(--line-hover); background: var(--raised); }
+.sxbpic { position: relative; flex: none; display: grid; place-items: center; width: 76px; height: 76px; border-radius: 8px; overflow: hidden; background: var(--raised); color: var(--muted); }
+.sxbooth.one .sxbpic { width: 104px; height: 104px; }
+.sxbpic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sxbkind { position: absolute; left: 4px; top: 4px; padding: 0 5px; border-radius: 4px; background: #1d9bf0; color: #fff; font-size: 10.5px; font-weight: 700; line-height: 17px; }
+.sxbkind.k-sale { background: #e0245e; }
+.sxbkind.k-free { background: #00a370; }
+.sxbkind.k-preorder { background: #7c4dff; }
+.sxbbody { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sxbbody b { font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sxbbody small { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sxbprice { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 6px; font-size: 13px; font-weight: 700; }
+.sxbprice s { color: var(--faint); font-size: 12px; font-weight: 400; }
+.sxbprice .off { color: #e0245e; font-size: 12px; }
+.sxbprice .free { color: #00a370; }
+.sxbmeta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: auto; padding-top: 2px; }
+.sxbmeta .tag { margin: 0; }
+@media (max-width: 640px) { .sxbooth { grid-template-columns: minmax(0, 1fr); } }
+
+/* a topic the maintainer picked (趋势) */
+.sxtrendpin { display: inline-flex; align-items: center; gap: 4px; color: var(--accent) !important; font-size: 12px; }
+.sxtrendpin svg { width: 13px; height: 13px; }
+.sxtrend .sxtrendpin span { color: inherit; }

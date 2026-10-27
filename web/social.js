@@ -73,6 +73,26 @@ const SO_ICON = {
   flag: '<svg viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>',
   cake: '<svg viewBox="0 0 24 24"><path d="M4 21h16v-8H4zM4 16c2 1.5 4 1.5 6 0s4-1.5 6 0 4 1.5 4 0"/><path d="M12 13V9M12 6.5V6"/></svg>',
 };
+// a post's actions as X draws them: the icon alone (its name in title and aria-label) with the count beside it;
+// also the profile's tabs, the notices' kinds and 为你推荐's filters
+const SO_ACT = {
+  reply: '<svg viewBox="0 0 24 24"><path d="M20 11.5c0 4-3.6 7-8 7-1 0-2-.2-2.9-.5L4 20l1.4-3.6A6.7 6.7 0 0 1 4 11.5c0-4 3.6-7 8-7s8 3 8 7z"/></svg>',
+  repost: '<svg viewBox="0 0 24 24"><path d="M4 11V8a2 2 0 0 1 2-2h12"/><path d="m15 3 3 3-3 3"/><path d="M20 13v3a2 2 0 0 1-2 2H6"/><path d="m9 21-3-3 3-3"/></svg>',
+  like: '<svg viewBox="0 0 24 24"><path d="M12 20.3 4.6 13a4.7 4.7 0 0 1 6.7-6.6l.7.7.7-.7a4.7 4.7 0 0 1 6.7 6.6z"/></svg>',
+  views: '<svg viewBox="0 0 24 24"><path d="M5 20v-6M10 20V9M15 20V4M20 20v-9"/></svg>',
+  bookmark: '<svg viewBox="0 0 24 24"><path d="M6.5 4h11v16.5L12 16.6l-5.5 3.9z"/></svg>',
+  share: '<svg viewBox="0 0 24 24"><path d="M12 15V4"/><path d="m7.5 8.5 4.5-4.5 4.5 4.5"/><path d="M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>',
+  posts: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 9h8M8 12.5h8M8 16h5"/></svg>',
+  showcase: '<svg viewBox="0 0 24 24"><path d="M3.5 5h17v4h-17zM5 9v11h14V9"/><path d="M10 13h4"/></svg>',
+  mention: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.6"/><path d="M15.6 12v1.4a2.6 2.6 0 0 0 5.2 0V12A8.8 8.8 0 1 0 17 19.2"/></svg>',
+  quote: '<svg viewBox="0 0 24 24"><path d="M10 7H6v5h4zM18 7h-4v5h4z"/><path d="M10 12c0 3-1.4 4.8-4 5.5M18 12c0 3-1.4 4.8-4 5.5"/></svg>',
+  follow: '<svg viewBox="0 0 24 24"><circle cx="10" cy="8" r="3.5"/><path d="M4 20a6 6 0 0 1 12 0"/><path d="M19 8v6M16 11h6"/></svg>',
+  answer: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12.2 2.8 2.8L16 9.5"/></svg>',
+  spark: '<svg viewBox="0 0 24 24"><path d="M12 3.5 13.8 9l5.7 1.5-5.7 1.6L12 17.5l-1.8-5.4-5.7-1.6L10.2 9z"/><path d="M18.5 16.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg>',
+  clock: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+  hot: '<svg viewBox="0 0 24 24"><path d="M12 21c-3.6 0-6.5-2.6-6.5-6.2 0-3 2-4.8 3.4-6.6.5 1.6 1.4 2.6 2.5 3.1-.2-3.4 1.4-6 3.9-7.8-.2 2.8.9 4.6 2.4 6.3 1.2 1.4 1.8 3 1.8 5 0 3.6-3.1 6.2-7.5 6.2z"/></svg>',
+  bot: '<svg viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 8V5M9.5 13h.01M14.5 13h.01M9.5 16.2h5"/><circle cx="12" cy="4" r="1"/></svg>',
+};
 
 // ---------- reading ----------
 async function soLoad(what, refresh) {
@@ -267,6 +287,7 @@ function renderSocialMain() {
   else if (SO.nav === "more") soSettingsDraw();
   else if (SO.nav === "messages") soDMDraw();
   keep(); soViewsWatch();
+  for (const t of document.querySelectorAll("#grid [data-composer] textarea")) if (t.value) soComposeGrow(t);
 }
 function soBar(count, what, extra) {
   const L = SO.lists, off = L && L.offline ? soOffline(L.offline, true) : "";
@@ -593,8 +614,8 @@ function soPageDraw() {
   if (!r) { gridPut(soEmpty("正在读取…")); return; }
   if (!r.ok) { gridPut(soEmpty("无法读取该页面", `<p class="warnc small">${esc(r.err || "")}</p>`)); return; }
   const c = r.profile, target = r.target, blocked = !!c.blocked;
-  const tabs = r.readOnly ? [["works", "作品"]] : [["posts", "帖子"], ["replies", "回复"], ["media", "媒体"], ...(r.me ? [["likes", "喜欢"]] : []), ["works", "作品"]];
-  if (r.showcase?.length) tabs.push(["showcase", "展示柜"]);
+  const tabs = r.readOnly ? [["works", "作品", "work"]] : [["posts", "帖子", "posts"], ["replies", "回复", "reply"], ["media", "媒体", "picture"], ...(r.me ? [["likes", "喜欢", "like"]] : []), ["works", "作品", "work"]];
+  if (r.showcase?.length) tabs.push(["showcase", "展示柜", "showcase"]);
   if (!tabs.some(([k]) => k === p.tab)) p.tab = tabs[0][0];
   const acts = r.canEdit ? `<button class="btn" data-so="nav" data-nav="edit">编辑资料</button>` : `${!blocked ? soFollowBtn(target, r.followed, r.followsMe) : ""}${!r.readOnly ? `<button class="btn" data-so="dmstart"${blocked ? " disabled" : ""}>私信</button>` : ""}<button class="btn" data-so="pagemenu" aria-label="更多">⋯</button>`;
   const counts = c.counts || {}, count = (kind, label, allowed) => `<${allowed ? 'button' : 'span'} class="sxcount"${allowed ? ` data-so="pagepeople" data-kind="${kind}"` : ""}><b>${esc(counts[kind] || 0)}</b> <span>${label}</span></${allowed ? 'button' : 'span'}>`;
@@ -607,7 +628,7 @@ function soPageDraw() {
     const works = r.works || [], recipes = r.recipes || [];
     content = `<div class="sxprofileworks"><div class="sxworknumbers"><span>${esc(works.length)} 个作品</span><span>${esc(`获赞 ${works.reduce((n,w) => n + soLikes(w.id, w.likes), 0)}`)}</span></div><p class="soremixcount">${esc(`被做同款 ${r.remixCount || 0} 次`)}</p>${r.readOnly && p.posts?.loaded ? soPostListHTML(p.posts, false, "pagepostmore") : works.length ? `<div class="sogrid works">${works.map(soWorkCard).join("")}</div>` : soEmpty("还没有作品")}${p.workNext ? `<button class="btn" data-so="pageworkmore">加载更多</button>` : ""}<h4 class="soh">装配方案 <span class="n">${esc(recipes.length)}</span></h4>${recipes.map(x => `<div class="rcp"><div class="rcpinfo"><div class="nm" data-i18n="off">${esc(x.name)}</div><div class="meta">${x.base ? `<span data-i18n="off">${esc(x.base)}</span> · ` : ""}<span>${esc(x.items || 0)} 项素材</span></div>${socialLinksHTML(x.links)}</div><div class="rcpacts"><button class="btn small" data-so="recipe" data-id="${esc(x.id)}">查看</button></div></div>`).join("") || `<p class="muted small">还没有方案</p>`}</div>`;
   } else content = soPostListHTML(p.posts, p.tab === "media", "pagepostmore");
-  gridPut(`<div class="sxtimeline sopage sxprofile">${r.offline ? `<p>${soOffline(r.offline)}</p>` : ""}<div class="sxbanner"></div><div class="sxprofilehead"><div class="sxprofiletop">${soAv(r.pic, c.nickname, "xl")}<div class="btnrow">${acts}</div></div><h2><span data-i18n="off">${esc(c.nickname)}</span>${soVerified(c.booth)}</h2><div class="sxhandle" data-i18n="off">@${esc(c.handle || c.github || "")}</div>${blocked ? `<p>已拉黑</p>` : ""}<div class="sobio sxtext" data-i18n="off">${soPostText(c.bio || "")}</div><div class="sub">${(c.langs || []).map(l => `<span>${esc((SO_LANGS.find(x => x[0] === l) || [l,l])[1])}</span>`).join(" · ")}${c.birthday && c.show_birthday !== false ? `<span>${esc(`生日 ${c.birthday.month} 月 ${c.birthday.day} 日`)}</span>` : ""}${date ? `<span>${esc(`加入于 ${date}`)}</span>` : ""}</div><div class="bases">${(c.bases || []).map(b => `<span class="base" data-i18n="off">${esc(b)}</span>`).join("")}</div><div class="sxprofilelinks">${c.vrchat ? `<button class="btn small" data-so="url" data-href="${esc(c.vrchat)}">VRChat 主页</button>` : ""}${c.booth ? `<button class="btn small" data-so="url" data-href="${esc(`https://${c.booth}.booth.pm/`)}">Booth 店铺</button>` : ""}${socialLinksHTML(c.links)}${soContactsHTML(c.contacts)}</div><div class="socreatornumbers">${count("following", "正在关注", !r.readOnly && (r.me || c.show_following))} · ${count("followers", "关注者", !r.readOnly && r.me)}</div>${shop}</div>${soTabs(tabs, p.tab, "pagetab")}${content}</div>`);
+  gridPut(`<div class="sxtimeline sopage sxprofile">${r.offline ? `<p>${soOffline(r.offline)}</p>` : ""}<div class="sxbanner"></div><div class="sxprofilehead"><div class="sxprofiletop">${soAv(r.pic, c.nickname, "xl")}<div class="btnrow">${acts}</div></div><h2><span data-i18n="off">${esc(c.nickname)}</span>${soVerified(c.booth)}${soBotMark(c)}</h2><div class="sxhandle" data-i18n="off">@${esc(c.handle || c.github || "")}</div>${blocked ? `<p>已拉黑</p>` : ""}<div class="sobio sxtext" data-i18n="off">${soPostText(c.bio || "")}</div><div class="sub">${(c.langs || []).map(l => `<span>${esc((SO_LANGS.find(x => x[0] === l) || [l,l])[1])}</span>`).join(" · ")}${c.birthday && c.show_birthday !== false ? `<span>${esc(`生日 ${c.birthday.month} 月 ${c.birthday.day} 日`)}</span>` : ""}${date ? `<span>${esc(`加入于 ${date}`)}</span>` : ""}</div><div class="bases">${(c.bases || []).map(b => `<span class="base" data-i18n="off">${esc(b)}</span>`).join("")}</div><div class="sxprofilelinks">${c.vrchat ? `<button class="btn small" data-so="url" data-href="${esc(c.vrchat)}">VRChat 主页</button>` : ""}${c.booth ? `<button class="btn small" data-so="url" data-href="${esc(`https://${c.booth}.booth.pm/`)}">Booth 店铺</button>` : ""}${socialLinksHTML(c.links)}${soContactsHTML(c.contacts)}</div><div class="socreatornumbers">${count("following", "正在关注", !r.readOnly && (r.me || c.show_following))} · ${count("followers", "关注者", !r.readOnly && r.me)}</div>${shop}</div>${soTabs(tabs, p.tab, "pagetab")}${content}</div>`);
 }
 async function soFollow(target, on, btn) {
   if (!target) return;
@@ -692,11 +713,11 @@ function soHomeDraw() {
       <div class="sxfield"><div class="sxfieldk"><span>用户名</span></div><div class="sxfieldline"><span data-i18n="off">@${esc(SO.service.account.handle || "")}</span><button class="btn small" data-so="handle">更改</button></div></div>
       <div class="sxfield"><div class="sxfieldk"><label for="sh_bio">简介</label>${count("sh_bio", c.bio, 160)}</div><textarea id="sh_bio" maxlength="160" rows="3" placeholder="介绍一下自己">${esc(c.bio)}</textarea></div>
       <div class="sxfield"><div class="sxfieldk"><span>语言</span></div><div class="chips solangs sxchecks" id="sh_langs">${SO_LANGS.map(([k, t]) => `<label class="check"><input type="checkbox" value="${k}"${c.langs.includes(k) ? " checked" : ""}> ${esc(t)}</label>`).join("")}</div></div>
-      <div class="sxfield"><div class="sxfieldk"><label for="sh_bases">常用素体</label></div><input id="sh_bases" value="${esc(c.bases)}" placeholder="例如 Plum，Chocolat（用逗号分隔）" autocomplete="off"></div>
+      <div class="sxfield"><div class="sxfieldk"><label for="sh_bases">常用素体</label></div><input id="sh_bases" value="${esc(c.bases)}" placeholder="Plum，Chocolat" autocomplete="off"></div>
       <div class="sxfield"><div class="sxfieldk"><label for="sh_vrc">VRChat 主页</label></div><input id="sh_vrc" value="${esc(c.vrchat)}" placeholder="vrchat.com/home/user/usr_…" spellcheck="false" autocomplete="off"></div>
-      <div class="sxfield"><div class="sxfieldk"><span>链接</span><small>可以直接填写网址，例如 x.com/xxx</small></div>${soLinkRows("sh_links", c.links, 8)}</div>
-      <div class="sxfield"><div class="sxfieldk"><span>生日</span><small>填写后显示在主页，只显示月和日</small></div><div class="sobd">${sel("sh_month", 12, c.month, "月", "月")}${sel("sh_day", days, c.day, "日", "日")}${c.month || c.day ? `<button class="btn small ghost" data-so="bdclear">清除</button>` : ""}</div></div>
-      <div class="sxfield"><div class="sxfieldk"><span>素材展示柜</span><small>选择要在主页公开的素材（只公开商品名称、店铺和 Booth 编号）</small></div>
+      <div class="sxfield"><div class="sxfieldk"><span>链接</span></div>${soLinkRows("sh_links", c.links, 8)}</div>
+      <div class="sxfield"><div class="sxfieldk"><span>生日</span></div><div class="sobd">${sel("sh_month", 12, c.month, "月", "月")}${sel("sh_day", days, c.day, "日", "日")}${c.month || c.day ? `<button class="btn small ghost" data-so="bdclear">清除</button>` : ""}</div></div>
+      <div class="sxfield"><div class="sxfieldk"><span>素材展示柜</span></div>
         <div id="sh_showcase_picker"><input id="sh_showcase_q" value="${esc(c.showcaseQuery || "")}" placeholder="搜索有 Booth 商品编号的素材" autocomplete="off">
           <div class="btnrow"><button class="btn small" data-so="showcaseall">全选</button><button class="btn small" data-so="showcasenone">全不选</button><span class="muted small" id="sh_showcase_count">${esc(`已选择 ${c.showcase.length}/60 件`)}</span></div>
           <div class="solibrows" id="sh_showcase_rows">${soShowcaseChoices(c)}</div></div></div>
@@ -1122,9 +1143,9 @@ function soAccountHTML() {
     ${soSetRow("用户名", `<span data-i18n="off">@${esc(a.handle || "")}</span>`, `<button class="btn small" data-so="handle">更改</button>`)}
     ${soSetRow("邮箱", `<span class="soemail" data-i18n="off">${esc(a.email || "")}</span>`, `<button class="btn small" data-so="emailchange"${off}>更换邮箱</button>`)}
     <h3>关联账号</h3>
-    ${soSetRow("GitHub", a.github ? `<b data-i18n="off">@${esc(a.github)}</b>` : `<span class="muted">未关联</span>`, github, a.github ? "" : "用于认领以前用 GitHub 发布的名片和作品")}
+    ${soSetRow("GitHub", a.github ? `<b data-i18n="off">@${esc(a.github)}</b>` : `<span class="muted">未关联</span>`, github)}
     <div id="so_device">${d?.status === "pending" ? `<code class="sodevicecode" data-i18n="off">${esc(d.user_code)}</code>` : d?.message ? `<p class="small">${esc(d.message)}</p>` : ""}</div>
-    ${soSetRow("QQ / LINE / Discord", contacts || `<span class="muted">未填写</span>`, `<button class="btn small" data-so="contacts"${off}>编辑</button>`, "填写后显示在个人主页，方便其他玩家联系你")}
+    ${soSetRow("QQ / LINE / Discord", contacts || `<span class="muted">未填写</span>`, `<button class="btn small" data-so="contacts"${off}>编辑</button>`)}
   </section>`;
 }
 // a row of the settings: what it is, what it is now (a note under it), what to do about it
@@ -1158,9 +1179,9 @@ function soAccountDialog(next) {
     <div class="row"><label for="so_email">邮箱</label><input id="so_email" type="email" maxlength="254" autocomplete="email"></div>
     <div class="row"><label for="so_code">验证码</label><div class="somailcode"><input id="so_code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"><button class="btn" id="so_send_code" data-so="accountcode">发送验证码</button></div>
       <p class="small muted" id="so_mail_hint" hidden>验证码已发送。几分钟内没收到，请查看垃圾邮件。</p></div>
-    <div class="row" id="so_nickname_row" hidden><p class="sonotice">首次登录，请填写昵称并选择用户名。</p><label for="so_nickname">昵称</label><input id="so_nickname" maxlength="24" autocomplete="off" placeholder="显示在帖子和主页上，可以和别人相同"></div>
+    <div class="row" id="so_nickname_row" hidden><label for="so_nickname">昵称</label><input id="so_nickname" maxlength="24" autocomplete="off"></div>
     <div class="row" id="so_handle_row" hidden><label for="so_handle">用户名</label><div class="sxat"><span aria-hidden="true">@</span><input id="so_handle" maxlength="15" autocomplete="off" spellcheck="false" placeholder="4–15 位字母、数字或下划线"></div>
-      <p class="small muted" id="so_handle_status" role="status">用户名不能和别人相同，其他玩家用它找到你和 @ 你</p></div>
+      <p class="small muted" id="so_handle_status" role="status"></p></div>
     <p class="warnc small" id="so_account_error" role="status"></p></div>
     <div class="mfoot"><button class="btn" data-so="accountcancel">取消</button><button class="btn primary" data-so="accountsave">登录</button></div>`;
   showModal(); $("#so_email").focus(); soMailCountdown();
@@ -1190,7 +1211,7 @@ let soSignHandleTimer = 0;
 async function soSignHandleCheck() {
   const input = $("#so_handle"), status = $("#so_handle_status"); if (!input || !status) return;
   const v = input.value.trim().replace(/^@/, "");
-  if (!v) { status.className = "small muted"; status.textContent = "用户名不能和别人相同，其他玩家用它找到你和 @ 你"; input.dataset.ok = ""; return; }
+  if (!v) { status.className = "small muted"; status.textContent = ""; input.dataset.ok = ""; return; }
   if (!/^[A-Za-z0-9_]{4,15}$/.test(v) || /^[0-9]+$/.test(v)) { status.className = "small warnc"; status.textContent = "4–15 位字母、数字或下划线，不能全为数字"; input.dataset.ok = "0"; return; }
   const r = await soServiceAPI("handle/check", {handle: v});
   if (!input.isConnected || input.value.trim().replace(/^@/, "") !== v) return;
@@ -1282,7 +1303,7 @@ function soBoothHTML() {
   if (!r.ok) return `<p class="warnc">${esc(r.err || "")}</p>`;
   const s = r.booth || {}, shop = s.pending || s.shop || "";
   return `${s.shop ? `<div class="btnrow"><span class="sxboothshop"><span data-i18n="off">${esc(s.name || s.shop)}</span>${soVerified(s.shop)}</span><button class="btn small" data-so="url" data-href="${esc(`https://${s.shop}.booth.pm/`)}"><span data-i18n="off">${esc(s.shop)}.booth.pm</span></button><button class="btn small ghost" data-so="boothunbind">解除绑定</button></div>` : ""}
-    ${s.pending ? `<p>${esc(`将验证码填入「${s.pending}.booth.pm」的店铺简介，然后点击「检查」`)}</p><div class="btnrow"><code class="sxboothcode" data-i18n="off">${esc(s.code)}</code><button class="btn small" data-so="boothcopy">复制</button><button class="btn small primary" data-so="boothcheck">检查</button></div>` : ""}
+    ${s.pending ? `<div class="btnrow" title="${esc(`将验证码填入「${s.pending}.booth.pm」的店铺简介，然后点击「检查」`)}"><code class="sxboothcode" data-i18n="off">${esc(s.code)}</code><button class="btn small" data-so="boothcopy">复制</button><button class="btn small primary" data-so="boothcheck">检查</button></div>` : ""}
     <label for="sx_booth_shop">店铺地址</label><div class="btnrow"><input id="sx_booth_shop" data-i18n="off" placeholder="https://xxx.booth.pm/" value="${esc(shop ? `https://${shop}.booth.pm/` : "")}"><button class="btn small" data-so="boothstart">获取验证码</button></div>
     <p class="warnc small" id="sx_booth_status" role="status">${esc(SO.boothStatus || "")}</p>`;
 }
@@ -1382,7 +1403,7 @@ function soCropOpen(file) {
     const m = $("#modal"), V = 360;
     m.dataset.kind = "sxcrop";
     m.innerHTML = `<div class="mhead">裁剪头像</div><div class="mbody sxcrop"><div class="sxcropstage"><canvas width="${V * 2}" height="${V * 2}"></canvas><div class="sxcropring"></div></div>
-      <div class="sxcropzoom"><span aria-hidden="true">－</span><input type="range" min="1" max="4" step="0.01" value="1" aria-label="缩放"><span aria-hidden="true">＋</span></div><p class="muted small">拖动图片调整位置，滚动滚轮或拖动滑块缩放</p></div>
+      <div class="sxcropzoom"><span aria-hidden="true">－</span><input type="range" min="1" max="4" step="0.01" value="1" aria-label="缩放"><span aria-hidden="true">＋</span></div></div>
       <div class="mfoot"><button class="btn" data-crop="no">取消</button><button class="btn primary" data-crop="ok">确定</button></div>`;
     showModal();
     const cv = $("canvas", m), g = cv.getContext("2d"), range = $(".sxcropzoom input", m);
@@ -1501,7 +1522,7 @@ function soWorkEdit() {
   const net = d.links.some(l => l.kind === "netdisk" || /pan\.baidu\.com|yun\.baidu\.com/i.test(l.url));
   m.dataset.kind = "sowedit";
   m.innerHTML = `<div class="mhead sxmhead"><span>${d.id ? "更新作品" : "发布作品"}</span><button class="wb sxmclose" data-m="close" title="关闭" aria-label="关闭">${ICON.x}</button></div><div class="mbody soform sxworkform">
-    <div class="sxworkpics"><div class="sxfieldk"><span>图片</span><small>1–9 张，第一张作为封面</small></div><div id="sw_pics">${soWorkPictures()}</div></div>
+    <div class="sxworkpics"><div class="sxfieldk"><span>图片</span></div><div id="sw_pics">${soWorkPictures()}</div></div>
     <div class="sxworkfields">
     <div class="row"><label for="sw_title">标题</label><input id="sw_title" maxlength="60" value="${esc(d.title)}" autocomplete="off" placeholder="给作品起个名字"></div>
     <div class="row"><label for="sw_video">视频链接（选填）</label><div class="addrow"><input id="sw_video" value="${esc(d.video)}" spellcheck="false" autocomplete="off"><span class="tag${d.vkind ? " ok" : d.video ? " warn" : ""}" id="sw_vkind">${esc(d.vkind ? SO_VIDEO[d.vkind] : d.video ? "无法识别" : "")}</span></div></div>
@@ -1834,11 +1855,12 @@ function soSessionReset() {
 }
 function soTimelineKey(it) { return `${it.kind}:${it.post.id}:${it.by?.id || ""}`; }
 async function soTimelineLoad(more = false, refresh = false) {
-  if (!SO.timeline || refresh) SO.timeline = {tab: SO.timelineTab, items: [], next: "", busy: false, loaded: false, error: "", newer: []};
+  const filter = SO.timelineTab === "for_you" ? SO.timelineFilter : "";
+  if (!SO.timeline || refresh) SO.timeline = {tab: SO.timelineTab, filter, items: [], next: "", busy: false, loaded: false, error: "", newer: []};
   const t = SO.timeline;
   if (t.busy || more && !t.next) return;
   t.busy = true; t.error = ""; soDraw();
-  const r = await soServiceAPI("timeline", {tab: t.tab, after: more ? t.next : ""});
+  const r = await soServiceAPI("timeline", {tab: t.tab, filter: t.filter, after: more ? t.next : ""});
   t.busy = false;
   if (t !== SO.timeline) return;
   if (!r.ok) t.error = r.err;
@@ -1852,7 +1874,7 @@ async function soTimelineLoad(more = false, refresh = false) {
 async function soTimelineCheck() {
   const t = SO.timeline;
   if (S.view !== "social" || SO.nav !== "home" || document.hidden || !t?.loaded || t.busy) return;
-  const r = await soServiceAPI("timeline", {tab: t.tab});
+  const r = await soServiceAPI("timeline", {tab: t.tab, filter: t.filter});
   if (!r.ok || t !== SO.timeline) return;
   const seen = new Set(t.items.map(soTimelineKey));
   t.newer = (r.items || []).filter(it => !seen.has(soTimelineKey(it)));
@@ -1873,11 +1895,20 @@ function soPageWatch(selector, load) {
 }
 // 「适配你的素体」: the posts whose work is made on one of the library's bases (internal/social/clone.go)
 const SO_TTABS = [["for_you", "为你推荐"], ["following", "正在关注"], ["bases", "适配你的素体"]];
+// 为你推荐's filters (the service's timeline filter): the ranking, or only the newest, the most liked of the week,
+// posts with pictures, works, or the posts that carry Booth items (Booth 情报)
+const SO_TFILTERS = [["", "推荐", "spark"], ["latest", "最新发布", "clock"], ["hot", "热门", "hot"], ["media", "图片", "picture"], ["works", "作品", "work"], ["booth", "Booth 情报", "booth"]];
+try { SO.timelineFilter = localStorage.getItem("so-for-you") || ""; } catch (e) { SO.timelineFilter = ""; }
+if (!SO_TFILTERS.some(([k]) => k === SO.timelineFilter)) SO.timelineFilter = "";
+function soTimelineFilters() {
+  const icon = k => SO_ACT[k] || SO_TOOL[k] || "";
+  return `<div class="sxfilters" role="radiogroup" aria-label="筛选">${SO_TFILTERS.map(([k, label, i]) => `<button class="sxfilter${SO.timelineFilter === k ? " on" : ""}" role="radio" aria-checked="${SO.timelineFilter === k}" data-so="xfilter" data-filter="${k}">${icon(i)}<span>${label}</span></button>`).join("")}</div>`;
+}
 function soTimelineDraw() {
   const t = SO.timeline;
   soBar(null, "", `<div class="sxtabs" role="tablist">${SO_TTABS.map(([k, text]) => `<button role="tab" aria-selected="${SO.timelineTab === k}" data-so="xtab" data-tab="${k}">${text}</button>`).join("")}</div>`);
-  const rows = (t?.items || []).map(it => `${it.kind === "repost" ? `<div class="sxreposted"><span data-i18n="off">${esc(it.by?.nickname || "")}</span> <span>转帖了</span></div>` : ""}${soPostCard(it.post)}`).join("");
-  gridPut(`<div class="sxtimeline">${SO.timelineTab === "for_you" ? soThemeHTML(true) : ""}${soComposerHTML("home")}<button class="sxnew" id="sx_new" data-so="xnew"${t?.newer?.length ? "" : " hidden"}>${esc(`显示 ${t?.newer?.length || 0} 条新帖子`)}</button>
+  const rows = (t?.items || []).map(it => `${it.kind === "repost" ? `<div class="sxreposted">${SO_ACT.repost}<span data-i18n="off">${esc(it.by?.nickname || "")}</span> <span>转帖了</span></div>` : ""}${soPostCard(it.post)}`).join("");
+  gridPut(`<div class="sxtimeline">${SO.timelineTab === "for_you" ? soTimelineFilters() + soThemeHTML(true) : ""}${soComposerHTML("home")}<button class="sxnew" id="sx_new" data-so="xnew"${t?.newer?.length ? "" : " hidden"}>${esc(`显示 ${t?.newer?.length || 0} 条新帖子`)}</button>
     ${t?.error ? `<p class="warnc">${esc(t.error)}</p><button class="btn" data-so="xretry">重试</button>` : ""}
     ${rows || (t?.loaded ? soEmpty(t.noBases ? "素材库中还没有素体" : "暂无内容") : !t?.error ? `<p class="muted">正在读取…</p>` : "")}
     ${t?.next ? `<button class="btn sxmore" id="sx_more" data-so="xmore"${t.busy ? " disabled" : ""}>加载更多</button>` : t?.loaded ? `<p class="sohend">没有更多了</p>` : ""}</div>`);
@@ -1949,7 +1980,7 @@ function soPostCard(p, large = false, embedded = false, author = "", ask = null)
   if (p.share) try { SO_SHARE_HOSTS.add(new URL(p.share).host); } catch (_) {}
   const a = p.author || {}, pics = (p.pics || []).slice(0, p.kind === "work" ? 9 : 4), w = p.workCard, hide = soHideMedia(p);
   const workMedia = w?.sensitive ? soWorkMedia(w) : p, hideWork = soHideMedia(workMedia);
-  const action = (key, label, count, on) => `<button data-so="x${key}" data-id="${esc(p.id)}"${on === undefined ? "" : ` aria-pressed="${!!on}"`}><span>${label}</span>${count === undefined ? "" : ` <span class="num">${esc(count || 0)}</span>`}</button>`;
+  const action = (key, icon, label, count, on) => `<button class="sxact a-${icon}" data-so="x${key}" data-id="${esc(p.id)}" title="${label}" aria-label="${label}"${on === undefined ? "" : ` aria-pressed="${!!on}"`}><span class="sxi">${SO_ACT[icon]}</span>${count === undefined ? "" : `<span class="num">${soCountHTML(count)}</span>`}</button>`;
   // (the work's cover sits in a button, so it is blurred alone; 「敏感内容」 and 「显示」 follow the button when the
   // post has no pictures of its own to carry them)
   const cover = w?.pic ? `<img src="${esc(w.pic)}" alt="" loading="lazy"${hideWork ? ` class="sxsensimg" data-sensimg="${esc(workMedia.id)}"` : ""}>` : "";
@@ -1958,18 +1989,53 @@ function soPostCard(p, large = false, embedded = false, author = "", ask = null)
   const quote = p.quote ? `<div class="sxquote">${soPostCard(p.quote, false, true)}</div>` : p.quote_of || p.quote_unavailable ? `<div class="sxquote sxdeleted">此帖已不可用</div>` : !embedded ? soSharedCard(p) : "";
   const group = p.group && p.group_name && !(SO.nav === "group" && !SO.page && SO.group?.id === p.group) ? `<button class="sxingroup" data-so="groupopen" data-id="${esc(p.group)}">${SO_ICON.creators}<span data-i18n="off">${esc(p.group_name)}</span></button>` : "";
   return `<article class="sxpost${large ? " large" : ""}${embedded ? " embedded" : ""}" data-so="post" data-id="${esc(p.id)}" data-view-post="${esc(p.id)}" tabindex="0">
-    ${group}${p.parent_deleted ? `<div class="sxdeleted">此帖已删除</div>` : ""}<div class="sxposthead">${soProfileBtn(a.id?.startsWith("gh:") ? "" : a.id, a.github || (a.id?.startsWith("gh:") ? a.id.slice(3) : ""), a.nickname, p.authorPic, false, a.booth)}<span class="sxhandle" data-i18n="off">@${esc(a.handle || a.github || "")}</span><span class="sxwhen">· <span>${esc(soRelative(p.created))}</span></span>${!embedded ? `<button class="wb sxmenu" data-so="xmenu" data-id="${esc(p.id)}" title="更多" aria-label="更多">⋯</button>` : ""}</div>
+    ${group}${p.parent_deleted ? `<div class="sxdeleted">此帖已删除</div>` : ""}<div class="sxposthead">${soProfileBtn(a.id?.startsWith("gh:") ? "" : a.id, a.github || (a.id?.startsWith("gh:") ? a.id.slice(3) : ""), a.nickname, p.authorPic, false, a.booth)}${soBotMark(a)}<span class="sxhandle" data-i18n="off">@${esc(a.handle || a.github || "")}</span><span class="sxwhen">· <span>${esc(soRelative(p.created))}</span></span>${p.promoted ? `<span class="sxad">推广</span>` : ""}${!embedded ? `<button class="wb sxmenu" data-so="xmenu" data-id="${esc(p.id)}" title="更多" aria-label="更多">⋯</button>` : ""}</div>
     ${author && a.id === author ? `<span class="sxauthor">作者</span>` : ""}${soAskMarksHTML(p, ask)}<div class="sxtext" data-i18n="off">${soPostText(p.text || "", p.mentions)}</div>
     ${soPollHTML(p, embedded)}
     ${soSensWrap(p, pics.length ? `<div class="sxmedia n${Math.min(pics.length, 4)}">${pics.slice(0, 4).map((src, i) => `<button data-so="xpicture" data-id="${esc(p.id)}" data-i="${i}" aria-label="${i + 1}"><img src="${esc(src)}" alt="" loading="lazy" decoding="async"></button>`).join("")}</div>` : "")}
-    ${soAssetItemsHTML(p)}${work}${quote}${soAnswerButtonHTML(p, ask, embedded)}${large ? `<time class="sxdate" data-i18n="off" datetime="${esc(p.created)}">${esc(new Date(p.created).toLocaleString())}</time>${!p.mine && soPostTarget(p) ? soFollowBtn(soPostTarget(p), SO.follows[soPostTarget(p)] ?? p.followed, false) : ""}` : ""}
-    ${!embedded ? `<div class="sxactions">${action("reply", "回复", p.replies)}${action("repostmenu", "转帖", p.reposts, p.reposted)}${action("like", "喜欢", p.likes, p.liked)}<span><span>浏览</span> <span class="sxviews">${esc(p.views || 0)}</span></span>${action("bookmark", "书签", undefined, p.bookmarked)}${action("share", "分享")}</div>` : ""}</article>`;
+    ${soBoothCardsHTML(p)}${soAssetItemsHTML(p)}${work}${quote}${soAnswerButtonHTML(p, ask, embedded)}${large ? `<time class="sxdate" data-i18n="off" datetime="${esc(p.created)}">${esc(new Date(p.created).toLocaleString())}</time>${!p.mine && soPostTarget(p) ? soFollowBtn(soPostTarget(p), SO.follows[soPostTarget(p)] ?? p.followed, false) : ""}` : ""}
+    ${!embedded ? `<div class="sxactions">${action("reply", "reply", "回复", p.replies)}${action("repostmenu", "repost", "转帖", p.reposts, p.reposted)}${action("like", "like", "喜欢", p.likes, p.liked)}<span class="sxact a-views" title="浏览" aria-label="浏览"><span class="sxi">${SO_ACT.views}</span><span class="num sxviews">${soCountHTML(p.views)}</span></span><span class="sxacttail">${action("bookmark", "bookmark", "书签", undefined, p.bookmarked)}${action("share", "share", "分享")}</span></div>` : ""}</article>`;
+}
+// a count as X shows it (1.2万 / 1.2K / 3.4M where the interface is not Chinese), each digit a cell the number rolls in
+function soCount(n) {
+  n = Math.max(0, +n || 0);
+  if (n < 10000) return String(n);
+  const zh = !I18N.lang || I18N.lang === "zh", d = (v, u) => `${v >= 100 ? Math.round(v) : Math.round(v * 10) / 10}${u}`;
+  if (zh) return n < 1e8 ? d(n / 1e4, "万") : d(n / 1e8, "亿");
+  return n < 1e6 ? d(n / 1e3, "K") : d(n / 1e6, "M");
+}
+function soCountHTML(n) { return n ? `<span class="numv" data-i18n="off">${esc(soCount(n))}</span>` : `<span class="numv"></span>`; }
+// the new count rolls in from below (up) or from above, the old one rolls out the other way
+function soCountRoll(num, n, up) {
+  const old = $(".numv", num), text = n ? soCount(n) : "";
+  if (old && old.textContent === text) return;
+  const next = document.createElement("span"); next.className = "numv in " + (up ? "up" : "down"); next.dataset.i18n = "off"; next.textContent = text;
+  // (the old number leaves as a picture of itself, ::before, so the count's text is the new number alone at once)
+  if (old) { old.className = "numv out " + (up ? "up" : "down"); old.dataset.v = old.textContent; old.textContent = ""; setTimeout(() => old.remove(), 360); }
+  num.append(next);
+}
+// a bot account of the service (Booth 情报, promotions): its mark beside the name
+function soBotMark(a) { return a?.bot ? `<span class="sxbot" title="机器人账号" aria-label="机器人账号">${SO_ACT.bot}</span>` : ""; }
+// Booth items a post carries (the service's Booth 情报 and promotions): picture, name, shop, price and what kind of
+// news it is; 「已拥有」 for those in the library. A click opens the item's page.
+const SO_BOOTH_KIND = { new: "新作", sale: "打折", free: "限免", preorder: "预售" };
+function soBoothCardsHTML(p) {
+  const items = (p.boothCards || p.booth_items || []).filter(x => x && x.id);
+  if (!items.length) return "";
+  const owned = new Set(((S.data && S.data.assets) || []).map(a => a.boothId).filter(Boolean));
+  const yen = n => "¥" + Number(n).toLocaleString("ja-JP");
+  return `<div class="sxbooth${items.length === 1 ? " one" : ""}">${items.map(x => {
+    const off = x.was > x.price && x.price >= 0 ? Math.round((1 - x.price / x.was) * 100) : 0, mine = x.owned || owned.has(String(x.id));
+    return `<button class="sxbitem" data-so="booth" data-id="${esc(x.id)}" title="${esc(x.title || "")}"><span class="sxbpic">${x.pic ? `<img src="${esc(x.pic)}" alt="" loading="lazy" decoding="async">` : SO_TOOL.booth}${SO_BOOTH_KIND[x.kind] ? `<span class="sxbkind k-${esc(x.kind)}">${SO_BOOTH_KIND[x.kind]}</span>` : ""}</span>
+      <span class="sxbbody"><b data-i18n="off">${esc(x.title || "#" + x.id)}</b>${x.shop ? `<small data-i18n="off">${esc(x.shop)}</small>` : ""}<span class="sxbprice">${x.price === 0 ? `<span class="free">免费</span>` : x.price > 0 ? `<span data-i18n="off">${yen(x.price)}</span>` : ""}${off ? `<s data-i18n="off">${yen(x.was)}</s><span class="off" data-i18n="off">-${off}%</span>` : ""}</span>
+      ${x.base || mine ? `<span class="sxbmeta">${x.base ? `<span class="base" data-i18n="off">${esc(x.base)}</span>` : ""}${mine ? `<span class="tag ok">已拥有</span>` : ""}</span>` : ""}</span></button>`;
+  }).join("")}</div>`;
 }
 // a post as a small card: who, the first lines, the first picture (or the work's cover); a click opens it
 function soPostMini(q) {
   if (q.deleted) return `<div class="sxmini sxdeleted">此帖已删除</div>`;
   const a = q.author || {}, pic = (q.pics || [])[0] || q.workCard?.pic || "", hide = soHideMedia(q);
-  return `<button class="sxmini" data-so="xopenshared" data-id="${esc(q.id)}"><span class="sxminibody"><span class="sxminihead">${soAv(q.authorPic, a.nickname, "xs")}<b data-i18n="off">${esc(a.nickname || "")}</b><span class="sxhandle" data-i18n="off">@${esc(a.handle || a.github || "")}</span></span>
+  return `<button class="sxmini" data-so="xopenshared" data-id="${esc(q.id)}"><span class="sxminibody"><span class="sxminihead">${soAv(q.authorPic, a.nickname, "xs")}<b data-i18n="off">${esc(a.nickname || "")}</b>${soBotMark(a)}<span class="sxhandle" data-i18n="off">@${esc(a.handle || a.github || "")}</span></span>
     <span class="sxminitext" data-i18n="off">${esc(q.text || q.workCard?.title || "")}</span></span>${pic ? `<img src="${esc(pic)}" alt=""${hide ? ' class="sxsensimg"' : ""} loading="lazy">` : ""}</button>`;
 }
 // a post that shares another post's address shows that post as a card (fetched once, then kept with the others)
@@ -2040,16 +2106,25 @@ async function soNoticesLoad() {
   if (session !== SO.session || tab !== SO.noticeTab) return;
   SO.notices = r; await soUnreadLoad(); soDraw();
 }
+// each kind of notice with its icon on the left, as X shows them (a like's heart, a repost's arrows, a follow's
+// person); a reply, a quote or a mention is the post itself under a line that says which it is
+const SO_NOTICE = {like: ["like", "喜欢了你的帖子"], repost: ["repost", "转帖了你的帖子"], quote: ["quote", "引用了你的帖子"], reply: ["reply", "回复了你的帖子"],
+  mention: ["mention", "提到了你"], follow: ["follow", "关注了你"], answer: ["answer", "将你的回复设为答案"]};
 function soNoticesDraw() {
-  const r = SO.notices, labels = {like: "喜欢了你的帖子", repost: "转帖了你的帖子", quote: "引用了你的帖子", reply: "回复了你的帖子", mention: "提到了你", follow: "关注了你", answer: "将你的回复设为答案"};
+  const r = SO.notices;
   soBar(null);
   const rows = (r?.notices || []).map(n => {
+    const [icon, label] = SO_NOTICE[n.kind] || SO_NOTICE.mention;
     const actors = n.from || [], first = actors[0], extra = Math.max(0, (n.count || actors.length) - 1);
-    const group = `<div class="sxactors">${actors.map(a => soProfileBtn(a.id?.startsWith("gh:") ? "" : a.id, a.github, a.nickname, a.pic)).join("")}</div><div><b data-i18n="off">${esc(first?.nickname || "")}</b>${extra ? ` <span>${esc(`和另外 ${extra} 人`)}</span>` : ""} <span>${labels[n.kind] || "提到了你"}</span></div>`;
-    return `<section class="sxnotice${n.unread ? " unread" : ""}" data-kind="${esc(n.kind)}" data-post="${esc(n.post || "")}" data-seq="${esc(n.seq)}">${["quote", "reply", "mention"].includes(n.kind) && n.item ? soPostCard(n.item) : `${group}${n.item ? `<button class="sxnoticepost" data-so="post" data-id="${esc(n.post)}"><span class="sxtext" data-i18n="off">${esc(n.item.text || n.item.workCard?.title || "")}</span></button>` : ""}`}</section>`;
+    const mark = `<span class="sxnicon k-${esc(icon)}" aria-hidden="true">${SO_ACT[icon]}</span>`;
+    const who = `<b data-i18n="off">${esc(first?.nickname || "")}</b>${extra ? ` <span>${esc(`和另外 ${extra} 人`)}</span>` : ""} <span>${label}</span>`;
+    if (["quote", "reply", "mention"].includes(n.kind) && n.item)
+      return `<section class="sxnotice withpost${n.unread ? " unread" : ""}" data-kind="${esc(n.kind)}" data-post="${esc(n.post || "")}" data-seq="${esc(n.seq)}"><div class="sxnoticeline">${mark}<span>${who}</span></div>${soPostCard(n.item)}</section>`;
+    const group = `<div class="sxactors">${actors.map(a => soProfileBtn(a.id?.startsWith("gh:") ? "" : a.id, a.github, a.nickname, a.pic)).join("")}</div><div class="sxnoticewho">${who}</div>`;
+    return `<section class="sxnotice${n.unread ? " unread" : ""}" data-kind="${esc(n.kind)}" data-post="${esc(n.post || "")}" data-seq="${esc(n.seq)}">${mark}<div class="sxnoticebody">${group}${n.item ? `<button class="sxnoticepost" data-so="post" data-id="${esc(n.post)}"><span class="sxtext" data-i18n="off">${esc(n.item.text || n.item.workCard?.title || "")}</span></button>` : ""}</div></section>`;
   }).join("");
   const unread = (r?.notices || []).some(n => n.unread) || (SO.unread.notices || 0) > 0;
-  gridPut(`<div class="sxtimeline"><div class="sxpagehead"><h2>通知</h2><button class="btn small" data-so="noticesread"${unread ? "" : " disabled"}>全部已读</button></div>${soTabs([["all", "全部"], ["mentions", "提及"]], SO.noticeTab, "noticetab")}${r?.ok ? rows || soEmpty("暂无通知") : soEmpty(esc(r?.err || "正在读取…"))}</div>`);
+  gridPut(`<div class="sxtimeline"><div class="sxpagehead"><h2>通知</h2><button class="btn small" data-so="noticesread"${unread ? "" : " disabled"}>全部已读</button></div>${soTabs([["all", "全部", "notices"], ["mentions", "提及", "mention"]], SO.noticeTab, "noticetab")}${r?.ok ? rows || soEmpty("暂无通知") : soEmpty(esc(r?.err || "正在读取…"))}</div>`);
 }
 // 全部已读: every notice up to the newest counts as seen on this account (the newest comes first in 「全部」)
 async function soNoticesReadAll(btn) {
@@ -2070,10 +2145,11 @@ async function soComposeOpen(mode = "", target = null, extra = {}) {
   SO.compose = SO.drafts.dialog = soNewDraft({target, reply_to: mode === "reply" ? target?.id : "", quote_of: mode === "quote" ? target?.id : "", ask: mode === "ask", ...extra});
   if (!SO.lists) await soLoad("lists");
   soComposeDraw(); showModal();
-  const t = $("#sc_dialog_text"); if (t && extra.text) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
+  const t = $("#sc_dialog_text"); if (t) soComposeGrow(t);
+  if (t && extra.text) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
 }
 function soComposerHTML(key) {
-  const c = soDraft(key), count = Array.from(c.text).length;
+  const c = soDraft(key), count = Array.from(c.text).length, pending = c.pictures.some(p => p.pending);
   const hint = c.ask ? "这套是什么，怎么搭" : c.reply_to ? "发布你的回复" : "有什么新鲜事？", answering = soAnswering(c);
   return `<section class="sxcomposer socomposeform${answering ? " answering" : ""}" data-composer="${key}">
     ${c.reply_to && c.target ? `<p class="sxreply"><span>回复</span> <span data-i18n="off">@${esc(c.target.author?.handle || "")}</span></p>` : ""}
@@ -2085,17 +2161,30 @@ function soComposerHTML(key) {
     ${key === "dialog" && c.workDraft ? soWorkDraftHTML(c.workDraft) : key === "dialog" && !c.reply_to && !c.quote_of && !c.ask ? `<label class="sxworkpick" for="sc_dialog_work"><span>关联作品</span><select id="sc_dialog_work"><option value="">不关联</option>${(SO.lists?.works || []).map(w => `<option value="${esc(w.id)}"${c.work === w.id ? " selected" : ""} data-i18n="off">${esc(w.title)}</option>`).join("")}</select></label>` : ""}
     <p class="warnc small" id="sc_${key}_error" role="status">${esc(c.error)}</p>
     ${soComposeNote(c) ? `<p class="small sxsensnote" id="sc_${key}_note" role="status">${soComposeNote(c)}</p>` : ""}
-    <div class="sxtools"><button class="sxtool" data-so="xpick" title="添加图片" aria-label="添加图片"${c.pictures.length >= 4 || c.busy || c.poll ? " disabled" : ""}>${SO_TOOL.picture}<span data-i18n="off">${c.pictures.length}/4</span></button><button class="sxtool" data-so="emoji" data-for="sc_${key}_text" title="插入表情" aria-label="插入表情"${c.busy ? " disabled" : ""}>${SO_TOOL.smile}</button>${answering ? soAnswerToolsHTML(c) : ""}${!c.reply_to && !c.quote_of && !c.workDraft && !c.ask ? `<button class="sxtool" data-so="xpoll" title="投票" aria-label="投票"${c.pictures.length || c.busy || c.poll ? " disabled" : ""}>${SO_TOOL.poll}</button>` : ""}${c.pictures.length && !c.workDraft ? `<button class="chip sxsenstoggle${c.sensitive ? " on" : ""}" data-so="xsensitive" aria-pressed="${!!c.sensitive}">敏感内容</button>` : ""}<span class="spacer"></span><span id="sc_${key}_count" data-i18n="off" class="sxcnt${count > 1000 ? " over" : count > 900 ? " near" : ""}">${count}/1000</span><button class="btn primary sxsend" data-so="xpublish"${c.busy || count > 1000 ? " disabled" : ""}>${c.reply_to ? "回复" : "发布"}</button></div></section>`;
+    <div class="sxtools"><button class="sxtool" data-so="xpick" title="添加图片" aria-label="添加图片"${c.pictures.length >= 4 || c.busy || c.poll ? " disabled" : ""}>${SO_TOOL.picture}<span data-i18n="off">${c.pictures.length}/4</span></button><button class="sxtool" data-so="emoji" data-for="sc_${key}_text" title="插入表情" aria-label="插入表情"${c.busy ? " disabled" : ""}>${SO_TOOL.smile}</button>${answering ? soAnswerToolsHTML(c) : ""}${!c.reply_to && !c.quote_of && !c.workDraft && !c.ask ? `<button class="sxtool" data-so="xpoll" title="投票" aria-label="投票"${c.pictures.length || c.busy || c.poll ? " disabled" : ""}>${SO_TOOL.poll}</button>` : ""}${c.pictures.length && !c.workDraft ? `<button class="chip sxsenstoggle${c.sensitive ? " on" : ""}" data-so="xsensitive" aria-pressed="${!!c.sensitive}">敏感内容</button>` : ""}<span class="spacer"></span><span id="sc_${key}_count" data-i18n="off" class="sxcnt${count > 1000 ? " over" : count > 900 ? " near" : ""}">${count}/1000</span><button class="btn primary sxsend" data-so="xpublish"${c.busy || pending || count > 1000 ? " disabled" : ""}>${c.reply_to ? "回复" : "发布"}</button></div></section>`;
 }
+// The pictures under the text, as X lays them out (one large, two side by side, three or four in a grid), each with
+// its own 「移除」 always in sight; a picture still uploading shows at once, dimmed, and can be removed as well
 function soComposePicsHTML(c) {
-  return c.pictures.map((p, i) => `<span class="sopic" draggable="true" data-i="${i}"><img src="${esc(p.url)}" alt="" draggable="false"><span class="sopicacts">${i ? `<button class="wb" data-so="xpicmove" data-i="${i}" data-dir="-1" aria-label="前移">‹</button>` : ""}${i < c.pictures.length - 1 ? `<button class="wb" data-so="xpicmove" data-i="${i}" data-dir="1" aria-label="后移">›</button>` : ""}<button class="wb" data-so="xpicdel" data-i="${i}" aria-label="移除">${ICON.x}</button></span></span>`).join("");
+  const n = c.pictures.length;
+  if (!n) return "";
+  return `<div class="sxpicgrid n${n}">${c.pictures.map((p, i) => `<span class="sopic${p.pending ? " pending" : ""}" draggable="${n > 1}" data-i="${i}"><img src="${esc(p.url)}" alt="" draggable="false">${p.pending ? `<i class="spin" aria-hidden="true"></i>` : ""}<button class="sxpicx" data-so="xpicdel" data-i="${i}" title="移除" aria-label="移除">${ICON.x}</button>${n > 1 ? `<span class="sopicacts">${i ? `<button class="wb" data-so="xpicmove" data-i="${i}" data-dir="-1" title="前移" aria-label="前移">‹</button>` : ""}${i < n - 1 ? `<button class="wb" data-so="xpicmove" data-i="${i}" data-dir="1" title="后移" aria-label="后移">›</button>` : ""}</span>` : ""}</span>`).join("")}</div>`;
 }
 function soComposeDraw(key = "dialog") {
   if (key === "dialog") {
-    const m = $("#modal"); m.dataset.kind = "sopostedit";
+    const m = $("#modal"), keep = focusMark(m); m.dataset.kind = "sopostedit";
     m.innerHTML = `<div class="mhead sxmhead"><span>${soDraft(key).ask ? "求同款" : "发帖"}</span><button class="wb sxmclose" data-m="close" title="关闭" aria-label="关闭">${ICON.x}</button></div><div class="mbody">${soComposerHTML(key)}</div>`;
-  } else { const el = $(`[data-composer="${key}"]`); if (el) el.outerHTML = soComposerHTML(key); }
+    keep();
+  } else { const el = $(`[data-composer="${key}"]`); if (el) { const keep = focusMark(el.parentNode); el.outerHTML = soComposerHTML(key); keep(); } }
+  const t = $(`#sc_${key}_text`); if (t) soComposeGrow(t);
 }
+// the box grows with what is typed, up to about twelve lines (then it scrolls)
+function soComposeGrow(t) {
+  t.style.height = "auto";
+  const h = t.scrollHeight; // (0 while it is not in sight: then its rows decide)
+  t.style.height = h ? Math.min(h + 2, 340) + "px" : "";
+}
+function soComposeRelease(c) { for (const p of c?.pictures || []) if (p.url?.startsWith("blob:")) URL.revokeObjectURL(p.url); }
 function soComposeError(key) { const el = $(`#sc_${key}_error`); if (el) el.textContent = soDraft(key).error; }
 // The picture check (web/nsfw.js) marks each picture it finds likely sensitive (p.flagged). A flagged picture ticks
 // 「敏感内容」 once, which the author may untick; when no flagged picture is left, a tick the check made goes again.
@@ -2111,23 +2200,35 @@ function soComposeNote(c) {
   if (!c.pictures.some(p => p.flagged)) return "";
   return c.sensitive && !c.workDraft ? "图片可能含敏感内容，已标记为敏感" : "图片可能含敏感内容，将由管理员复核";
 }
+// Each picture shows at once (the file itself) and is then uploaded and checked on its own, one after another; the
+// composer stays usable meanwhile — a picture can be removed, moved or another added before its upload is done, and
+// one removed by then is not kept. 「发布」 waits until none is pending.
 async function soComposeAdd(files, key = "dialog") {
   const c = soDraft(key);
   if (c.busy) return;
   if (!SO.service?.account) { soAccountDialog(() => soComposeAdd(files, key)); return; }
   files = [...files].filter(f => /^image\//.test(f.type));
-  const room = 4 - c.pictures.length;
-  c.busy = true; c.error = ""; soComposeDraw(key);
-  try {
-    for (const f of files.slice(0, room)) {
-      const check = nsfwCheck(f); // (alongside the upload; the first picture loads the check)
-      const pic = await soPostPicture(f), r = await soServiceAPI("picture", {kind: "post", b64: pic.b64});
-      if (!r.ok) { c.error = r.err; break; }
-      c.pictures.push({id: r.id, url: r.pic || pic.url, flagged: !!(await check)?.flagged});
-    }
-    if (files.length > room) c.error = "最多 4 张图片";
-  } catch (e) { c.error = e.message || "无法读取图片"; }
-  finally { c.busy = false; soComposeFlag(c); if (soDraft(key) === c) soComposeDraw(key); }
+  if (!files.length) return;
+  const room = Math.max(0, 4 - c.pictures.length);
+  const added = files.slice(0, room).map(file => ({url: URL.createObjectURL(file), pending: true, file}));
+  c.error = files.length > room ? "最多 4 张图片" : "";
+  c.pictures.push(...added); soComposeDraw(key);
+  for (const pic of added) {
+    if (!c.pictures.includes(pic)) continue; // (removed before its turn)
+    try {
+      const check = nsfwCheck(pic.file); // (alongside the upload; the first picture loads the check)
+      const prepared = await soPostPicture(pic.file);
+      const r = c.pictures.includes(pic) ? await soServiceAPI("picture", {kind: "post", b64: prepared.b64}) : null;
+      if (r && !r.ok) throw new Error(r.err);
+      if (r) { pic.id = r.id; pic.flagged = !!(await check)?.flagged; }
+    } catch (e) {
+      c.error = e.message || "无法读取图片";
+      const i = c.pictures.indexOf(pic); if (i >= 0) { c.pictures.splice(i, 1); URL.revokeObjectURL(pic.url); }
+    } finally { pic.pending = false; delete pic.file; }
+    soComposeFlag(c);
+    // (the composer's window may have closed, or shows something else by now)
+    if (soDraft(key) === c && (key !== "dialog" || $("#modal.on")?.dataset.kind === "sopostedit")) soComposeDraw(key);
+  }
 }
 async function soComposeSend(key) {
   const c = soDraft(key);
@@ -2136,7 +2237,7 @@ async function soComposeSend(key) {
   const text = c.text.trim(), wd = c.workDraft, title = wd ? String(wd.title || "").trim() : "";
   const poll = c.poll && !wd ? {options: c.poll.options.map(o => o.trim()), days: c.poll.days} : null;
   const answer = soAnswering(c) ? {work: c.answerWork?.id || "", assets: (c.assets || []).map(x => x.id)} : null;
-  c.error = poll && soPollError(poll, text) || (wd && !title ? "请填写标题" : wd && !c.pictures.length ? "请选择作品图片" : c.ask && !c.pictures.length ? "求同款需要附上至少一张图片"
+  c.error = c.pictures.some(p => p.pending) ? "图片正在上传，请稍候" : poll && soPollError(poll, text) || (wd && !title ? "请填写标题" : wd && !c.pictures.length ? "请选择作品图片" : c.ask && !c.pictures.length ? "求同款需要附上至少一张图片"
     : !wd && !text && (!c.pictures.length || c.quote_of) && !(answer && (answer.work || answer.assets.length)) ? "请填写内容或添加图片" : Array.from(text).length > 1000 ? "内容最多 1000 个字" : text.split("\n").length > 30 ? "内容最多 30 行" : "");
   if (c.error) { soComposeError(key); return; }
   c.busy = true; soComposeDraw(key);
@@ -2147,6 +2248,7 @@ async function soComposeSend(key) {
   c.busy = false;
   if (!r.ok) { c.error = r.err; soComposeDraw(key); return; }
   if (wd) { SO.lists = null; SO.me = null; }
+  soComposeRelease(c);
   SO.drafts[key] = soNewDraft({reply_to: c.reply_to, target: c.target});
   if (key !== "dialog") soComposeDraw(key);
   if (key === "dialog") { SO.compose = null; closeModal(); }
@@ -2178,18 +2280,11 @@ async function socialPublishOneClick(job) {
   if (!r.ok) { toast(r.err || "操作失败", 5000); return; }
   const s = r.share || {};
   $("#modal").classList.remove("ocwin");
-  const c = SO.compose = SO.drafts.dialog = soNewDraft({ busy: true, workDraft: { title: s.title || "", base: s.base || "", assets: s.assets || [], recipe: s.recipe || "" } });
+  SO.compose = SO.drafts.dialog = soNewDraft({ workDraft: { title: s.title || "", base: s.base || "", assets: s.assets || [], recipe: s.recipe || "" } });
   soComposeDraw(); showModal();
-  try {
-    for (const b64 of (s.pictures || []).slice(0, 4)) {
-      const bytes = Uint8Array.from(atob(b64), ch => ch.charCodeAt(0)), blob = new Blob([bytes], { type: "image/jpeg" }), check = nsfwCheck(blob);
-      const pic = await soPostPicture(blob), u = await soServiceAPI("picture", { kind: "post", b64: pic.b64 });
-      if (!u.ok) { c.error = u.err; break; }
-      c.pictures.push({ id: u.id, url: u.pic || pic.url, flagged: !!(await check)?.flagged });
-    }
-  } catch (e) { c.error = e.message || "无法读取图片"; }
-  c.busy = false; soComposeFlag(c);
-  if (SO.drafts.dialog === c && $("#modal").dataset.kind === "sopostedit") soComposeDraw();
+  // the result's pictures go in as pictures picked by hand do (shown at once, uploaded one by one, removable)
+  const blobs = (s.pictures || []).slice(0, 4).map(b64 => new Blob([Uint8Array.from(atob(b64), ch => ch.charCodeAt(0))], { type: "image/jpeg" }));
+  await soComposeAdd(blobs, "dialog");
 }
 window.socialPublishOneClick = socialPublishOneClick;
 
@@ -2314,6 +2409,7 @@ async function soXAction(b, e) {
   const id = b.dataset.id, p = soPostCache.get(id), key = b.closest("[data-composer]")?.dataset.composer || "dialog", c = soDraft(key);
   switch (b.dataset.so) {
     case "xtab": SO.timelineTab = b.dataset.tab; return soTimelineLoad(false, true);
+    case "xfilter": SO.timelineFilter = b.dataset.filter || ""; try { localStorage.setItem("so-for-you", SO.timelineFilter); } catch (x) {} $(".main").scrollTop = 0; return soTimelineLoad(false, true);
     case "xretry": case "xnew": return soTimelineLoad(false, true);
     case "xmore": return soTimelineLoad(true);
     case "xthreadmore": return soThreadLoad(true);
@@ -2332,7 +2428,7 @@ async function soXAction(b, e) {
     case "xthemejoin": return soComposeOpen("", null, {text: "#" + b.dataset.tag + " "});
     case "xthemeoff": try { localStorage.setItem("so-theme-off:" + b.dataset.id, "1"); } catch (x) {} return soDraw();
     case "xcopy": { const q = $("#so_pop")?._data; soPopClose(); if (q) copyText(soPostShare(q), "已复制"); return; }
-    case "xshare": return p.share ? copyText(p.share, "链接已复制") : copyText(soPostShare(p), "已复制");
+    case "xshare": b.classList.remove("pop"); void b.offsetWidth; b.classList.add("pop"); return p.share ? copyText(p.share, "链接已复制") : copyText(soPostShare(p), "已复制");
     case "xdelete": { const q = $("#so_pop")?._data; soPopClose(); if (!q || !confirm("删除帖子？")) return; const r = await soServiceAPI("post/delete", {id: q.id}); if (!r.ok) return soServiceError(r); if (SO.post?.id === q.id) { closeModal(); SO.post = null; } if (SO.nav === "group" && SO.group) await soGroupLoad(); await soTimelineLoad(false, true); return; }
     case "xreport": { const q = $("#so_pop")?._data; soPopClose(); if (q) soReport("post", q.id, q.text?.slice(0, 20)); return; }
     case "xblock": { const q = $("#so_pop")?._data; soPopClose(); if (q) return soBlock(q.author.id, true); return; }
@@ -2357,7 +2453,13 @@ async function soXAction(b, e) {
     case "xclonebase": return soCloneBase(p.workCard);
     case "xworkdrop": if (!c.busy) { c.workDraft = null; c.flagged = false; soComposeFlag(c); soComposeDraw(key); } return;
     case "xpick": { const files = await soPickImage(true); return soComposeAdd(files, key); }
-    case "xpicdel": if (!c.busy) { c.pictures.splice(+b.dataset.i, 1); soComposeFlag(c); soComposeDraw(key); } return;
+    case "xpicdel": {
+      if (c.busy) return;
+      const [gone] = c.pictures.splice(+b.dataset.i, 1);
+      if (gone?.url?.startsWith("blob:")) URL.revokeObjectURL(gone.url);
+      if (c.error === "最多 4 张图片") c.error = "";
+      soComposeFlag(c); soComposeDraw(key); return;
+    }
     case "xpicmove": { if (c.busy) return; const from = +b.dataset.i, to = from + +b.dataset.dir; if (to >= 0 && to < c.pictures.length) { [c.pictures[from], c.pictures[to]] = [c.pictures[to], c.pictures[from]]; soComposeDraw(key); } return; }
     case "xpublish": return soComposeSend(key);
     case "xcomplete": { const m = c.mention; if (!m) return; c.text = c.text.slice(0, m.start) + "@" + b.dataset.handle + " " + c.text.slice(m.end); soComposeDraw(key); const a = $(`#sc_${key}_text`); a.focus(); a.setSelectionRange(m.start + b.dataset.handle.length + 2, m.start + b.dataset.handle.length + 2); return; }
@@ -2376,16 +2478,25 @@ async function soPostToggle(p, kind) {
   if (!p || SO.busy[kind + p.id]) return;
   if (!SO.service?.account) { soAccountDialog(() => soPostToggle(p, kind)); return; }
   const flag = {like: "liked", repost: "reposted", bookmark: "bookmarked"}[kind], count = {like: "likes", repost: "reposts", bookmark: "bookmarks"}[kind], on = !p[flag];
+  const buttons = () => document.querySelectorAll(`[data-so="x${kind === "repost" ? "repostmenu" : kind}"][data-id="${p.id}"]`);
+  // shown at once, as X does (the heart fills and bursts, the count rolls), and put back if the service refuses
+  const show = (state, n, animate) => {
+    p[flag] = state; p[count] = n;
+    const update = x => { if (!x) return; if (x.id === p.id) { x[flag] = state; x[count] = n; } if (x.quote) update(x.quote); };
+    for (const list of soPostLists()) for (const x of list || []) update(x);
+    for (const el of buttons()) {
+      el.setAttribute("aria-pressed", String(state));
+      const num = $(".num", el); if (num) soCountRoll(num, n, state);
+      el.classList.remove("pop"); if (animate && state) { void el.offsetWidth; el.classList.add("pop"); }
+    }
+  };
+  const before = p[count] || 0;
   SO.busy[kind + p.id] = true;
+  show(on, Math.max(0, before + (on ? 1 : -1)), true);
   const r = await soServiceAPI("post/" + kind, {id: p.id, on});
   SO.busy[kind + p.id] = false;
-  if (!r.ok) return soServiceError(r);
-  p[flag] = on; p[count] = Math.max(0, (p[count] || 0) + (on ? 1 : -1));
-  const update = x => { if (!x) return; if (x.id === p.id) { x[flag] = on; x[count] = p[count]; } if (x.quote) update(x.quote); };
-  for (const list of soPostLists()) for (const x of list || []) update(x);
-  for (const el of document.querySelectorAll(`[data-so="x${kind === "repost" ? "repostmenu" : kind}"][data-id="${p.id}"]`)) {
-    el.setAttribute("aria-pressed", String(on)); const num = $(".num", el); if (num) num.textContent = p[count];
-  }
+  if (!r.ok) { show(!on, before, false); return soServiceError(r); }
+  if (kind === "bookmark") toast(on ? "已加入书签" : "已移出书签");
   if (kind === "bookmark" && !on && SO.nav === "bookmarks" && SO.posts) { SO.posts.items = SO.posts.items.filter(x => x.id !== p.id); soDraw(); }
 }
 function soPictureView(p, i) {
@@ -2404,7 +2515,7 @@ async function soHandleOpen(next, first = false) {
   SO.handleNext = next;
   SO.handleReturn = $("#modal.on")?.dataset.kind || "";
   const m = $("#modal"); m.dataset.kind = "sxhandle";
-  m.innerHTML = `<div class="mhead">选择用户名</div><div class="mbody soform"><label for="sx_handle">用户名</label><input id="sx_handle" maxlength="15" value="${esc(a.handle || "")}" autocomplete="off"><p>4–15 位字母、数字或下划线</p><p id="sx_handle_status" role="status"></p></div><div class="mfoot"><button class="btn" data-so="xhandlelater">稍后</button><button class="btn primary" data-so="xhandlesave" disabled>保存</button></div>`;
+  m.innerHTML = `<div class="mhead">选择用户名</div><div class="mbody soform"><label for="sx_handle">用户名</label><input id="sx_handle" maxlength="15" value="${esc(a.handle || "")}" placeholder="4–15 位字母、数字或下划线" autocomplete="off"><p id="sx_handle_status" role="status"></p></div><div class="mfoot"><button class="btn" data-so="xhandlelater">稍后</button><button class="btn primary" data-so="xhandlesave" disabled>保存</button></div>`;
   showModal(); await soHandleCheck();
 }
 async function soHandleCheck() {
@@ -2437,9 +2548,9 @@ document.addEventListener("input", e => {
   if (e.target.id === "sx_handle") { clearTimeout(soHandleTimer); $('[data-so="xhandlesave"]').disabled = true; soHandleTimer = setTimeout(soHandleCheck, 250); return; }
   const key = e.target.closest("[data-composer]")?.dataset.composer;
   if (!key || e.target.tagName !== "TEXTAREA") return;
-  const c = soDraft(key); c.text = e.target.value;
+  const c = soDraft(key); c.text = e.target.value; soComposeGrow(e.target);
   const n = Array.from(c.text).length, el = $(`#sc_${key}_count`); el.textContent = `${n}/1000`; el.classList.toggle("warnc", n > 1000);
-  $('[data-so="xpublish"]', e.target.closest("[data-composer]")).disabled = c.busy || n > 1000;
+  $('[data-so="xpublish"]', e.target.closest("[data-composer]")).disabled = c.busy || n > 1000 || c.pictures.some(p => p.pending);
   clearTimeout(soMentionTimer); soMentionTimer = setTimeout(() => soMentionSearch(key, c.text, e.target.selectionStart), 250);
 });
 document.addEventListener("change", e => { if (e.target.id === "sc_dialog_work") soDraft("dialog").work = e.target.value; });
@@ -2494,12 +2605,14 @@ document.addEventListener("visibilitychange", soViewsWatch);
 if (typeof MutationObserver !== "undefined" && $("#modal")) new MutationObserver(soViewsWatch).observe($("#modal"), {attributes: true, attributeFilter: ["class"]});
 
 // Profile, discovery and private messages share the same account session.
+// tabs, each [key, label] or [key, label, icon] (an icon of SO_ACT or SO_TOOL, before the label)
 function soTabs(tabs, selected, action) {
-  return `<div class="sxtabs" role="tablist">${tabs.map(([key, label]) => `<button role="tab" aria-selected="${selected === key}" data-so="${action}" data-tab="${key}">${label}</button>`).join("")}</div>`;
+  const icon = k => k ? `<span class="sxtabicon" aria-hidden="true">${SO_ACT[k] || SO_TOOL[k] || SO_ICON[k] || ""}</span>` : "";
+  return `<div class="sxtabs${tabs.some(t => t[2]) ? " withicons" : ""}" role="tablist">${tabs.map(([key, label, i]) => `<button role="tab" aria-selected="${selected === key}" data-so="${action}" data-tab="${key}">${icon(i)}<span>${label}</span></button>`).join("")}</div>`;
 }
 function soPersonRow(a, action = "profile") {
   const github = a.id?.startsWith("gh:") ? a.id.slice(3) : a.github;
-  return `<div class="sxperson">${soProfileBtn(github && a.id?.startsWith("gh:") ? "" : a.id, github, a.nickname, a.pic, false, a.booth)}<span class="sxhandle" data-i18n="off">@${esc(a.handle || github || "")}</span>${action === "unblock" ? `<button class="btn small" data-so="pageunblock" data-id="${esc(a.id)}">取消拉黑</button>` : ""}</div>`;
+  return `<div class="sxperson">${soProfileBtn(github && a.id?.startsWith("gh:") ? "" : a.id, github, a.nickname, a.pic, false, a.booth)}${soBotMark(a)}<span class="sxhandle" data-i18n="off">@${esc(a.handle || github || "")}</span>${action === "unblock" ? `<button class="btn small" data-so="pageunblock" data-id="${esc(a.id)}">取消拉黑</button>` : ""}</div>`;
 }
 function soPostListHTML(p, media, more) {
   const items = p?.items || [];
@@ -2560,7 +2673,9 @@ async function soTrendsLoad() {
 function soExploreDraw() {
   soBar(null);
   const r = SO.trends;
-  gridPut(`<div class="sxtimeline sxexplorepage">${soSearchBox()}<h2 class="sxpagetitle">趋势</h2>${r?.ok ? (r.trends || []).map(t => `<button class="sxtrend" data-so="posttag" data-tag="${esc(t.tag)}"><b data-i18n="off">#${esc(t.tag)}</b><span>${esc(`${t.posts} 篇帖子`)}</span></button>`).join("") || soEmpty("暂无内容") : soEmpty(esc(r?.err || "正在读取…"))}${soDiscoveryHTML()}</div>`);
+  // (a topic the community's maintainer picked has a title of its own, and comes first while it is pinned)
+  const trend = t => `<button class="sxtrend${t.pinned ? " pinned" : ""}" data-so="posttag" data-tag="${esc(t.tag)}">${t.pinned ? `<small class="sxtrendpin">${SO_TOOL.pin}<span>推荐</span></small>` : ""}<b data-i18n="off">${esc(t.title || "#" + t.tag)}</b><span>${t.title ? `<span data-i18n="off">#${esc(t.tag)}</span> · ` : ""}<span>${esc(`${t.posts} 篇帖子`)}</span></span></button>`;
+  gridPut(`<div class="sxtimeline sxexplorepage">${soSearchBox()}<h2 class="sxpagetitle">趋势</h2>${r?.ok ? (r.trends || []).map(trend).join("") || soEmpty("暂无内容") : soEmpty(esc(r?.err || "正在读取…"))}${soDiscoveryHTML()}</div>`);
 }
 async function soSettingsLoad() {
   const session = SO.session;
@@ -2573,17 +2688,17 @@ function soSettingsDraw() {
   const a = SO.service?.account, blocks = SO.settings;
   if (!a) { gridPut(`<div class="sxtimeline sxsettings"><h2 class="sxpagetitle">设置</h2>${soAccountHTML()}</div>`); return; }
   gridPut(`<div class="sxtimeline sxsettings"><h2 class="sxpagetitle">设置</h2>${soAccountHTML()}
-    <section class="sxset"><h3>Booth 店铺认证</h3><p class="sxsetnote">认证自己的 Booth 店铺后，名片和作品上显示认证标识。</p><div class="soform" id="sx_booth">${soBoothHTML()}</div></section>
+    <section class="sxset"><h3>Booth 店铺认证</h3><div class="soform" id="sx_booth">${soBoothHTML()}</div></section>
     <section class="sxset"><h3>隐私</h3>
-      ${soSetRow(`<label for="sx_requests">消息请求</label>`, "", `<select id="sx_requests"><option value="everyone"${a.allow_requests !== "none" ? " selected" : ""}>所有人</option><option value="none"${a.allow_requests === "none" ? " selected" : ""}>不接收</option></select>`, "未关注的人发来的私信")}
+      ${soSetRow(`<label for="sx_requests">消息请求</label>`, "", `<select id="sx_requests"><option value="everyone"${a.allow_requests !== "none" ? " selected" : ""}>所有人</option><option value="none"${a.allow_requests === "none" ? " selected" : ""}>不接收</option></select>`)}
       ${soSwitchRow("sx_following", "公开我的关注列表", a.show_following)}
-      ${soSwitchRow("sx_sensitive", "总是显示敏感内容", a.show_sensitive, "不再遮挡标为敏感的图片")}
+      ${soSwitchRow("sx_sensitive", "总是显示敏感内容", a.show_sensitive)}
       <p class="sxsetstatus" id="sx_setting_status" role="status"></p></section>
     <section class="sxset"><h3>通知</h3>
-      ${soSwitchRow("sx_notify", "系统通知", SO.prefs?.notify !== false, "有新通知和私信时，在 Windows 右下角提醒（仅本机）", !SO.prefs)}
+      ${soSwitchRow("sx_notify", "系统通知", SO.prefs?.notify !== false, "", !SO.prefs)}
       <p class="sxsetstatus" id="sx_notify_status" role="status"></p></section>
     <section class="sxset"><h3>数据</h3>
-      ${soSetRow("导出我的数据", "", `<button class="btn small" data-so="accountexport">导出</button>`, "资料、帖子、回复、私信、作品和图片")}
+      ${soSetRow("导出我的数据", "", `<button class="btn small" data-so="accountexport">导出</button>`)}
       <p class="sxsetstatus" id="sx_export_status" role="status"></p></section>
     <section class="sxset"><h3>已拉黑的账号</h3>${blocks?.ok ? blocks.accounts.map(p => soPersonRow(p, "unblock")).join("") || `<p class="sxsetnote">暂无内容</p>` : `<p class="warnc">${esc(blocks?.err || "正在读取…")}</p>`}</section>
     <section class="sxset sxsetend"><button class="btn" data-so="accountlogout">退出登录</button><button class="btn sxdanger" data-so="accountdelete"${!SO.service.available ? " disabled" : ""}>注销账号</button></section>
@@ -2594,7 +2709,7 @@ function soEmailOpen() {
   const a = SO.service?.account; if (!a) return soAccountDialog(soEmailOpen);
   const m = $("#modal"); m.dataset.kind = "sxemail";
   m.innerHTML = `<div class="mhead">更换邮箱</div><div class="mbody soform">
-    <p class="muted small"><span>当前邮箱</span> <span data-i18n="off">${esc(a.email || "")}</span></p><p class="muted small">更换后用新邮箱登录，原邮箱不能再登录这个账号。</p>
+    <p class="muted small"><span>当前邮箱</span> <span data-i18n="off">${esc(a.email || "")}</span></p>
     <label for="sx_email_new">新邮箱</label><div class="somailcode"><input id="sx_email_new" type="email" autocomplete="email" maxlength="254"><button class="btn" data-so="emailcode">发送验证码</button></div>
     <label for="sx_email_code">验证码</label><input id="sx_email_code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6 位数字">
     <p class="small" id="sx_email_status" role="status"></p></div>
@@ -2627,7 +2742,6 @@ function soContactsOpen() {
   const c = a.contacts || {}, m = $("#modal"); m.dataset.kind = "sxcontacts";
   const row = (id, label, value, hint, mode) => `<label for="${id}">${label}</label><input id="${id}" value="${esc(value || "")}" placeholder="${esc(hint)}" autocomplete="off"${mode ? ` inputmode="${mode}"` : ""} data-i18n="off">`;
   m.innerHTML = `<div class="mhead">QQ / LINE / Discord</div><div class="mbody soform">
-    <p class="muted small">填写后显示在个人主页，方便其他玩家联系你。留空即不显示。</p>
     ${row("sx_qq", "QQ 号", c.qq, "例如 123456789", "numeric")}${row("sx_line", "LINE ID", c.line, "例如 mio_vrc")}${row("sx_discord", "Discord 用户名", c.discord, "例如 mio.vrc")}
     <p class="small warnc" id="sx_contacts_status" role="status"></p></div>
     <div class="mfoot"><button class="btn" data-m="close">取消</button><button class="btn primary" data-so="contactssave">保存</button></div>`;
@@ -2771,9 +2885,8 @@ function soDMDraw() {
       const mine = m.from === own, recall = mine && !m.deleted && Date.now() - Date.parse(m.created) <= 300000;
       return `${heading}<article class="sxdmbubble${mine ? " mine" : ""}" data-id="${esc(m.id)}"><div class="sxdmtext"${m.deleted ? "" : ' data-i18n="off"'}>${m.deleted ? esc("消息已删除") : soPostText(m.text)}</div>${m.deleted ? "" : soSharedCard({text: m.text, id: ""})}${m.picture && !m.deleted ? `<img data-dmpic="${esc(m.picture)}"${c.pictures?.[m.picture] ? ` src="${esc(c.pictures[m.picture])}"` : " hidden"} alt="图片">` : ""}<div class="sxdmmeta"><time data-i18n="off">${esc(new Date(m.created).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}))}</time>${recall ? `<button class="linkbtn" data-so="dmrecall" data-id="${esc(m.id)}">撤回</button>` : !mine && !m.deleted ? `<button class="linkbtn" data-so="dmreport" data-id="${esc(m.id)}">举报</button>` : ""}</div></article>`;
     }).join("");
-    const request = c.request ? `<div class="sxdmrequestnote"><p>接受后可继续对话。</p><div class="btnrow"><button class="btn primary" data-so="dmaccept">接受</button><button class="btn" data-so="dmdelete">删除</button><button class="btn" data-so="dmblock">拉黑</button></div></div>` : "";
-    const limit = !c.request && !c.account.follows_you && !c.items.some(m => m.from !== own) ? `<p class="sxdmlimit">对方接受前最多可发送 3 条消息。</p>` : "";
-    chat = `<div class="sxdmhead">${soProfileBtn(c.account.id, c.account.github, c.account.nickname, c.account.pic, false, c.account.booth)}<span class="sxhandle" data-i18n="off">@${esc(c.account.handle)}</span><button class="btn small" data-so="dmdelete">删除</button></div><div class="sxdmlog" id="sx_dm_log">${c.next ? `<button class="btn" data-so="dmmore">加载更多</button>` : ""}${bubbles || soEmpty(c.loaded ? "暂无消息" : "正在读取…")}</div>${request}${limit}<div class="sxdmcompose"><p class="warnc" id="sx_dm_error" role="status">${esc(c.error || "")}</p>${c.picture ? `<div class="sxdmattachment"><img src="${esc(c.picture.src)}" alt="图片"><button class="btn small" data-so="dmpicclear">移除</button></div>` : ""}<div class="sxdmbox"><button class="sxtool" data-so="dmpick" title="图片" aria-label="图片"${c.busy || c.picture ? " disabled" : ""}>${SO_TOOL.picture}</button><button class="sxtool" data-so="emoji" data-for="sx_dm_text" title="插入表情" aria-label="插入表情"${c.busy ? " disabled" : ""}>${SO_TOOL.smile}</button><textarea id="sx_dm_text" rows="1" placeholder="发送私信（Enter 发送，Shift+Enter 换行）"${c.busy ? " disabled" : ""}>${esc(c.draft)}</textarea><span class="sxcnt" id="sx_dm_count">${Array.from(c.draft).length}/1000</span><button class="btn primary sxsend" data-so="dmsend"${c.busy || c.account.blocked ? " disabled" : ""}>发送</button></div></div>`;
+    const request = c.request ? `<div class="sxdmrequestnote"><div class="btnrow"><button class="btn primary" data-so="dmaccept">接受</button><button class="btn" data-so="dmdelete">删除</button><button class="btn" data-so="dmblock">拉黑</button></div></div>` : "";
+    chat = `<div class="sxdmhead">${soProfileBtn(c.account.id, c.account.github, c.account.nickname, c.account.pic, false, c.account.booth)}<span class="sxhandle" data-i18n="off">@${esc(c.account.handle)}</span><button class="btn small" data-so="dmdelete">删除</button></div><div class="sxdmlog" id="sx_dm_log">${c.next ? `<button class="btn" data-so="dmmore">加载更多</button>` : ""}${bubbles || soEmpty(c.loaded ? "暂无消息" : "正在读取…")}</div>${request}<div class="sxdmcompose"><p class="warnc" id="sx_dm_error" role="status">${esc(c.error || "")}</p>${c.picture ? `<div class="sxdmattachment"><img src="${esc(c.picture.src)}" alt="图片"><button class="btn small" data-so="dmpicclear">移除</button></div>` : ""}<div class="sxdmbox"><button class="sxtool" data-so="dmpick" title="图片" aria-label="图片"${c.busy || c.picture ? " disabled" : ""}>${SO_TOOL.picture}</button><button class="sxtool" data-so="emoji" data-for="sx_dm_text" title="插入表情" aria-label="插入表情"${c.busy ? " disabled" : ""}>${SO_TOOL.smile}</button><textarea id="sx_dm_text" rows="1" placeholder="发送私信（Enter 发送，Shift+Enter 换行）"${c.busy ? " disabled" : ""}>${esc(c.draft)}</textarea><span class="sxcnt" id="sx_dm_count">${Array.from(c.draft).length}/1000</span><button class="btn primary sxsend" data-so="dmsend"${c.busy || c.account.blocked ? " disabled" : ""}>发送</button></div></div>`;
   }
   gridPut(`<div class="sxdm"><section class="sxdmlist"><h2>${d.box === "requests" ? "消息请求" : "私信"}</h2>${requests}${d.error ? `<p class="warnc">${esc(d.error)}</p>` : ""}${rows || soEmpty(d.loaded ? "暂无消息" : "正在读取…")}</section><section class="sxdmchat">${chat}</section></div>`);
   if (top !== undefined && $("#sx_dm_log")) $("#sx_dm_log").scrollTop = top;
@@ -3059,7 +3172,7 @@ function soThemeOff(id) { try { return localStorage.getItem("so-theme-off:" + id
 function soThemeHTML(closable) {
   const t = SO.themes?.ok && SO.themes.current;
   if (!t || closable && soThemeOff(t.id)) return "";
-  return `<div class="sxtheme"><span class="sxthemelabel">本周主题</span><span class="sxthemetext"><b data-i18n="off">${esc(t.title)}</b>${t.line ? `<span data-i18n="off">${esc(t.line)}</span>` : ""}</span><button class="linkbtn" data-so="posttag" data-tag="${esc(t.tag)}" data-i18n="off">#${esc(t.tag)}</button><button class="btn small primary" data-so="xthemejoin" data-tag="${esc(t.tag)}">参加</button>${closable ? `<button class="wb" data-so="xthemeoff" data-id="${esc(t.id)}" title="关闭" aria-label="关闭">${ICON.x}</button>` : ""}</div>`;
+  return `<div class="sxtheme"><span class="sxthemelabel">本周主题</span><span class="sxthemetext"><b data-i18n="off">${esc(t.title)}</b></span><button class="linkbtn" data-so="posttag" data-tag="${esc(t.tag)}" data-i18n="off">#${esc(t.tag)}</button><button class="btn small primary" data-so="xthemejoin" data-tag="${esc(t.tag)}">参加</button>${closable ? `<button class="wb" data-so="xthemeoff" data-id="${esc(t.id)}" title="关闭" aria-label="关闭">${ICON.x}</button>` : ""}</div>`;
 }
 function soThemesForTag() {
   const q = SO.nav === "search" ? String(SO.q || "").trim() : "", all = SO.themes?.ok ? SO.themes.themes || [] : [];

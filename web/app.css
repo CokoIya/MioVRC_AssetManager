@@ -666,6 +666,7 @@ body.paneon .toast.on { transform: translate(-50%, 0); }
 .impres .small.warnline { color: var(--warn); }
 .impchoose { font-size: 13px; }
 .impchoose .check { padding: 6px 0; color: var(--text); flex-wrap: wrap; }
+.pickall { display: flex; gap: 14px; margin: 6px 0 2px; font-size: 12.5px; }
 .impchoose .n { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .impchoose .s { color: var(--faint); font-size: 12px; flex: none; }
 .impchoose .pnote { flex-basis: 100%; padding-left: 24px; color: var(--muted); font-size: 12px; }
@@ -1200,6 +1201,10 @@ body.paneon .offline:not([hidden]) ~ .toast { top: 104px; }
 .wltitle:hover { color: var(--accent); }
 .wlsub { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 2px; font-size: 12px; color: var(--muted); }
 .wlsub .t { color: var(--faint); }
+/* the category on a row or a card: a button that changes it */
+.wlcat { padding: 0; border: 0; background: none; font: inherit; cursor: pointer; white-space: nowrap; }
+.wlcat:hover { color: var(--accent); }
+.wgshop .wlcat { margin-right: 8px; }
 .wlvars { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 6px; }
 .wlvars span { border: 1px solid var(--line); border-radius: 6px; padding: 0 7px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 .wlvars b { margin-left: 6px; color: var(--text); font-weight: 600; white-space: nowrap; }

@@ -9,7 +9,14 @@ const DROP = { depth: 0 };
 const DROP_KINDS = /\.(zip|7z|rar|unitypackage)$/i;
 
 function dropHasFiles(e) { return !!e.dataTransfer && [...e.dataTransfer.types].includes("Files"); }
-function dropElsewhere(e) { return !!e.target.closest && !!e.target.closest("[data-composer], #lm_drop"); }
+// pictures dragged in while a community composer is on screen are that composer's, wherever they are dropped: the
+// one in the window when it is open, else the first in sight (the browser tells the kinds before the drop)
+function dropComposer(e) {
+  const items = [...(e.dataTransfer?.items || [])].filter(i => i.kind === "file");
+  if (!items.length || !items.every(i => /^image\//.test(i.type)) || typeof soComposeAdd !== "function") return null;
+  return document.querySelector("#modal.on [data-composer]") || (!document.querySelector("#modal.on") && document.querySelector("#grid [data-composer]")) || null;
+}
+function dropElsewhere(e) { return !!e.target.closest && !!e.target.closest("[data-composer], #lm_drop") || !!dropComposer(e); }
 function dropShow(on) {
   let z = document.getElementById("dropzone");
   if (on && !z) {
@@ -22,10 +29,13 @@ function dropShow(on) {
 document.addEventListener("dragenter", e => { if (!dropHasFiles(e) || dropElsewhere(e)) return; DROP.depth++; dropShow(true); });
 document.addEventListener("dragleave", e => { if (!dropHasFiles(e)) return; if (--DROP.depth <= 0) { DROP.depth = 0; dropShow(false); } });
 document.addEventListener("dragover", e => {
-  if (!dropHasFiles(e) || dropElsewhere(e)) return;
+  if (!dropHasFiles(e)) return;
+  if (dropElsewhere(e) && !(dropComposer(e) && !e.target.closest?.("[data-composer], #lm_drop"))) return;
   e.preventDefault(); e.dataTransfer.dropEffect = "copy";
 });
 document.addEventListener("drop", async e => {
+  const composer = dropHasFiles(e) && !e.target.closest?.("[data-composer], #lm_drop") ? dropComposer(e) : null;
+  if (composer) { e.preventDefault(); DROP.depth = 0; dropShow(false); soComposeAdd(e.dataTransfer.files, composer.dataset.composer); return; }
   if (!dropHasFiles(e) || dropElsewhere(e)) return;
   e.preventDefault(); DROP.depth = 0; dropShow(false);
   const files = [...e.dataTransfer.files];

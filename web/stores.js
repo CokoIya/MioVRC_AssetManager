@@ -241,7 +241,7 @@ function wishRowHTML(x) {
     <button class="wlthumb" data-wl="detail" data-id="${esc(x.id)}" title="查看商品详情" aria-label="查看商品详情">${x.thumb ? `<img loading="lazy" decoding="async" src="/rthumb?u=${encodeURIComponent(x.thumb)}" alt="">` : ""}</button>
     <div class="wlmain">
       <button class="wltitle" data-wl="detail" data-id="${esc(x.id)}" data-i18n="off">${esc(x.title || "Booth #" + x.id)}</button>
-      <div class="wlsub"><span>${esc(x.shop || "")}</span><span class="t"><span>加入于</span> ${esc(fmtTime(x.added))}</span>${x.like ? WISH_LIKE : ""}</div>
+      <div class="wlsub">${wishCatBtn(x)}<span data-i18n="off">${esc(x.shop || "")}</span><span class="t"><span>加入于</span> ${esc(fmtTime(x.added))}</span>${x.like ? WISH_LIKE : ""}</div>
       ${vars}${change}
       ${x.note ? `<div class="wlnote"><span class="lb">备注</span><span data-i18n="off">${esc(x.note)}</span></div>` : ""}
       ${x.err ? `<div class="wlerr small err"><span>价格检查失败</span>　${esc(x.err)}</div>` : ""}
@@ -266,7 +266,7 @@ function wishCardHTML(x) {
     <button class="wgthumb" data-wl="detail" data-id="${esc(x.id)}" title="查看商品详情" aria-label="查看商品详情">${x.thumb ? `<img loading="lazy" decoding="async" src="/rthumb?u=${encodeURIComponent(x.thumb)}" alt="">` : ""}
       <span class="wgstate">${wishState(x)}</span>${kind ? `<span class="wgchange ${esc(c.kind)}${W.fresh.has(x.key) ? " fresh" : ""}">${esc(kind)}</span>` : ""}${x.like ? WISH_LIKE : ""}</button>
     <button class="wltitle" data-wl="detail" data-id="${esc(x.id)}" data-i18n="off" title="${esc(x.title || "")}">${esc(x.title || "Booth #" + x.id)}</button>
-    <div class="wgshop" data-i18n="off">${esc(x.shop || "")}</div>
+    <div class="wgshop">${wishCatBtn(x)}<span data-i18n="off">${esc(x.shop || "")}</span></div>
     ${x.note ? `<div class="wgnote" title="${esc(x.note)}"><span class="lb">备注</span><span data-i18n="off">${esc(x.note)}</span></div>` : ""}
     <div class="wgfoot">
       <span class="wgprice" title="${x.checked ? "上次检查：" + esc(fmtTime(x.checked)) : "尚未检查"}"><b>${esc(x.price || "—")}</b>${x.from ? `<span class="from">起</span>` : ""}${
@@ -338,6 +338,23 @@ function wishSeed(id) {
   return { id, title: (it && it.name) || hit.name || "", shop: (it && it.shop) || hit.shop || hit.shopSub || "",
     thumb: hit.thumb || (it && (it.images || [])[0]) || "", price: (it && it.price) || hit.price || "", category: (it && it.category) || hit.category || "" };
 }
+// the category on a row or a card: the player's choice where there is one (「更改分类」), as on a library card
+function wishCatBtn(x) {
+  const c = x.category || "其他";
+  return `<button class="cat wlcat" data-wl="setcat" title="更改分类"><i style="background:${CAT_COLOR[c] || "#8b8fa6"}"></i>${esc(c)}</button>`;
+}
+function wishCatOpen(key) {
+  const x = W.byKey.get(key); if (!x) return;
+  const m = $("#modal"), auto = x.autoCategory || "其他", own = x.category !== auto ? x.category : "";
+  m.dataset.kind = "wlcat";
+  m.innerHTML = `<div class="mhead">更改分类</div><div class="mbody">
+    <p class="lead">${esc(x.title)}</p>
+    <div class="row"><label for="wl_cat">分类</label><select id="wl_cat"><option value="">自动（${esc(auto)}）</option>${
+      (S.data.categories || []).map(c => `<option${c === own ? " selected" : ""}>${esc(c)}</option>`).join("")}</select></div>
+  </div><div class="mfoot"><button class="btn ghost" data-m="close">取消</button><button class="btn primary" data-wl="catsave" data-key="${esc(key)}">保存</button></div>`;
+  showModal();
+  $("#wl_cat").focus();
+}
 function wishNoteOpen(key) {
   const x = W.byKey.get(key); if (!x) return;
   const m = $("#modal");
@@ -381,6 +398,12 @@ async function wishAction(b) {
     case "view": { const v = b.dataset.v === "grid" ? "grid" : "list"; if (W.view === v) return; W.view = v; storesSave(); return renderWish(); }
     case "open": return openWeb(boothItemURL(id), "booth");
     case "note": return wishNoteOpen(key);
+    case "setcat": return wishCatOpen(key);
+    case "catsave": {
+      const r = await api("/api/wish/category", { key: b.dataset.key, category: $("#wl_cat").value });
+      if (!r.ok) { toast(r.err || "保存失败", 3500); return; }
+      closeModal(); toast("已更改分类"); return storesFetch();
+    }
     case "notesave": {
       const r = await api("/api/wish/note", { key: b.dataset.key, note: $("#wl_note").value });
       if (!r.ok) { toast(r.err || "保存失败", 3500); return; }

@@ -1938,7 +1938,19 @@ function impChooseHead(j, bases) {
     : bases || "该素材包含多个素体版本，请选择要导入的版本：";
 }
 function impChoiceRows(choices, attr, isOn) {
-  return (choices || []).map((c, i) => `<label class="check${c.why ? " " + esc(c.why) : ""}"><input type="checkbox" ${attr}="${i}"${isOn(c, i) ? " checked" : ""}><span class="n" data-i18n="off">${esc(c.name)}</span>${(c.bases || []).map(b => `<span class="base">${esc(b)}</span>`).join("")}<span class="s">${fmtSize(c.size)}</span>${c.note ? `<span class="pnote">${esc(c.note)}</span>` : ""}</label>`).join("");
+  return pickAllHTML((choices || []).length) + (choices || []).map((c, i) => `<label class="check${c.why ? " " + esc(c.why) : ""}"><input type="checkbox" ${attr}="${i}"${isOn(c, i) ? " checked" : ""}><span class="n" data-i18n="off">${esc(c.name)}</span>${(c.bases || []).map(b => `<span class="base">${esc(b)}</span>`).join("")}<span class="s">${fmtSize(c.size)}</span>${c.note ? `<span class="pnote">${esc(c.note)}</span>` : ""}</label>`).join("");
+}
+// 「全选」「反选」 above a list of two or more checkboxes to pick from: they tick the boxes of the list it sits in (as
+// a click would, so what keeps the ticks hears of it)
+function pickAllHTML(n) {
+  return n >= 2 ? `<div class="pickall"><button class="linkbtn" data-pickall="all">全选</button><button class="linkbtn" data-pickall="inv">反选</button></div>` : "";
+}
+function pickAll(b) {
+  const all = b.dataset.pickall === "all";
+  for (const x of b.closest(".impchoose, .ocneed").querySelectorAll('input[type="checkbox"]:not(:disabled)')) {
+    const v = all || !x.checked;
+    if (x.checked !== v) { x.checked = v; x.dispatchEvent(new Event("change", { bubbles: true })); }
+  }
 }
 const SKIPWHY = { dup: "重复", old: "旧版本", quest: "Quest 版本", pc: "PC 版本", alt: "与其他包写入同一批文件" };
 function impSkipped(j) {
@@ -3511,6 +3523,8 @@ document.addEventListener("click", async e => {
   if (document.body.classList.contains("sideopen") && t.closest("#side .navitem, #side .subitem, #side .h3act, #side .btn")) sideOpen(false);
   const lk = t.closest("[data-link]");
   if (lk && LINKS[lk.dataset.link]) return openURL(LINKS[lk.dataset.link]);
+  const pka = t.closest("[data-pickall]");
+  if (pka) return pickAll(pka);
   if (t.matches("[data-shot]")) return showBig(t.dataset.shots.split("|").map(n => "/shot?f=" + encodeURIComponent(n)), +t.dataset.shot, true);
   if (t.closest("#btnSync") || t.closest("#btnDLLogin")) { startSync(); return; }
   if (t.closest("#btnGumSync")) return gumSync();

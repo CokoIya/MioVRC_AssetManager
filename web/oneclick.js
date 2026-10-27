@@ -316,7 +316,7 @@ function ocNeedHTML(n) {
   else if (n.kind === "prefab") body = (n.prefabs || []).map((p, i) => `<label class="check"><input type="radio" name="ocprefab" data-ocprefab value="${esc(p)}"${i === 0 ? " checked" : ""}> <span data-i18n="off">${esc(p)}</span></label>`).join("");
   else if (n.kind === "original") body = ocMenuHTML(n);
   const label = n.kind === "original" ? "移除勾选的菜单" : n.kind === "packages" || n.kind === "prefab" ? "使用所选" : "已完成，继续";
-  return `<div class="ocneed"><p>${esc(n.message)}</p>${body ? `<div class="occhoices">${body}</div>` : ""}
+  return `<div class="ocneed"><p>${esc(n.message)}</p>${n.kind === "packages" ? pickAllHTML((n.choices || []).length) : ""}${body ? `<div class="occhoices">${body}</div>` : ""}
     <div class="btnrow">${n.kind === "original" ? `<button class="btn small ghost" data-oc="keepall">全部保留</button>` : ""}<button class="btn small primary" data-oc="reply">${label}</button></div></div>`;
 }
 // The base's original menus grouped by top-level menu. A group stands for its first entries; it opens to the level
