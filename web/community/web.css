@@ -29,7 +29,7 @@ body.web.wsideon { overflow: hidden; }
 .wcard { padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); }
 .wdl { width: 100%; height: 40px; border-radius: 20px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .wlinks { display: flex; flex-wrap: wrap; gap: 10px 16px; }
-.linkbtn { border: 0; background: none; padding: 0; color: var(--accent-text); cursor: pointer; font: inherit; }
+.linkbtn { border: 0; background: none; padding: 0; color: var(--accent-text); cursor: pointer; font: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
 .linkbtn:hover { text-decoration: underline; }
 .wtrends { padding: 12px 0 6px; }
 .wtrends h3 { margin: 0 16px 4px; font-size: 18px; font-weight: 800; }

@@ -524,7 +524,7 @@
     "quotes int; bookmarks int; views int; reposted bool; bookmarked bool; quote *Post?; quote_unavailable bool?; " +
     "parent_deleted bool?; deleted bool?; id string; author Person; created string; likes int; comments int; liked bool; " +
     "group_name string?; answer string?; solved bool?; featured bool?; promoted bool?; booth_items []BoothItem?");
-  struct("BoothItem", "id string; title string; shop string?; price int; was int?; kind string; base string?; picture string?");
+  struct("BoothItem", "id string; title string; shop string?; price int; was int?; kind string; base string?; picture string?; fitted int?; fitted_base int?");
   struct("PostPage", "posts []Post; next string?");
   struct("Thread", "ancestors []Post; post Post; replies []Post; next string?");
   struct("Timeline", "items []TimelineItem; next string?");
@@ -551,7 +551,7 @@
   struct("Poll", "options []string; days int; ends string?; closed bool?; votes []int?; total int?; voted int?");
   // social (rows.go, posts.go, timeline.go, pages.go, groups.go, clone.go, feed.go, home.go, local.go, api.go, device.go)
   struct("PostRow", "=Post; pics []string; pic string?; authorPic string?; mine bool; followed bool; share string?; boothCards []BoothCard?");
-  struct("BoothCard", "id string; title string; shop string?; price int; was int?; kind string; base string?; pic string?; owned bool");
+  struct("BoothCard", "id string; title string; shop string?; price int; was int?; kind string; base string?; pic string?; owned bool; fitted int?; fitted_base int?");
   struct("timelineWork", "=PublishedWork; pic string; owned int; total int; items []WorkItem");
   struct("timelinePost", "=PostRow; quote *timelinePost?; workCard *timelineWork?; assetItems []WorkItem?");
   struct("WorkItem", "name string; url string; boothId string; owned bool; key string?; category string?");
@@ -1893,7 +1893,7 @@
     const out = [];
     for (const it of items) {
       if (!boothIDOK(it.id)) continue;
-      const c = { id: it.id, title: it.title, shop: it.shop || "", price: it.price, was: it.was || 0, kind: it.kind, base: it.base || "", pic: "", owned: false };
+      const c = { id: it.id, title: it.title, shop: it.shop || "", price: it.price, was: it.was || 0, kind: it.kind, base: it.base || "", pic: "", owned: false, fitted: it.fitted || 0, fitted_base: it.fitted_base || 0 };
       if (blen(it.picture || "") === 48) c.pic = servicePic("/pic/" + it.picture + "_s.jpg");
       out.push(c);
     }

@@ -3085,7 +3085,8 @@ function aiLogHTML(steps = (AI.sess || {}).steps || [], history = true) {
     }
     if (s.kind === "error" && s.code && window.gptStepHTML) { const h = gptStepHTML(s); if (h) return h; }
     // what the AI says is markdown; mdLite escapes first, so it is as safe as the plain text of the other lines
-    return s.kind === "say" ? `<div class="aistep say md">${mdLite(s.text)}</div>` : `<div class="aistep ${s.kind === "error" ? "err" : esc(s.kind)}">${esc(s.text)}</div>`;
+    // (an answer cut by its length and continued by the program says so at its end)
+    return s.kind === "say" ? `<div class="aistep say md">${mdLite(s.text)}${s.continued ? `<p class="aicont">（回答较长，已自动续写）</p>` : ""}</div>` : `<div class="aistep ${s.kind === "error" ? "err" : esc(s.kind)}">${esc(s.text)}</div>`;
   }).join("") + (history && (AI.sess || {}).busy && !busyTool ? `<div class="aistep tool busy"><i class="spin"></i><span class="out">AI 正在规划下一步…</span>${aiWaitHTML((steps[steps.length - 1] || {}).at)}</div>` : "");
 }
 // how long a step has been going: a long answer of a model that thinks first is still an answer coming. The

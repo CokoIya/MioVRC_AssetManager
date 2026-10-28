@@ -4937,7 +4937,29 @@ I18N.add("ja", {
     // --- community service: translation refusals ---
     "没有可翻译的文字": "翻訳できるテキストがありません",
     "已是当前语言": "すでに現在の言語です",
-    "AI 服务拒绝了 API Key，请检查设置": "AI サービスが API キーを拒否しました。設定を確認してください"
+    "AI 服务拒绝了 API Key，请检查设置": "AI サービスが API キーを拒否しました。設定を確認してください",
+    // --- community: the share picture's code ---
+    "附带二维码": "QR コードを入れる",
+    // --- community page: the link to Booth 情报's pages ---
+    "Booth 情报一览": "Booth 情報一覧",
+    // --- fitting room: parts of what is worn ---
+    "只有一个部件": "パーツは 1 つだけです",
+    "逐个开关它的部件，只影响预览": "パーツを個別にオン／オフ（プレビューのみ）",
+    "还原": "元に戻す",
+    // --- Booth 情报: my bases only ---
+    "只看我的素体": "自分の素体だけ",
+    "你的素体还没有 Booth 情报": "あなたの素体の Booth 情報はまだありません",
+    // --- AI assistant: a long answer continued ---
+    "（回答较长，已自动续写）": "（回答が長いため自動で続きを書きました）",
+    // --- measured fits shared through the community; players who put an item on ---
+    "请先登录社区": "先にコミュニティにログインしてください",
+    "社区实测数据与列表记录的不一致": "コミュニティの実測データが一覧の記録と一致しません",
+    // --- AI cut answers; one-click import of what is not a unitypackage ---
+    "回答过长：请把要求拆成几步再试，或在「AI 服务」中换用输出上限更高的模型": "回答が長すぎます：依頼を数回に分けるか、「AI サービス」で出力上限の高いモデルに変えてください",
+    "该素材是 VCC 包，请在 ALCOM 中添加后重试": "この素材は VCC パッケージです：ALCOM で追加してから再試行してください",
+    "压缩包里是安装程序，不能直接导入 Unity：请按卖家说明安装": "圧縮ファイルの中身はインストーラーのため、Unity に直接インポートできません：販売者の説明に従ってインストールしてください",
+    "压缩包里只有说明文档和预览图片，没有可导入 Unity 的文件，请检查下载内容": "圧縮ファイルには説明書とプレビュー画像しかなく、Unity にインポートできるファイルがありません：ダウンロード内容を確認してください",
+    "未找到可导入 Unity 的文件，请确认已下载素材本体和全部分卷": "Unity にインポートできるファイルが見つかりません：素材本体と分割ファイルをすべてダウンロードしたか確認してください"
   },
   "patterns": [
     // --- the player's スキ！ on Booth onto the wish list ---
@@ -6140,6 +6162,14 @@ I18N.add("ja", {
     ["第 {#n} 步，共 3 步", "ステップ {n}/3"],
     ["使用 {x} 账号（{y}）注册", "{x|raw} アカウント（{y|raw}）で登録"],
     ["已关联 {x}", "{x|raw} を連携しました"],
-    ["已取消关联 {x}", "{x|raw} の連携を解除しました"]
+    ["已取消关联 {x}", "{x|raw} の連携を解除しました"],
+    // --- fitting room: parts of what is worn ---
+    ["{#n} 个部件", "{n} 個のパーツ"],
+    // --- measured fits shared through the community; players who put an item on ---
+    ["已分享 {#n} 条实测数据", "実測データを {n} 件共有しました"],
+    ["{#n} 位玩家已一键穿上", "MioVRCA で {n} 人が着用確認"],
+    // --- AI cut answers; one-click import of what is not a unitypackage ---
+    ["未找到可导入 Unity 的文件，找到：{x}。请下载素材本体；安装程序或教程请按卖家说明处理", "Unity にインポートできるファイルが見つかりません（見つかったもの：{x}）。素材本体をダウンロードしてください。インストーラーやチュートリアルは販売者の説明に従ってください"],
+    ["已导入 {#n} 个文件，目标文件夹：{x}", "{n} 個のファイルをインポートしました（フォルダー：{x}）"]
   ]
 });

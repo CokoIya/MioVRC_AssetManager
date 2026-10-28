@@ -26,7 +26,8 @@ self.addEventListener("fetch", e => {
   const r = e.request, url = new URL(r.url);
   if (r.method !== "GET" || url.origin !== self.location.origin) return;
   const path = url.pathname;
-  if (path.startsWith("/api/") || path.startsWith("/admin") || path.startsWith("/p/") || path === "/sw.js" || path === "/privacy.html") return; // (pages of their own)
+  if (path.startsWith("/api/") || path.startsWith("/admin") || path.startsWith("/p/") || path === "/sw.js" || path === "/privacy.html" ||
+    path === "/booth" || path.startsWith("/booth/") || path.startsWith("/zh/") || path === "/sitemap.xml" || path === "/robots.txt") return; // (pages of their own: the policy, Booth 情报's pages)
   if (path.startsWith("/pic/") || path.startsWith("/repo/") && /\.(jpe?g|png|webp|gif)$/i.test(path)) { e.respondWith(picture(r)); return; }
   if (path.startsWith("/repo/") || DEV) return;
   if (r.mode === "navigate") { e.respondWith(fromPage(new Request("./"), r)); return; }

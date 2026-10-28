@@ -134,6 +134,8 @@ function wishOpen() {
   closeDrawer(); sideOpen(false);
   renderShopSide(); renderShopGrid(); backToScroll();
 }
+// a click on the tray's notification of a wish-list deal (tray_windows.go): the list, read again
+function wishFromNotice() { closeModal(); wishOpen(); storesFetch(); }
 function wishClose() { keepScroll(); W.on = false; wishQBack(); renderShopSide(); renderShopGrid(); backToScroll(); }
 // a purchase sync for the スキ: the Booth page is shown while it runs (its login, when needed), and the wish list
 // again when it is over — unless the player has gone elsewhere meanwhile

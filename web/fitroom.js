@@ -16,6 +16,8 @@ const FR = {
   // 「部件」: the side panel's tab, the plugin's list, the paths picked to be taken off (hidden in the preview until
   // then), the items unfolded, the whole clipping list shown
   tab: "wear", parts: null, partsErr: "", partsBusy: false, pend: new Set(), unfold: new Set(), clipAll: false, setting: false, fixing: "",
+  // the parts of what is worn, in 「穿搭」: switched on and off in the preview only (path → shown), what is unfolded
+  sub: new Map(), subOpen: new Set(),
 };
 
 async function frOpen(project, opt) {
@@ -27,6 +29,7 @@ async function frOpen(project, opt) {
   FR.project = project; FR.avatar = ""; FR.wear = []; FR.tries = []; FR.on = new Map(); FR.trying = new Map(); FR.err = ""; FR.stat = null;
   FR.look = ""; FR.variant = new Map(); FR.tint = new Map();
   FR.tab = opt && opt.tab === "parts" ? "parts" : "wear"; FR.parts = null; FR.partsErr = ""; FR.pend = new Set(); FR.unfold = new Set(); FR.clipAll = false;
+  FR.sub = new Map(); FR.subOpen = new Set();
   const m = $("#modal");
   m.dataset.kind = "fit";
   m.innerHTML = `<div class="mhead">3D 试衣间<span class="frav" id="fr_av"></span></div>
@@ -185,12 +188,36 @@ async function frPartsSet(remove, restore) {
   toast((remove.length ? `已移除 ${r.removed || 0} 项` : "已恢复") + (r.saved ? "" : "，请在 Unity 中保存场景"), 4000);
   FR.parts = null; frPartsLoad(); frExport();
 }
+// the parts of something worn (its meshes, from the parts list; a folder's item names its own under it), and
+// whether each shows in the preview
+function frSubs(w) {
+  const out = [];
+  for (const it of ((FR.parts || {}).items || [])) for (const p of it.parts || [])
+    if (!frGone(it, p) && (p.path === w.path || p.path.startsWith(w.path + "/"))) out.push(p);
+  return out;
+}
+function frSubOn(p) { return FR.sub.has(p.path) ? FR.sub.get(p.path) : !!p.on; }
+function frSubsHTML(w) {
+  if (!FR.parts) return `<div class="frsubs">${FR.partsErr ? `<span class="small err">${esc(FR.partsErr)}</span> <button class="linkbtn" data-frparts="reload">重试</button>`
+    : `<div class="muted small frloading"><i class="spin"></i>正在读取部件…</div>`}</div>`;
+  const subs = frSubs(w), worn = !!FR.on.get(w.path);
+  if (subs.length < 2) return `<div class="frsubs muted small">只有一个部件</div>`;
+  const changed = subs.some(p => FR.sub.has(p.path));
+  return `<div class="frsubs">${subs.map(p => `<label class="frsub"><input type="checkbox" data-frsp="${esc(p.path)}"${frSubOn(p) && !FR.pend.has(p.path) ? " checked" : ""}${worn && !FR.pend.has(p.path) ? "" : " disabled"}>
+      <span class="frpn" title="${esc(p.path)}">${esc(p.name)}</span>${p.on ? "" : `<span class="frtag">默认隐藏</span>`}<span class="frtris" data-i18n="off">${esc(fmtNum(p.tris || 0))}</span></label>`).join("")}
+    ${changed ? `<button class="linkbtn frsubreset" data-frsubreset="${esc(w.path)}">还原</button>` : ""}</div>`;
+}
+function frSubBtn(w) {
+  const open = FR.subOpen.has(w.path), n = FR.parts ? frSubs(w).length : 0;
+  if (FR.parts && n < 2 && !open) return "";
+  return `<button class="frexp" data-frsub="${esc(w.path)}" aria-expanded="${open}" title="逐个开关它的部件，只影响预览">${FR.parts && n > 1 ? `${n} 个部件` : "部件"}</button>`;
+}
 function frSide() {
   const tabs = `<div class="seg frtabs" role="tablist"><button class="segbtn${FR.tab === "wear" ? " on" : ""}" role="tab" aria-selected="${FR.tab === "wear"}" data-frtab="wear">穿搭</button><button class="segbtn${FR.tab === "parts" ? " on" : ""}" role="tab" aria-selected="${FR.tab === "parts"}" data-frtab="parts">部件</button></div>`;
   if (FR.tab === "parts") { $("#fr_side").innerHTML = tabs + frPartsHTML(); return; }
   const off = new Set((((FR.parts || {}).items) || []).filter(it => it.removed).map(it => it.path)); // (taken off in 「部件」)
   const wear = FR.wear.length ? FR.wear.filter(w => !off.has(w.path)).map(w => `<div class="frworn${FR.look === w.path ? " open" : ""}"><div class="frrow"><label><input type="checkbox" data-frw="${esc(w.path)}"${FR.on.get(w.path) ? " checked" : ""}><span>${esc(w.name)}</span></label>${w.active ? "" : `<span class="frtag">默认隐藏</span>`}
-      ${w.kind && w.kind !== "outfit" ? "" : `<button class="btn small ghost frlookbtn" data-frlookopen="${esc(w.path)}" aria-expanded="${FR.look === w.path}">颜色</button>`}</div>${FR.look === w.path ? frLookHTML(w) : ""}</div>`).join("")
+      ${frSubBtn(w)}${w.kind && w.kind !== "outfit" ? "" : `<button class="btn small ghost frlookbtn" data-frlookopen="${esc(w.path)}" aria-expanded="${FR.look === w.path}">颜色</button>`}</div>${FR.subOpen.has(w.path) ? frSubsHTML(w) : ""}${FR.look === w.path ? frLookHTML(w) : ""}</div>`).join("")
     : `<div class="muted small">模型上没有用 Modular Avatar 穿上的衣服。</div>`;
   const tries = FR.tries.length ? FR.tries.map((t, i) => {
     const cur = FR.trying.get(t.folder + "|" + i), all = [t.prefab].concat(t.colours || []);
@@ -206,6 +233,11 @@ function frState() {
     const on = FR.on.get(w.path);
     if (on && !w.active) show.push(w.path);
     if (!on && w.active) hide.push(w.path);
+    if (on) for (const p of frSubs(w)) {
+      if (!FR.sub.has(p.path)) continue;
+      if (FR.sub.get(p.path) && !p.on) show.push(p.path);
+      if (!FR.sub.get(p.path) && p.on) hide.push(p.path);
+    }
   }
   for (const p of FR.trying.values()) tr.push(p);
   for (const p of FR.pend) if (!hide.includes(p)) hide.push(p); // (picked to be taken off: seen without it first)
@@ -255,7 +287,12 @@ function fmtNum(n) { return Number(n).toLocaleString("en-US"); }
 document.addEventListener("change", e => {
   if (!frOpenNow()) return;
   const t = e.target;
-  if (t.dataset.frw !== undefined) { FR.on.set(t.dataset.frw, t.checked); frExport(); return; }
+  if (t.dataset.frw !== undefined) { FR.on.set(t.dataset.frw, t.checked); if (FR.subOpen.has(t.dataset.frw)) frSide(); frExport(); return; }
+  if (t.dataset.frsp !== undefined) {
+    const p = ((FR.parts || {}).items || []).flatMap(it => it.parts || []).find(x => x.path === t.dataset.frsp); if (!p) return;
+    if (t.checked === !!p.on) FR.sub.delete(p.path); else FR.sub.set(p.path, t.checked);
+    frSide(); frExport(); return;
+  }
   if (t.dataset.frpi !== undefined) { frPick(t.dataset.frpi, !t.checked); return; }
   if (t.dataset.frpp !== undefined) { frPick(t.dataset.frpp, !t.checked); return; }
   if (t.dataset.frtint !== undefined) { const v = Object.assign({ hue: 0, saturation: 1, value: 1 }, FR.tint.get(FR.look)); v[t.dataset.frtint] = +t.value; FR.tint.set(FR.look, v); return; }
@@ -277,6 +314,10 @@ document.addEventListener("click", e => {
   const ex = e.target.closest("[data-frexp]");
   if (ex) { const p = ex.dataset.frexp; if (FR.unfold.has(p)) FR.unfold.delete(p); else FR.unfold.add(p); frSide(); return; }
   if (e.target.closest("[data-frclipall]")) { FR.clipAll = true; frSide(); return; }
+  const sb = e.target.closest("[data-frsub]");
+  if (sb) { const p = sb.dataset.frsub; if (FR.subOpen.has(p)) FR.subOpen.delete(p); else FR.subOpen.add(p); frSide(); if (!FR.parts && !FR.partsBusy) frPartsLoad(); return; }
+  const sr = e.target.closest("[data-frsubreset]");
+  if (sr) { const w = FR.wear.find(x => x.path === sr.dataset.frsubreset); if (w) for (const p of frSubs(w)) FR.sub.delete(p.path); frSide(); frExport(); return; }
   const fx = e.target.closest("[data-frfix]");
   if (fx) { frFix(fx.dataset.frkind, fx.dataset.frfix); return; }
   const rs = e.target.closest("[data-frrestore]");

@@ -4937,7 +4937,29 @@ I18N.add("en", {
     // --- community service: translation refusals ---
     "没有可翻译的文字": "There is no text to translate",
     "已是当前语言": "Already in the current language",
-    "AI 服务拒绝了 API Key，请检查设置": "The AI service rejected the API key. Please check your settings"
+    "AI 服务拒绝了 API Key，请检查设置": "The AI service rejected the API key. Please check your settings",
+    // --- community: the share picture's code ---
+    "附带二维码": "Include QR code",
+    // --- community page: the link to Booth 情报's pages ---
+    "Booth 情报一览": "Booth news by base",
+    // --- fitting room: parts of what is worn ---
+    "只有一个部件": "Only one part",
+    "逐个开关它的部件，只影响预览": "Switch its parts one by one (preview only)",
+    "还原": "Reset",
+    // --- Booth 情报: my bases only ---
+    "只看我的素体": "My bases only",
+    "你的素体还没有 Booth 情报": "No Booth posts for your bases yet",
+    // --- AI assistant: a long answer continued ---
+    "（回答较长，已自动续写）": "(A long answer: continued automatically)",
+    // --- measured fits shared through the community; players who put an item on ---
+    "请先登录社区": "Sign in to the community first",
+    "社区实测数据与列表记录的不一致": "The community's measured fits do not match its list",
+    // --- AI cut answers; one-click import of what is not a unitypackage ---
+    "回答过长：请把要求拆成几步再试，或在「AI 服务」中换用输出上限更高的模型": "The answer is too long: split the request into steps, or pick a model with a higher output limit in “AI service”",
+    "该素材是 VCC 包，请在 ALCOM 中添加后重试": "This asset is a VCC package: add it in ALCOM, then try again",
+    "压缩包里是安装程序，不能直接导入 Unity：请按卖家说明安装": "The archive holds an installer, which cannot go into Unity as it is: install it as the seller describes",
+    "压缩包里只有说明文档和预览图片，没有可导入 Unity 的文件，请检查下载内容": "The archive holds only documents and preview pictures, nothing Unity can import: check what was downloaded",
+    "未找到可导入 Unity 的文件，请确认已下载素材本体和全部分卷": "Nothing Unity can import was found: make sure the asset itself and every part of a split archive were downloaded"
   },
   "patterns": [
     // --- the player's スキ！ on Booth onto the wish list ---
@@ -6141,6 +6163,14 @@ I18N.add("en", {
     ["第 {#n} 步，共 3 步", "Step {n} of 3"],
     ["使用 {x} 账号（{y}）注册", "Signing up with your {x|raw} account ({y|raw})"],
     ["已关联 {x}", "Linked {x|raw}"],
-    ["已取消关联 {x}", "Unlinked {x|raw}"]
+    ["已取消关联 {x}", "Unlinked {x|raw}"],
+    // --- fitting room: parts of what is worn ---
+    ["{#n} 个部件", "{n} part{n|s}"],
+    // --- measured fits shared through the community; players who put an item on ---
+    ["已分享 {#n} 条实测数据", "Shared {n} measured fit{n|s}"],
+    ["{#n} 位玩家已一键穿上", "{n} player{n|s} put this on with one click"],
+    // --- AI cut answers; one-click import of what is not a unitypackage ---
+    ["未找到可导入 Unity 的文件，找到：{x}。请下载素材本体；安装程序或教程请按卖家说明处理", "Nothing Unity can import was found; found: {x}. Download the asset itself; follow the seller's notes for an installer or a tutorial"],
+    ["已导入 {#n} 个文件，目标文件夹：{x}", "Imported {n} file{n|s} into {x}"]
   ]
 });

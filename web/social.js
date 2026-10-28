@@ -1044,12 +1044,28 @@ async function soShareCanvas(r) {
   soCanvasText(c, r.author?.nickname || w.author, 48, 785, 984, 1, 40);
   soCanvasText(c, w.base ? I18N.t(`素体：${w.base}`) : "", 48, 835, 984, 1, 40);
   c.fillStyle = "#675571"; c.fillText(I18N.t("使用素材"), 48, 900);
-  const assets = w.assets || [];
-  assets.slice(0, 6).forEach((a, i) => soCanvasText(c, "・" + a.name, 48, 949 + i * 40, 984, 1, 40));
+  const assets = w.assets || [], qr = soShareQROn() && await soShareQR(c, SO_WEB_URL + "/#/work/" + encodeURIComponent(w.id), 852, 1062, 180);
+  const textWidth = qr ? 770 : 984;
+  assets.slice(0, 6).forEach((a, i) => soCanvasText(c, "・" + a.name, 48, 949 + i * 40, textWidth, 1, 40));
   if (assets.length > 6) c.fillText(I18N.t(`等 ${assets.length} 件`), 48, 1200);
   c.fillStyle = "#766d7d"; c.font = '28px "Segoe UI", "Yu Gothic", "Microsoft YaHei", sans-serif';
-  soCanvasText(c, I18N.t(`MioVRCA 社区 · ${w.id}`), 48, 1295, 984, 1, 36);
+  soCanvasText(c, I18N.t(`MioVRCA 社区 · ${w.id}`), 48, 1295, textWidth, 1, 36);
+  if (qr) { c.font = '24px "Segoe UI", sans-serif'; c.textAlign = "center"; c.fillText("miovrc.net", 942, 1295); c.textAlign = "left"; }
   return canvas;
+}
+// the share picture's code: the work on the community's web page, for whoever sees the picture (附带二维码, kept in
+// this browser or program)
+const SO_WEB_URL = "https://miovrc.net";
+function soShareQROn() { try { return localStorage.getItem("so-share-qr") !== "0"; } catch (_) { return true; } }
+async function soShareQR(c, url, x, y, size) {
+  try { await soNeedScript("vendor/qrcode.js", "qrcode"); } catch (_) { return false; }
+  qrcode.stringToBytes = qrcode.stringToBytesFuncs["UTF-8"];
+  const q = qrcode(0, "M"); q.addData(url); q.make();
+  const n = q.getModuleCount(), cell = Math.floor((size - 20) / n), pad = Math.floor((size - cell * n) / 2);
+  c.fillStyle = "#ffffff"; c.fillRect(x, y, size, size);
+  c.fillStyle = "#292234";
+  for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) if (q.isDark(r, k)) c.fillRect(x + pad + k * cell, y + pad + r * cell, cell, cell);
+  return true;
 }
 async function soShareImage() {
   const current = SO.work;
@@ -1141,7 +1157,7 @@ function soWorkDraw() {
     <div class="btnrow">${w.video ? `<button class="btn small primary" data-so="url" data-href="${esc(w.video)}">${ICON.play}<span>打开视频</span>${v ? `<span class="sovsite">${esc(v)}</span>` : ""}</button>` : ""}
       ${soLikeButton(w.id)}
       <button class="btn small" data-so="remix">我也做了</button>
-      <button class="btn small" data-so="credits">复制使用素材</button><button class="btn small" data-so="shareimage"${x.sharing ? " disabled" : ""}>保存分享图</button>
+      <button class="btn small" data-so="credits">复制使用素材</button><button class="btn small" data-so="shareimage"${x.sharing ? " disabled" : ""}>保存分享图</button><label class="soshareqr"><input type="checkbox" id="so_share_qr"${soShareQROn() ? " checked" : ""}><span>附带二维码</span></label>
       ${w.recipe ? SO_WEB ? `<button class="btn small primary" data-so="webinapp" data-work="${esc(w.id)}">一键克隆</button>` : `<button class="btn small primary" data-so="wclone">一键克隆</button><button class="btn small" data-so="wclonebase">换素体克隆</button><button class="btn small" data-so="wrecipe">照着装</button>` : ""}
       ${r.canEdit ? `<button class="btn small" data-so="wedit">编辑</button><button class="btn small ghost" data-so="wremove">删除</button>` : `<button class="btn small ghost" data-so="report" data-kind="work" data-id="${esc(w.id)}" data-name="${esc(w.title)}">${SO_ICON.flag}<span>举报</span></button>`}</div>
     ${r.original ? `<div class="soreference"><button class="linkbtn" data-so="work" data-id="${esc(r.original.id)}">${esc(`参考了「${r.original.title}」`)}</button>${soProfileBtn(r.original.authorId, r.original.author, r.original.nickname)}</div>` : r.originalMissing ? `<p class="muted soreference">参考的作品已删除</p>` : ""}
@@ -1660,6 +1676,7 @@ function soTransSetHTML() {
 function soAICfgOpen() { if (typeof openAICfg === "function") openAICfg(); }
 document.addEventListener("change", e => {
   const id = e.target.id;
+  if (id === "so_share_qr") { try { localStorage.setItem("so-share-qr", e.target.checked ? "1" : "0"); } catch (_) {} return; }
   if (!["so_trans_mode", "so_trans_provider", "so_trans_model", "so_trans_key"].includes(id)) return;
   const v = soTransSettings();
   if (id === "so_trans_mode") v.mode = e.target.value === "ai" ? "ai" : "free";
@@ -2539,11 +2556,11 @@ function soSessionReset() {
 function soTimelineKey(it) { return `${it.kind}:${it.post.id}:${it.by?.id || ""}`; }
 async function soTimelineLoad(more = false, refresh = false) {
   const filter = SO.timelineTab === "for_you" ? SO.timelineFilter : "";
-  if (!SO.timeline || refresh) SO.timeline = {tab: SO.timelineTab, filter, items: [], next: "", busy: false, loaded: false, error: "", newer: []};
+  if (!SO.timeline || refresh) SO.timeline = {tab: SO.timelineTab, filter, bases: filter === "booth" ? soBoothBases() : [], items: [], next: "", busy: false, loaded: false, error: "", newer: []};
   const t = SO.timeline;
   if (t.busy || more && !t.next) return;
   t.busy = true; t.error = ""; soDraw();
-  const r = await soServiceAPI("timeline", {tab: t.tab, filter: t.filter, after: more ? t.next : ""});
+  const r = await soServiceAPI("timeline", Object.assign({tab: t.tab, filter: t.filter, after: more ? t.next : ""}, t.bases?.length ? {bases: t.bases} : {}));
   t.busy = false;
   if (t !== SO.timeline) return;
   if (!r.ok) t.error = r.err;
@@ -2557,7 +2574,7 @@ async function soTimelineLoad(more = false, refresh = false) {
 async function soTimelineCheck() {
   const t = SO.timeline;
   if (S.view !== "social" || SO.nav !== "home" || document.hidden || !t?.loaded || t.busy) return;
-  const r = await soServiceAPI("timeline", {tab: t.tab, filter: t.filter});
+  const r = await soServiceAPI("timeline", Object.assign({tab: t.tab, filter: t.filter}, t.bases?.length ? {bases: t.bases} : {}));
   if (!r.ok || t !== SO.timeline) return;
   const seen = new Set(t.items.map(soTimelineKey));
   t.newer = (r.items || []).filter(it => !seen.has(soTimelineKey(it)));
@@ -2583,9 +2600,14 @@ const SO_TTABS = [["for_you", "为你推荐", "spark"], ["following", "正在关
 const SO_TFILTERS = [["", "推荐", "spark"], ["featured", "精选", "featured"], ["latest", "最新发布", "clock"], ["hot", "热门", "hot"], ["media", "图片", "picture"], ["works", "作品", "work"], ["booth", "Booth 情报", "booth"]];
 try { SO.timelineFilter = localStorage.getItem("so-for-you") || ""; } catch (e) { SO.timelineFilter = ""; }
 if (!SO_TFILTERS.some(([k]) => k === SO.timelineFilter)) SO.timelineFilter = "";
+// Booth 情报 for the library's bases only (「只看我的素体」, the program only): the bases sent, [] when it is off
+try { SO.boothMine = localStorage.getItem("so-booth-mine") === "1"; } catch (e) { SO.boothMine = false; }
+function soBoothBases() { return !SO_WEB && SO.boothMine && typeof nbMyBases === "function" ? nbMyBases().slice(0, 20) : []; }
 function soTimelineFilters() {
   const icon = k => SO_ACT[k] || SO_TOOL[k] || "";
-  return `<div class="sxfilters" role="radiogroup" aria-label="筛选">${SO_TFILTERS.map(([k, label, i]) => `<button class="sxfilter${SO.timelineFilter === k ? " on" : ""}" role="radio" aria-checked="${SO.timelineFilter === k}" data-so="xfilter" data-filter="${k}">${icon(i)}<span>${label}</span></button>`).join("")}</div>`;
+  const bases = !SO_WEB && SO.timelineFilter === "booth" && typeof nbMyBases === "function" ? nbMyBases() : [];
+  const mine = bases.length ? `<div class="sxbmine"><button class="sxfilter${SO.boothMine ? " on" : ""}" aria-pressed="${SO.boothMine}" data-so="xboothmine">${SO_ICON.person || ""}<span>只看我的素体</span></button><span class="sxbminebases" data-i18n="off" title="${esc(bases.join("、"))}">${esc(bases.slice(0, 4).join("、"))}${bases.length > 4 ? " …" : ""}</span></div>` : "";
+  return `<div class="sxfilters" role="radiogroup" aria-label="筛选">${SO_TFILTERS.map(([k, label, i]) => `<button class="sxfilter${SO.timelineFilter === k ? " on" : ""}" role="radio" aria-checked="${SO.timelineFilter === k}" data-so="xfilter" data-filter="${k}">${icon(i)}<span>${label}</span></button>`).join("")}</div>${mine}`;
 }
 function soTimelineDraw() {
   const t = SO.timeline;
@@ -2593,7 +2615,7 @@ function soTimelineDraw() {
   const rows = (t?.items || []).map(it => `${it.kind === "repost" ? `<div class="sxreposted">${SO_ACT.repost}<span data-i18n="off">${esc(it.by?.nickname || "")}</span> <span>转帖了</span></div>` : ""}${soPostCard(it.post)}`).join("");
   gridPut(`<div class="sxtimeline">${SO.timelineTab === "for_you" ? soTimelineFilters() + soThemeHTML(true) : ""}${SO_WEB && !SO.service?.account ? "" : soComposerHTML("home")}<button class="sxnew" id="sx_new" data-so="xnew"${t?.newer?.length ? "" : " hidden"}>${esc(`显示 ${t?.newer?.length || 0} 条新帖子`)}</button>
     ${t?.error ? `<p class="warnc">${esc(t.error)}</p><button class="btn" data-so="xretry">重试</button>` : ""}
-    ${rows || (t?.loaded ? soEmpty(t.noBases ? "素材库中还没有素体" : "暂无内容") : !t?.error ? `<p class="muted">正在读取…</p>` : "")}
+    ${rows || (t?.loaded ? soEmpty(t.noBases ? "素材库中还没有素体" : t.bases?.length ? "你的素体还没有 Booth 情报" : "暂无内容") : !t?.error ? `<p class="muted">正在读取…</p>` : "")}
     ${t?.next ? `<button class="btn sxmore" id="sx_more" data-so="xmore"${t.busy ? " disabled" : ""}>加载更多</button>` : t?.loaded ? `<p class="sohend">没有更多了</p>` : ""}</div>`);
   soPageWatch("#sx_more", () => soTimelineLoad(true));
 }
@@ -2710,9 +2732,11 @@ function soBoothCardsHTML(p) {
   const yen = n => "¥" + Number(n).toLocaleString("ja-JP");
   return `<div class="sxbooth${items.length === 1 ? " one" : ""}">${items.map(x => {
     const off = x.was > x.price && x.price >= 0 ? Math.round((1 - x.price / x.was) * 100) : 0, mine = x.owned || owned.has(String(x.id));
+    // the players who put it on with one click (on the item's base, when it has one)
+    const fit = x.base && x.fitted_base > 0 ? x.fitted_base : x.fitted > 0 ? x.fitted : 0;
     return `<button class="sxbitem" data-so="booth" data-id="${esc(x.id)}" title="${esc(x.title || "")}"><span class="sxbpic">${x.pic ? `<img src="${esc(x.pic)}" alt="" loading="lazy" decoding="async">` : SO_TOOL.booth}${SO_BOOTH_KIND[x.kind] ? `<span class="sxbkind k-${esc(x.kind)}">${SO_BOOTH_KIND[x.kind]}</span>` : ""}</span>
       <span class="sxbbody"><b data-i18n="off">${esc(x.title || "#" + x.id)}</b>${x.shop ? `<small data-i18n="off">${esc(x.shop)}</small>` : ""}<span class="sxbprice">${x.price === 0 ? `<span class="free">免费</span>` : x.price > 0 ? `<span data-i18n="off">${yen(x.price)}</span>` : ""}${off ? `<s data-i18n="off">${yen(x.was)}</s><span class="off" data-i18n="off">-${off}%</span>` : ""}</span>
-      ${x.base || mine ? `<span class="sxbmeta">${x.base ? `<span class="base" data-i18n="off">${esc(x.base)}</span>` : ""}${mine ? `<span class="tag ok">已拥有</span>` : ""}</span>` : ""}</span></button>`;
+      ${x.base || mine ? `<span class="sxbmeta">${x.base ? `<span class="base" data-i18n="off">${esc(x.base)}</span>` : ""}${mine ? `<span class="tag ok">已拥有</span>` : ""}</span>` : ""}${fit ? `<span class="sxbfit">${esc(`${fit} 位玩家已一键穿上`)}</span>` : ""}</span></button>`;
   }).join("")}</div>`;
 }
 // a post as a small card: who, the first lines, the first picture (or the work's cover); a click opens it
@@ -3094,6 +3118,7 @@ async function soXAction(b, e) {
   switch (b.dataset.so) {
     case "xtab": SO.timelineTab = b.dataset.tab; return soTimelineLoad(false, true);
     case "xfilter": SO.timelineFilter = b.dataset.filter || ""; try { localStorage.setItem("so-for-you", SO.timelineFilter); } catch (x) {} $(".main").scrollTop = 0; return soTimelineLoad(false, true);
+    case "xboothmine": SO.boothMine = !SO.boothMine; try { localStorage.setItem("so-booth-mine", SO.boothMine ? "1" : "0"); } catch (x) {} $(".main").scrollTop = 0; return soTimelineLoad(false, true);
     case "xretry": case "xnew": return soTimelineLoad(false, true);
     case "xtranslate": return soTranslate(id);
     case "xtranslatehide": SO.trans.delete(id); return soTranslateDraw(id);

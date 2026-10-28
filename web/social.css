@@ -804,6 +804,10 @@ span.sxact { cursor: default; }
 .sxfilter svg { width: 16px; height: 16px; }
 .sxfilter:hover { background: var(--hover-weak); border-color: var(--line-hover); }
 .sxfilter.on { background: var(--accent-fill); border-color: var(--accent-fill); color: #fff; }
+/* Booth 情报's 「只看我的素体」, under the filters, with the bases it means */
+.sxbmine { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); min-width: 0; }
+.sxbmine .sxfilter { height: 28px; font-size: 12.5px; }
+.sxbminebases { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--muted); }
 
 /* tabs with an icon before the label (个人主页, 通知) */
 .sxtabs.withicons button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
@@ -859,6 +863,7 @@ span.sxact { cursor: default; }
 .sxbprice .free { color: #00a370; }
 .sxbmeta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: auto; padding-top: 2px; }
 .sxbmeta .tag { margin: 0; }
+.sxbfit { font-size: 11.5px; color: var(--muted); }
 @media (max-width: 640px) { .sxbooth { grid-template-columns: minmax(0, 1fr); } }
 
 /* a topic the maintainer picked (趋势) */
@@ -1055,3 +1060,7 @@ span.sxact { cursor: default; }
 @keyframes soidraw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 :root[data-motion="reduce"] :is(.soi, .soi *, svg.pop, .sxtabicon svg) { animation: none !important; transition: none !important; }
 @media (prefers-reduced-motion: reduce) { :is(.soi, .soi *, svg.pop, .sxtabicon svg) { animation: none !important; transition: none !important; } }
+
+/* 保存分享图 with its 附带二维码 box beside it */
+.soshareqr { display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; color: var(--muted); font-size: 13px; cursor: pointer; vertical-align: middle; }
+.soshareqr input { margin: 0; }

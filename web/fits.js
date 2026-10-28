@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only OR PolyForm-Noncommercial-1.0.0
 // Copyright (c) 2026 天川澪 (Coko_Iya). Part of MioVRCA: https://github.com/CokoIya/MioVRC_AssetManager (terms in LICENSE.md)
 // 社区实测数据 (1.8.0): what the check found of outfits on base bodies, kept here and put to use the next time;
-// given to the community through GitHub, and what the community measured shown on an asset's card
+// given to the community with the player's community account (2.0.3), and what the community measured shown on an
+// asset's card
 "use strict";
 
 // list: what /api/fits/list said (null: not read yet); asset: what is known of a shop item's fits, by its number
-// sent: how many the page opened last holds (asked whether it was sent: only then are they marked as shared)
-const FT = { list: null, busy: "", err: "", asset: new Map(), loading: new Set(), sent: 0 };
+const FT = { list: null, busy: "", err: "", asset: new Map(), loading: new Set() };
 
 function fitsOpenNow() { const m = $("#modal"); return m.classList.contains("on") && m.dataset.kind === "fits"; }
 function fitsSettingsRow() {
@@ -15,7 +15,7 @@ function fitsSettingsRow() {
     </div>`;
 }
 async function fitsOpen() {
-  Object.assign(FT, { list: null, busy: "", err: "", sent: 0 });
+  Object.assign(FT, { list: null, busy: "", err: "" });
   $("#modal").dataset.kind = "fits";
   fitsDraw(true); showModal();
   await fitsLoad();
@@ -58,9 +58,7 @@ function fitsDraw(fresh) {
         : `<div class="aiempty">还没有记录。运行流水线并完成验收后，这里会列出每件衣服的结果。</div>`}
       <h5 class="lmh">分享给社区</h5>
 
-      <div class="btnrow"><button class="btn small primary" data-fits="submit"${x.shareable && !FT.busy ? "" : " disabled"}>${esc(`在 GitHub 上分享（${x.shareable} 条）`)}</button>${recs.length ? `<button class="btn small ghost" data-fits="clear"${FT.busy ? " disabled" : ""}>清空记录</button>` : ""}</div>
-      ${FT.sent ? `<div class="fitsent"><span>提交后点击「已提交」。</span>
-        <div class="btnrow"><button class="btn small primary" data-fits="sent"${FT.busy ? " disabled" : ""}>已提交</button><button class="btn small ghost" data-fits="notsent">没有提交</button></div></div>` : ""}
+      <div class="btnrow"><button class="btn small primary" data-fits="submit"${x.shareable && !FT.busy ? "" : " disabled"}>${FT.busy === "submit" ? `<i class="spin"></i>` : ""}${esc(`分享给社区（${x.shareable} 条）`)}</button>${recs.length ? `<button class="btn small ghost" data-fits="clear"${FT.busy ? " disabled" : ""}>清空记录</button>` : ""}</div>
       ${FT.err ? `<div class="small err">${esc(FT.err)}</div>` : ""}`;
   }
   const html = `<div class="mhead">社区实测数据</div><div class="mbody mcpbody">${body}</div>
@@ -78,24 +76,12 @@ async function fitsDo(what, el) {
   if (what === "submit") {
     FT.busy = "submit"; FT.err = ""; fitsDraw();
     let r;
-    try { r = await api("/api/fits/submit", {}); } catch (e) { r = { ok: false, err: "程序无响应" }; }
+    try { r = await api("/api/community/fits/submit", {}); } catch (e) { r = { ok: false, err: "程序无响应" }; }
     FT.busy = "";
+    // not signed in to the community: its sign-in, and the sharing again after it
+    if (!r.ok && (r.code === "unauthorized" || r.accountInvalid) && typeof soAccountDialog === "function") return soAccountDialog(() => fitsOpen().then(() => fitsDo("submit")), "login");
     if (!r.ok) { FT.err = r.err || "无法分享"; return fitsDraw(); }
-    const say = r.long ? "分享码较长，已复制：请在打开的页面中粘贴到「实测数据分享码」一栏" : "已打开提交页面：登录 GitHub 后点「Create」提交";
-    if (r.long) await copyText(r.code, say);
-    openLink(r.url);
-    toast(say, 9000);
-    FT.sent = r.n || 1;
-    return fitsLoad();
-  }
-  if (what === "notsent") { FT.sent = 0; return fitsDraw(); }
-  if (what === "sent") {
-    FT.busy = "sent"; FT.err = ""; fitsDraw();
-    let r;
-    try { r = await api("/api/fits/sent", {}); } catch (e) { r = { ok: false, err: "程序无响应" }; }
-    FT.busy = "";
-    if (!r.ok) { FT.err = r.err || "未能保存"; return fitsDraw(); }
-    FT.sent = 0;
+    toast(`已分享 ${r.sent || 0} 条实测数据`, 5000);
     return fitsLoad();
   }
   if (what === "forget" || what === "clear") {
