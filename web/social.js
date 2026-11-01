@@ -2732,11 +2732,12 @@ function soBoothCardsHTML(p) {
   const yen = n => "¥" + Number(n).toLocaleString("ja-JP");
   return `<div class="sxbooth${items.length === 1 ? " one" : ""}">${items.map(x => {
     const off = x.was > x.price && x.price >= 0 ? Math.round((1 - x.price / x.was) * 100) : 0, mine = x.owned || owned.has(String(x.id));
-    // the players who put it on with one click (on the item's base, when it has one)
+    // the players who put it on with one click (on the item's base, when it has one); made for one of my bases
     const fit = x.base && x.fitted_base > 0 ? x.fitted_base : x.fitted > 0 ? x.fitted : 0;
+    const forMe = !SO_WEB && x.base && typeof nbMyBases === "function" && nbMyBases().some(b => b.toLowerCase() === String(x.base).toLowerCase());
     return `<button class="sxbitem" data-so="booth" data-id="${esc(x.id)}" title="${esc(x.title || "")}"><span class="sxbpic">${x.pic ? `<img src="${esc(x.pic)}" alt="" loading="lazy" decoding="async">` : SO_TOOL.booth}${SO_BOOTH_KIND[x.kind] ? `<span class="sxbkind k-${esc(x.kind)}">${SO_BOOTH_KIND[x.kind]}</span>` : ""}</span>
       <span class="sxbbody"><b data-i18n="off">${esc(x.title || "#" + x.id)}</b>${x.shop ? `<small data-i18n="off">${esc(x.shop)}</small>` : ""}<span class="sxbprice">${x.price === 0 ? `<span class="free">免费</span>` : x.price > 0 ? `<span data-i18n="off">${yen(x.price)}</span>` : ""}${off ? `<s data-i18n="off">${yen(x.was)}</s><span class="off" data-i18n="off">-${off}%</span>` : ""}</span>
-      ${x.base || mine ? `<span class="sxbmeta">${x.base ? `<span class="base" data-i18n="off">${esc(x.base)}</span>` : ""}${mine ? `<span class="tag ok">已拥有</span>` : ""}</span>` : ""}${fit ? `<span class="sxbfit">${esc(`${fit} 位玩家已一键穿上`)}</span>` : ""}</span></button>`;
+      ${x.base || mine ? `<span class="sxbmeta">${x.base ? `<span class="base" data-i18n="off">${esc(x.base)}</span>` : ""}${forMe && !mine ? `<span class="tag ok">适配你的素体</span>` : ""}${mine ? `<span class="tag ok">已拥有</span>` : ""}</span>` : ""}${fit ? `<span class="sxbfit">${esc(`${fit} 位玩家已一键穿上`)}</span>` : ""}</span></button>`;
   }).join("")}</div>`;
 }
 // a post as a small card: who, the first lines, the first picture (or the work's cover); a click opens it

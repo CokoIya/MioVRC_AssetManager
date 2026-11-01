@@ -964,6 +964,7 @@ function renderShopDrawer() {
         <h2 data-i18n="off">${esc(name)}</h2>
         <div class="sub">${[it ? it.shop : hit.shop, it ? it.price : hit.price, it ? it.category : hit.category].filter(Boolean).map(esc).join("　")}</div>
         <div class="sbadges static">${owned ? `<span class="badge-owned">素材库已有</span>` : ""}${bought ? `<span class="badge-bought">已购</span>` : ""}</div>
+        ${typeof compatSlot === "function" && !owned ? `<div class="sdcompat">${compatSlot(id, true)}</div>` : ""}
         <div class="rowbtn">${main}${owned || bought ? `<button class="btn" data-sd="booth">Booth 商品页</button>` : ""}${window.wishDrawerBtn ? wishDrawerBtn(id, bought) : ""}${window.followDrawerBtn ? followDrawerBtn(it, hit) : ""}</div>
       </div></div>
     <div class="dbody">${body}</div>
@@ -972,6 +973,8 @@ function renderShopDrawer() {
   if (put(dr, html)) { $(".dbody", dr).scrollTop = top; refocus(); }
   dr.dataset.kind = "shop"; dr.dataset.shop = id;
   dr.classList.add("on"); dr.setAttribute("aria-hidden", "false"); $("#scrim").classList.add("on");
+  // (made for my bases? the item's own page is read once for it, paced as the wish list reads)
+  if (it && !owned && typeof compatLoad === "function") compatLoad([id], true);
 }
 
 // ---------- Booth, netdisk … pages inside the program, and 闲鱼 ----------
@@ -2554,10 +2557,25 @@ function openWhatsNew(version, list) {
   m.dataset.kind = "whatsnew";
   const many = list.length > 1;
   const body = list.map(e => `${many ? `<div class="wnv">${esc(e.version)}</div>` : ""}<ul class="wn">${(e.items || []).map(i => `<li>${esc(i)}</li>`).join("")}</ul>`).join("");
-  m.innerHTML = `<div class="mhead">已更新到 ${esc(version)}</div><div class="mbody">${body}</div>
+  m.innerHTML = `<div class="mhead">已更新到 ${esc(version)}</div><div class="mbody">${body}${statsAskHTML()}</div>
     <div class="mfoot"><button class="btn ghost" data-m="allnotes">全部更新日志</button><span class="spacer"></span><button class="btn primary" data-m="close">关闭</button></div>`;
   showModal();
   api("/api/whatsnew/seen", {}).catch(() => {});
+}
+// 帮助改进流水线 (internal/ai/runstats.go): asked once, in the notes of the update (a fresh install: on the first-run
+// screen); the settings can change it at any time
+function statsAskHTML() {
+  const s = S.data && S.data.settings;
+  if (!s || s.runStatsAsked) return "";
+  return `<div class="statsask" id="statsask"><b>帮助改进流水线</b>
+    <p>同意后，每次流水线或一键改模结束时匿名上送一份运行记录：各步骤的结果和耗时、出错的信息、素体和素材的 Booth 编号、插件和 Unity 版本、AI 是否正常返回。不含账号、工程名、文件路径和日志。可随时在设置中关闭。<button class="linkbtn" data-url="https://miovrc.net/privacy.html">隐私政策</button></p>
+    <div class="btnrow"><button class="btn small ghost" data-m="statsno">不了</button><button class="btn small primary" data-m="statsyes">同意</button></div></div>`;
+}
+async function statsAnswer(on) {
+  let r; try { r = await api("/api/stats/consent", { on }); } catch (e) { r = { ok: false }; }
+  if (!r.ok) { toast("未能保存，请在设置中更改", 4000); return; }
+  if (S.data && S.data.settings) Object.assign(S.data.settings, { runStatsAsked: true, runStats: on }, on ? { failReports: true } : {});
+  const box = $("#statsask"); if (box) box.innerHTML = `<p class="muted small">${esc(on ? "已开启，感谢帮助。可在设置中关闭。" : "已关闭，可在设置中开启。")}</p>`;
 }
 function versionNewer(a, b) {
   const p = s => ((s || "").match(/\d+(?:\.\d+)+/) || [""])[0].split(".").map(Number);
@@ -2594,7 +2612,9 @@ function openSettings(focusId) {
       <div class="soundrow">${chk("s_sound", !s.noSound, "完成或需要确认时播放提示音")}<button class="btn small" data-m="soundtest">试听</button></div></div>
     <div class="row"><label>隐私</label>
       ${chk("s_failrep", s.failReports, "发送匿名失败报告")}
-      <div class="muted small" style="padding-left:24px">一键创建失败时，把失败的步骤和错误信息发给作者，不含账号、文件路径和工程名。</div></div>`,
+      <div class="muted small" style="padding-left:24px">一键创建失败时，把失败的步骤和错误信息发给作者，不含账号、文件路径和工程名。</div>
+      ${chk("s_runstats", s.runStats, "帮助改进流水线")}
+      <div class="muted small" style="padding-left:24px">匿名上送每次运行的步骤、耗时和出错信息，不含账号、工程名、文件路径和日志。<button class="linkbtn" data-m="statsreset">重置匿名 ID</button></div></div>`,
     library: `<div class="row"><label>素材文件夹</label><textarea id="s_roots">${esc((s.roots || []).join("\n"))}</textarea>
       <button class="btn small addbtn" data-pickto="s_roots">${ICON.folder}<span>添加…</span></button></div>
     <div class="row"><label>Unity 工程文件夹</label><textarea id="s_proj">${esc((s.projectRoots || []).join("\n"))}</textarea>
@@ -2671,21 +2691,26 @@ function closeModal(force) {
 // ---------- feedback ----------
 const FB_KINDS = ["问题反馈", "功能建议", "其他"];
 function openFeedback() {
-  if (!S.fb || S.fb.sent) S.fb = { kind: "问题反馈", text: "", contact: "", withInfo: true };
+  if (!S.fb || S.fb.sent) S.fb = { kind: "问题反馈", text: "", contact: "", withInfo: true, withRun: true };
   const m = $("#modal"), f = S.fb;
   f.err = ""; m.dataset.kind = "feedback";
   renderFeedback(); showModal();
   $("#fb_text").focus();
-  api("/api/feedback/info", {}).then(r => { f.info = r.info; f.mail = r.mail; const pre = $("#fb_infopre"); if (pre) pre.textContent = r.info; }).catch(() => {});
+  api("/api/feedback/info", {}).then(r => {
+    f.info = r.info; f.mail = r.mail; f.run = r.run || "";
+    const pre = $("#fb_infopre"); if (pre) pre.textContent = r.info;
+    if (f.run && $("#modal").dataset.kind === "feedback" && !f.sent) { fbKeep(); renderFeedback(); }
+  }).catch(() => {});
 }
 function fbKeep() {
   const f = S.fb; if (!f || !$("#fb_text")) return;
   f.text = $("#fb_text").value; f.contact = $("#fb_contact").value; f.withInfo = $("#fb_info").checked;
+  if ($("#fb_run")) f.withRun = $("#fb_run").checked;
 }
 function fbMail() { return (S.fb && S.fb.mail) || "Coko_Iya@163.com"; }
 function fbPlain() {
   const f = S.fb;
-  return `【${f.kind}】\n${f.text.trim()}${f.contact.trim() ? "\n\n联系方式：" + f.contact.trim() : ""}${f.withInfo && f.info ? "\n\n---\n" + f.info : ""}`;
+  return `【${f.kind}】\n${f.text.trim()}${f.contact.trim() ? "\n\n联系方式：" + f.contact.trim() : ""}${f.withInfo && f.info ? "\n\n---\n" + f.info : ""}${f.withRun && f.run ? "\n\n---\n" + f.run : ""}`;
 }
 function renderFeedback() {
   const f = S.fb, m = $("#modal");
@@ -2704,6 +2729,8 @@ function renderFeedback() {
       <div class="row"><label>联系方式（选填）</label><input id="fb_contact" value="${esc(f.contact)}" placeholder="邮箱 / QQ / Discord"></div>
       <div class="row"><label class="check" style="padding:0"><input type="checkbox" id="fb_info"${f.withInfo ? " checked" : ""}> 附带运行环境信息</label>
         <details class="fbinfo"><summary>查看内容</summary><pre id="fb_infopre">${esc(f.info || "正在加载…")}</pre></details></div>
+      ${f.run ? `<div class="row"><label class="check" style="padding:0"><input type="checkbox" id="fb_run"${f.withRun ? " checked" : ""}> 附带最近一次运行的摘要</label>
+        <details class="fbinfo"><summary>查看内容</summary><pre id="fb_runpre">${esc(f.run)}</pre></details></div>` : ""}
       ${f.err ? `<div class="fberr"><p><b>${esc(f.err)}</b></p><p>可复制内容后发送邮件至 ${esc(fbMail())}。</p>${fallback}</div>` : ""}`;
     foot = `<span class="muted small">作者邮箱：${esc(fbMail())}</span><span class="spacer"></span><button class="btn ghost" data-m="close">取消</button>
       <button class="btn primary" data-m="fbsend"${f.sending ? " disabled" : ""}>${f.sending ? "正在发送…" : "发送"}</button>`;
@@ -2715,7 +2742,7 @@ async function sendFeedback() {
   if (f.text.trim().length < 4) { toast("内容过短，请补充说明"); $("#fb_text").focus(); return; }
   f.sending = true; f.err = ""; renderFeedback();
   let r;
-  try { r = await api("/api/feedback", { kind: f.kind, text: f.text, contact: f.contact, withInfo: f.withInfo }); }
+  try { r = await api("/api/feedback", { kind: f.kind, text: f.text, contact: f.contact, withInfo: f.withInfo, withRun: !!(f.withRun && f.run) }); }
   catch (e) { r = { ok: false, err: "发送失败" }; }
   f.sending = false;
   if (r.ok) { f.sent = true; f.note = r.note || ""; }
@@ -2763,6 +2790,7 @@ function renderSetup() {
   m.innerHTML = `<div class="mhead">选择文件夹</div><div class="mbody">${window.langRowHTML ? langRowHTML() : ""}
     <div class="row"><label>素材文件夹</label>${list("roots")}${adder("roots", "添加…")}</div>
     <div class="row"><label>Unity 工程（选填）</label>${list("projects")}${adder("projects", "添加…")}</div>
+    <div class="row"><label class="check" style="padding:0"><input type="checkbox" id="setup_stats"${st.stats ? " checked" : ""}> 帮助改进流水线（匿名上送运行记录，不含账号和文件路径）</label></div>
   </div><div class="mfoot">${ltSetupBtn()}<button class="btn primary" data-setup="go">开始扫描</button></div>`;
   m.dataset.kind = "setup"; showModal();
 }
@@ -2783,13 +2811,16 @@ async function finishSetup() {
   if (!roots.length) { toast("请至少选择一个素材文件夹"); return; }
   const s = Object.assign({}, S.data.settings, { roots, projectRoots: projects, setupDone: true }, window.I18N ? { lang: I18N.lang } : {});
   await api("/api/settings", { settings: s });
+  const stats = !!S.setup.stats;
+  await api("/api/stats/consent", { on: stats }).catch(() => {}); // (asked here, not again after an update)
   S.setup = null; $("#modal").dataset.kind = ""; closeModal(true);
   toast("开始扫描"); await load(); poll(true);
 }
 
 // ---------- 流水线的 AI 服务 ----------
 // cfg: the AI service as saved; proj: the project the panel is open for; sess: what the server says about it
-const AI = { cfg: null, proj: null, sess: null, timer: 0, seq: 0, back: null, cfgForm: null };
+const AI = { cfg: null, proj: null, sess: null, timer: 0, seq: 0, back: null, cfgForm: null,
+  outfitOff: new Set() }; // the base's own clothes unticked in the open 「素体自带的衣服」 question (kept across redraws)
 async function aiLoadCfg() { const r = await api("/api/ai/config", {}); if (r.ok) AI.cfg = r.ai; return AI.cfg; }
 function aiProvLabel(c) {
   const p = (c.providers || []).find(x => x.id === c.provider);
@@ -3069,10 +3100,13 @@ function aiLogHTML(steps = (AI.sess || {}).steps || [], history = true) {
   if (!steps.length) return history ? `<div class="aiempty">暂无记录</div>` : "";
   const busyTool = steps.some(s => s.busy);
   return steps.map(s => {
+    if (s.kind === "ask" && s.opts === "outfit") return aiOutfitHTML(s);
     if (s.kind === "ask") {
       // "once": an operation asked about every time (it deletes, saves, runs code…), without 「本次对话始终允许」
       const btns = s.opts === "budget" // the run reached its limit of tokens: go on, or stop here
         ? `<button class="btn small primary" data-ai="allow">继续运行</button><button class="btn small" data-ai="deny">停止</button>`
+        : s.opts === "save" // a scene in Unity has unsaved changes: saved on the player's word, then the step again
+        ? `<button class="btn small primary" data-ai="allow">保存并继续</button><button class="btn small" data-ai="deny">取消</button>`
         : `<button class="btn small primary" data-ai="allow">仅本次允许</button>${s.opts === "once" ? "" : `<button class="btn small" data-ai="allowall" title="本次对话中不再询问这项操作">本次对话始终允许</button>`}<button class="btn small" data-ai="deny">拒绝</button>`;
       return `<div class="aistep ask${s.busy ? " open" : ""}"><div>${esc(s.text)}</div>${s.busy
         ? `<div class="btnrow">${btns}</div>`
@@ -3081,14 +3115,37 @@ function aiLogHTML(steps = (AI.sess || {}).steps || [], history = true) {
     if (s.kind === "tool") {
       const mark = s.busy ? `<i class="spin"></i>` : s.ok ? `<i class="mk ok">✓</i>` : `<i class="mk bad">!</i>`;
       const shots = (s.imgs || []).length ? `<span class="shots">${s.imgs.map((n, i) => `<img src="/shot?f=${encodeURIComponent(n)}" data-shot="${i}" data-shots="${esc(s.imgs.join("|"))}" alt="截图 ${i + 1}" title="点击放大" loading="lazy">`).join("")}</span>` : "";
-      return `<div class="aistep tool${s.busy ? " busy" : ""}">${mark}<span><b>${esc(s.text)}</b>${s.out ? `<span class="out">　${esc(s.out)}</span>` : ""}${s.busy ? aiWaitHTML(s.at) : ""}${shots}</span></div>`;
+      const skip = s.busy && s.skip ? `<button class="btn small ghost aiskip" data-ai="skip" title="不再等 AI，按网格名称分组继续">跳过</button>`
+        : !s.busy && s.replan ? `<button class="btn small ghost aiskip" data-ai="replan" title="下次运行时重新请 AI 整理菜单方案">重新整理</button>` : "";
+      const took = !s.busy && s.ms >= 1000 ? `<span class="aitook" data-i18n="off">${esc(aiTook(s.ms))}</span>` : "";
+      return `<div class="aistep tool${s.busy ? " busy" : ""}">${mark}<span><b>${esc(s.text)}</b>${s.out ? `<span class="out">　${esc(s.out)}</span>` : ""}${s.busy ? aiWaitHTML(s.at) : ""}${took}${skip}${shots}</span></div>`;
     }
     if (s.kind === "error" && s.code && window.gptStepHTML) { const h = gptStepHTML(s); if (h) return h; }
+    if (s.kind === "known") return knownFixHTML({ title: s.text, fix: s.out });
     // what the AI says is markdown; mdLite escapes first, so it is as safe as the plain text of the other lines
     // (an answer cut by its length and continued by the program says so at its end)
-    return s.kind === "say" ? `<div class="aistep say md">${mdLite(s.text)}${s.continued ? `<p class="aicont">（回答较长，已自动续写）</p>` : ""}</div>` : `<div class="aistep ${s.kind === "error" ? "err" : esc(s.kind)}">${esc(s.text)}</div>`;
+    return s.kind === "say" ? `<div class="aistep say md">${mdLite(s.text)}${s.continued ? `<p class="aicont">（回答较长，已自动续写）</p>` : ""}${s.forget ? `<p class="aiforget"><button class="linkbtn" data-ai="outfitforget" data-key="${esc(s.forget)}">下次再问我</button></p>` : ""}</div>` : `<div class="aistep ${s.kind === "error" ? "err" : esc(s.kind)}">${esc(s.text)}</div>`;
   }).join("") + (history && (AI.sess || {}).busy && !busyTool ? `<div class="aistep tool busy"><i class="spin"></i><span class="out">AI 正在规划下一步…</span>${aiWaitHTML((steps[steps.length - 1] || {}).at)}</div>` : "");
 }
+// 「素体自带的衣服」: the base's own clothes the run found before new clothes go on, each ticked; made a menu of their
+// own, taken off, or left as they are, for the ticked ones
+// where an item of the list came from when not from its name: other players' base profiles, or its shape
+function outfitFromHTML(it) { return it.from === "community" ? ` <span class="tag faint">其他玩家标记</span>` : it.from === "shape" ? ` <span class="tag faint">按形状判断</span>` : ""; }
+function aiOutfitHTML(s) {
+  const items = s.items || [];
+  if (!s.busy) return `<div class="aistep ask"><div>${esc(s.text)}</div><div class="out">${esc(s.out || "")}</div></div>`;
+  return `<div class="aistep ask open aioutfit"><div>素体自带的衣服</div>
+    <div class="aioutfits">${items.map(it => `<label class="check"><input type="checkbox" data-aioutfit="${esc(it.path)}"${AI.outfitOff.has(it.path) ? "" : " checked"}> <span data-i18n="off" title="${esc(it.path)}">${esc(it.name || it.path)}</span>${it.menu ? ` <span class="muted small">${esc("原菜单：")}<span data-i18n="off">${esc(it.menu)}</span></span>` : ""}${outfitFromHTML(it)}</label>`).join("")}</div>
+    <div class="btnrow"><button class="btn small primary" data-ai="outfit" data-choice="menu" title="穿上新衣服时隐藏，可在菜单中切换回来">做成菜单</button><button class="btn small" data-ai="outfit" data-choice="remove" title="不上传，可在「部件与穿模」中恢复">移除</button><button class="btn small ghost" data-ai="outfit" data-choice="keep">保持不变</button>${s.nude ? `<button class="btn small" data-ai="outfit" data-choice="nude" title="${esc(s.nude)}">改用不带衣服的版本</button>` : ""}</div></div>`;
+}
+// 已知问题: the fix the maintainer wrote for an error players met before (internal/ai/known.go), its links opening
+// outside, and the one-click action it names
+function knownFixHTML(k, action) {
+  const fix = String(k.fix || "").split(/(https:\/\/[^\s<>"'）)，。、；：！？」]+)/).map((p, i) => i % 2 ? `<button class="linkbtn" data-url="${esc(p)}">${esc(p)}</button>` : esc(p)).join("");
+  return `<div class="aiknown"><b>${esc(k.title || "")}</b><div class="aiknownfix">${fix}</div>${action || ""}</div>`;
+}
+// a finished step's time, short: 12s, 1m20s
+function aiTook(ms) { const n = Math.round(ms / 1000); return n < 60 ? n + "s" : Math.floor(n / 60) + "m" + (n % 60 ? n % 60 + "s" : ""); }
 // how long a step has been going: a long answer of a model that thinks first is still an answer coming. The
 // count goes on by itself (aiWaitTick), the log is not drawn again for it.
 function aiWaitHTML(at) { return at ? `<span class="out aiwait" data-since="${+at}"></span>` : ""; }
@@ -3108,7 +3165,7 @@ function aiBtnsHTML() {
   const s = AI.sess || {};
   if (s.busy) return `<button class="btn" data-ai="stop">停止</button>`;
   return `<button class="btn${aiNext() === "send" ? " primary" : ""}" data-ai="send">发送</button>
-    <div class="aimini">${window.recipeSaveHTML ? recipeSaveHTML() : ""}${s.changes ? `<button class="btn small ghost" data-ai="undo" title="撤销流水线在 Unity 中执行的上一步；手动操作不会被撤销">撤销上一步</button>` : ""}${(s.steps || []).length ? `<button class="btn small ghost" data-ai="reset" title="清空当前对话，AI 将不保留此前的上下文。Unity 中已完成的改动不受影响">新对话</button>` : ""}</div>`;
+    <div class="aimini">${window.recipeSaveHTML ? recipeSaveHTML() : ""}${s.changes ? `<button class="btn small ghost" data-ai="undo" title="撤销流水线在 Unity 中执行的上一步；手动操作不会被撤销">撤销上一步</button>` : ""}${(s.steps || []).length ? `<button class="btn small ghost" data-ai="reset" title="清空当前对话，AI 将不保留此前的上下文。Unity 中已完成的改动不受影响">新对话</button>` : ""}<button class="btn small ghost" data-ai="restart" title="在新场景中放入一个干净的素体，当前场景保留；放入前会存一份时光机">重新开始</button></div>`;
 }
 // only the parts that change are redrawn, so what the player is typing stays
 function aiRenderLive() {
@@ -3236,6 +3293,35 @@ async function aiAction(b) {
   }
   if (what === "dress") return pipeStart();
   if (what === "send") return aiSend();
+  if (what === "replan") {
+    b.disabled = true;
+    try { await api("/api/ai/menuplan/forget", { project: p.path }); toast("下次运行时会重新请 AI 整理菜单", 4000); } finally { aiFresh(); }
+    return;
+  }
+  if (what === "outfitforget") {
+    b.disabled = true;
+    try { const r = await api("/api/ai/baseoutfit/forget", { key: b.dataset.key }); toast(r.ok ? "下次会再问你" : r.err || "操作失败", 4000); } finally { aiFresh(); }
+    return;
+  }
+  if (what === "skip") {
+    b.disabled = true;
+    try { const r = await api("/api/ai/skip", { project: p.path }); if (!r.ok) toast(r.err || "无法跳过", 4000); } finally { aiFresh(); }
+    return;
+  }
+  if (what === "restart") {
+    if (!confirm("在新场景中放入一个干净的素体？当前场景会保留，放入前会存一份时光机。")) return;
+    b.disabled = true;
+    try { const r = await api("/api/ai/restart", { project: p.path }); toast(r.ok ? "已在新场景 " + (r.scene || "") + " 放入素体" : r.err || "未能重新开始", 5000); } finally { aiFresh(); }
+    return;
+  }
+  if (what === "outfit") {
+    const step = ((AI.sess || {}).steps || []).find(s => s.kind === "ask" && s.busy && s.opts === "outfit");
+    const paths = ((step || {}).items || []).map(it => it.path).filter(x => !AI.outfitOff.has(x));
+    if (b.dataset.choice !== "keep" && b.dataset.choice !== "nude" && !paths.length) { toast("请至少勾选一件"); return; }
+    b.disabled = true;
+    try { await api("/api/ai/answer", { project: p.path, choice: b.dataset.choice, paths }); AI.outfitOff = new Set(); } finally { aiFresh(); }
+    return;
+  }
   if (what === "allow" || what === "allowall" || what === "deny") {
     b.disabled = true;
     try { await api("/api/ai/answer", { project: p.path, ok: what !== "deny", all: what === "allowall" }); } finally { aiFresh(); }
@@ -3507,13 +3593,25 @@ async function openAICfg(keep) {
     <div class="row"><label for="ai_model">模型</label>
       <div class="inline"><input id="ai_model" value="${esc(v.model)}" placeholder="${esc(info.model || "点击「选择模型」选取，或直接填写模型名称")}" autocomplete="off" spellcheck="false" aria-controls="ai_modelist"><button class="btn small" data-ai="models" aria-expanded="false">选择模型 ▾</button></div>
       <div class="modelist" id="ai_modelist" hidden></div>
-      </div>
+      ${aiModelHealthHTML(c, f.provider, v.model)}</div>
     ${f.provider === "deepseek" ? aiThinkHTML() : ""}
     ${aiVisionHTML()}
     <div class="aitest" id="ai_test" role="status"></div>
   </div><div class="mfoot"><button class="btn" data-ai="test">测试连接</button><span class="spacer"></span><button class="btn ghost" data-ai="cfgclose">取消</button><button class="btn primary" data-ai="cfgsave">保存</button></div>`;
   refocus(); showModal();
   if (gpt && (c.chatgpt || {}).pending) gptFollow(); // a sign-in under way (the dialog was closed meanwhile)
+}
+
+// the model's recent requests on this computer (aihealth.go), all players' runs of the last 14 days
+// (runstats_public.go), and whether the preset recommends it
+function aiModelHealthHTML(c, provider, model) {
+  if (!model) return "";
+  const k = provider + "/" + model, h = (c.health || {})[k], all = (c.community || {})[k], rec = ((c.recommended || {})[provider] || []).includes(model);
+  const parts = [];
+  if (rec) parts.push(`<span class="tag ok">推荐</span>`);
+  if (h && h.n) parts.push(`<span class="${h.ok * 2 < h.n ? "warnc" : ""}">${esc(`本机最近 ${h.n} 次：正常 ${h.ok} 次${h.timeouts ? `，超时 ${h.timeouts} 次` : ""}${h.avgMs ? `，平均 ${Math.round(h.avgMs / 1000)} 秒` : ""}`)}</span>`);
+  if (all && all.runs) parts.push(`<span>${esc(`所有玩家 14 天：正常 ${Math.round(all.ok * 100)}%${all.medianMs ? `，中位 ${Math.round(all.medianMs / 1000)} 秒` : ""}`)}</span>`);
+  return parts.length ? `<div class="aihealth muted small">${parts.join(" · ")}</div>` : "";
 }
 
 // ---------- events ----------
@@ -3910,6 +4008,12 @@ document.addEventListener("click", async e => {
       await api("/api/baidu/logout", {}); toast("已退出百度网盘登录"); await load(); return openSettings("s_baidu");
     }
     if (b.dataset.m === "shortcut") { const r = await api("/api/shortcut", {}); toast(r.ok ? "已创建桌面快捷方式" : "创建失败：" + (r.err || ""), 3500); return; }
+    if (b.dataset.m === "statsyes" || b.dataset.m === "statsno") return statsAnswer(b.dataset.m === "statsyes");
+    if (b.dataset.m === "statsreset") {
+      if (!confirm("生成新的匿名 ID，并请服务器删除旧 ID 上送过的记录？")) return;
+      let r; try { r = await api("/api/stats/reset", {}); } catch (e) { r = { ok: false, err: "程序无响应" }; }
+      toast(r.ok ? "已重置，旧记录已请求删除" : r.err || "操作失败", 5000); return;
+    }
     if (b.dataset.m === "soundtest") { await api("/api/notice/test", {}); toast("依次播放：完成、需要你确认、中断", 4000); return; }
     if (b.dataset.m === "gumsync") { closeModal(); return gumSync(); }
     if (b.dataset.m === "gumlogout" || b.dataset.m === "gumclear") {
@@ -3937,6 +4041,7 @@ document.addEventListener("click", async e => {
       const noRescan = same(s.roots, o.roots) && same(s.projectRoots, o.projectRoots) && same(s.bases, o.bases) && s.autoBooth === o.autoBooth;
       const clip = $("#s_clip").checked;
       await api("/api/settings", { settings: s, noRescan });
+      if ($("#s_runstats").checked !== !!o.runStats) await api("/api/stats/consent", { on: $("#s_runstats").checked }); // (with its id, and the failure reports)
       if (clip !== !o.noXyClip) await api("/api/xy/prefs", { clip }); // (the offer of copied links has a route of its own: /api/settings leaves it as it is)
       closeModal(); toast(noRescan ? "已保存" : "已保存，正在重新扫描"); noRescan ? load() : poll(true);
     }
@@ -3952,6 +4057,7 @@ document.addEventListener("change", e => {
   }
   if (e.target.id === "imp_proj" || e.target.id === "pan_proj") { S.dirty.delete(e.target.id); if (e.target.value === "__pick") pickProject(e.target); else if (e.target.value) setProject(e.target.value); return; }
   if (e.target.id === "imp_recycle") { S.impRecycle = e.target.checked; return; }
+  if (e.target.dataset && e.target.dataset.aioutfit !== undefined) { const v = e.target.dataset.aioutfit; if (e.target.checked) AI.outfitOff.delete(v); else AI.outfitOff.add(v); return; }
   if (e.target.id === "xy_clip") { xyPref(e.target.checked ? "clipon" : "clipoff"); return; }
   if (e.target.id === "xy_ext") { // (inside the window only after the note about it has been read)
     if (!e.target.checked && !S.data.settings.xyNoticed) { e.target.checked = true; xyNotice(); return; }
@@ -3968,6 +4074,7 @@ document.addEventListener("change", e => {
   if (e.target.id === "pipe_noai") { PIPE.noAI = e.target.checked; aiRenderLive(); return; }
   if (e.target.id === "pipe_hier") { PIPE.hier = e.target.value; return; }
   if (e.target.dataset && e.target.dataset.sk && S.setup) { S.setup[e.target.dataset.sk][+e.target.dataset.si].checked = e.target.checked; return; }
+  if (e.target.id === "setup_stats" && S.setup) { S.setup.stats = e.target.checked; return; }
   if (e.target.id === "showHidden") { S.showHidden = e.target.checked; renderSide(); renderGrid(); }
   if (e.target.id === "showHiddenProj") { S.showHiddenProj = e.target.checked; renderProjGrid(); }
   if (e.target.id === "bulkCat" && S.bulk && e.target.value) {

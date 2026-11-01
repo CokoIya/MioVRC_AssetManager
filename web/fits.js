@@ -58,7 +58,7 @@ function fitsDraw(fresh) {
         : `<div class="aiempty">还没有记录。运行流水线并完成验收后，这里会列出每件衣服的结果。</div>`}
       <h5 class="lmh">分享给社区</h5>
 
-      <div class="btnrow"><button class="btn small primary" data-fits="submit"${x.shareable && !FT.busy ? "" : " disabled"}>${FT.busy === "submit" ? `<i class="spin"></i>` : ""}${esc(`分享给社区（${x.shareable} 条）`)}</button>${recs.length ? `<button class="btn small ghost" data-fits="clear"${FT.busy ? " disabled" : ""}>清空记录</button>` : ""}</div>
+      <div class="btnrow"><button class="btn small primary" data-fits="submit"${x.shareable + (x.profiles || 0) && !FT.busy ? "" : " disabled"}>${FT.busy === "submit" ? `<i class="spin"></i>` : ""}${esc(`分享给社区（${x.shareable + (x.profiles || 0)} 条）`)}</button>${recs.length ? `<button class="btn small ghost" data-fits="clear"${FT.busy ? " disabled" : ""}>清空记录</button>` : ""}</div>
       ${FT.err ? `<div class="small err">${esc(FT.err)}</div>` : ""}`;
   }
   const html = `<div class="mhead">社区实测数据</div><div class="mbody mcpbody">${body}</div>
@@ -81,7 +81,7 @@ async function fitsDo(what, el) {
     // not signed in to the community: its sign-in, and the sharing again after it
     if (!r.ok && (r.code === "unauthorized" || r.accountInvalid) && typeof soAccountDialog === "function") return soAccountDialog(() => fitsOpen().then(() => fitsDo("submit")), "login");
     if (!r.ok) { FT.err = r.err || "无法分享"; return fitsDraw(); }
-    toast(`已分享 ${r.sent || 0} 条实测数据`, 5000);
+    toast(r.profiles ? `已分享 ${r.sent || 0} 条实测数据和 ${r.profiles} 个素体档案` : `已分享 ${r.sent || 0} 条实测数据`, 5000);
     return fitsLoad();
   }
   if (what === "forget" || what === "clear") {

@@ -819,6 +819,9 @@ body.paneon .toast.on { transform: translate(-50%, 0); }
 .aistep.ask { margin: 8px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
 .aistep.ask.open { border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
 .aistep.ask .out { color: var(--faint); margin-top: 4px; }
+.aioutfits { display: grid; gap: 6px; margin: 8px 0 10px; max-height: 28vh; overflow: auto; }
+.aitook { margin-left: 8px; font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.aiskip { margin-left: 8px; height: 22px; padding: 0 8px; font-size: 12px; }
 .aipick { display: flex; flex-direction: column; }
 .aipick .cand { width: 100%; text-align: left; color: var(--text); font: inherit; }
 .modelist { margin: 0 0 6px; max-height: 196px; overflow-y: auto; padding: 4px; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--bg); }
@@ -1778,3 +1781,20 @@ body.paneon .offline:not([hidden]) ~ .toast { top: 104px; }
 .modal[data-kind="vr"] .mcpcode { margin-bottom: 6px; align-items: center; }
 .vrgrid { display: grid; grid-template-columns: 160px 1fr; gap: 0 12px; }
 @media (max-width: 760px) { .vrgrid { grid-template-columns: 1fr; } }
+/* 适配你的素体 (stores.js compatHTML): on the wish list and in the shop drawer */
+.cpslot { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 12px; }
+.cptag { padding: 1px 7px; border-radius: 6px; font-size: 11.5px; }
+.cptag.ok { background: color-mix(in srgb, var(--ok, #2fa36b) 16%, transparent); color: var(--ok, #2fa36b); }
+.cptag.no { background: var(--card); color: var(--muted); }
+.cpn, .cphint { color: var(--muted); }
+.wlcompat, .wgcompat, .sdcompat { margin-top: 4px; }
+/* 已知问题: the maintainer's fix under an error (pipeline log and one-click result) */
+.aiknown { margin: 8px 0; padding: 10px 12px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 8%, var(--card)); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
+.aiknown b { display: block; margin-bottom: 4px; }
+.aiknownfix { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+.aiknown .ocaction { margin-top: 8px; }
+.aiforget { margin: 6px 0 0; font-size: 12px; }
+/* 帮助改进流水线, asked in the update's notes; the model's health in 「AI 服务」 */
+.statsask { margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: var(--card); border: 1px solid var(--line); }
+.statsask p { margin: 6px 0 10px; font-size: 13px; line-height: 1.6; color: var(--muted); }
+.aihealth { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 6px; }

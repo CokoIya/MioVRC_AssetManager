@@ -227,6 +227,36 @@ function wishState(x) {
   if (x.priceNum === 0) return `<span class="wltag ok">免费</span>`;
   return `<span class="wltag">在售</span>`;
 }
+// 适配你的素体 (POST /api/booth/compat): whether an item is made for one of the library's bases, how many players put
+// it on them, and what they set; kept for the session. A list asks without going to Booth; the shop drawer may read
+// the item's page (detail). A slot (data-cp) is filled in place when the answer comes.
+const CP = { got: new Map(), detailed: new Set(), busy: false, mine: [] };
+async function compatLoad(ids, detail) {
+  ids = [...new Set(ids.map(String).filter(id => /^\d{1,12}$/.test(id)))];
+  const want = detail ? ids.filter(id => !CP.detailed.has(id)).slice(0, 1) : ids.filter(id => !CP.got.has(id)).slice(0, 60);
+  if (!want.length || CP.busy) return compatFill();
+  CP.busy = true; let r;
+  try { r = await api("/api/booth/compat", detail ? { ids: want, detail: true } : { ids: want }); } catch (e) { r = null; }
+  CP.busy = false;
+  if (r && r.ok) {
+    CP.mine = r.mine || CP.mine;
+    for (const [id, x] of Object.entries(r.items || {})) CP.got.set(id, x);
+    if (detail) want.forEach(id => CP.detailed.add(id));
+  }
+  compatFill();
+}
+function compatHTML(id, long) {
+  const x = CP.got.get(String(id)); if (!x || !CP.mine.length) return "";
+  if (x.fits === "no") return `<span class="cptag no" title="${esc("你的素体：" + CP.mine.join("、"))}">未标注你的素体</span>`;
+  if (x.fits !== "yes") return "";
+  const n = x.fitted > 0 ? `<span class="cpn">${esc(`${x.fitted} 位玩家已一键穿上`)}</span>` : x.local ? `<span class="cpn">本机穿过</span>` : "";
+  const hint = long && (x.hint || []).length ? `<span class="cphint"><span>常用设置：</span><span data-i18n="off">${esc(x.hint.join("、"))}</span></span>` : "";
+  return `<span class="cptag ok" title="${esc((x.bases || []).join("、"))}">适配你的素体</span>${n}${hint}`;
+}
+function compatSlot(id, long) { return `<span class="cpslot" data-cp="${esc(id)}"${long ? ` data-cplong="1"` : ""}>${compatHTML(id, long)}</span>`; }
+function compatFill() {
+  for (const el of document.querySelectorAll("[data-cp]")) { const h = compatHTML(el.dataset.cp, !!el.dataset.cplong); if (el._cp !== h) { el._cp = h; el.innerHTML = h; } }
+}
 function wishRowHTML(x) {
   const c = x.change, hist = x.hist || [];
   const change = c ? `<div class="wlchange ${esc(c.kind)}${W.fresh.has(x.key) ? " fresh" : ""}"><span class="k">${esc(WISH_KIND[c.kind] || "")}</span>${c.var ? `<span class="var">${esc(c.var)}</span>` : ""}${
@@ -244,6 +274,7 @@ function wishRowHTML(x) {
     <div class="wlmain">
       <button class="wltitle" data-wl="detail" data-id="${esc(x.id)}" data-i18n="off">${esc(x.title || "Booth #" + x.id)}</button>
       <div class="wlsub">${wishCatBtn(x)}<span data-i18n="off">${esc(x.shop || "")}</span><span class="t"><span>加入于</span> ${esc(fmtTime(x.added))}</span>${x.like ? WISH_LIKE : ""}</div>
+      ${x.site === "booth" ? `<div class="wlcompat">${compatSlot(x.id, true)}</div>` : ""}
       ${vars}${change}
       ${x.note ? `<div class="wlnote"><span class="lb">备注</span><span data-i18n="off">${esc(x.note)}</span></div>` : ""}
       ${x.err ? `<div class="wlerr small err"><span>价格检查失败</span>　${esc(x.err)}</div>` : ""}
@@ -269,6 +300,7 @@ function wishCardHTML(x) {
       <span class="wgstate">${wishState(x)}</span>${kind ? `<span class="wgchange ${esc(c.kind)}${W.fresh.has(x.key) ? " fresh" : ""}">${esc(kind)}</span>` : ""}${x.like ? WISH_LIKE : ""}</button>
     <button class="wltitle" data-wl="detail" data-id="${esc(x.id)}" data-i18n="off" title="${esc(x.title || "")}">${esc(x.title || "Booth #" + x.id)}</button>
     <div class="wgshop">${wishCatBtn(x)}<span data-i18n="off">${esc(x.shop || "")}</span></div>
+    ${x.site === "booth" ? `<div class="wgcompat">${compatSlot(x.id, false)}</div>` : ""}
     ${x.note ? `<div class="wgnote" title="${esc(x.note)}"><span class="lb">备注</span><span data-i18n="off">${esc(x.note)}</span></div>` : ""}
     <div class="wgfoot">
       <span class="wgprice" title="${x.checked ? "上次检查：" + esc(fmtTime(x.checked)) : "尚未检查"}"><b>${esc(x.price || "—")}</b>${x.from ? `<span class="from">起</span>` : ""}${
@@ -303,6 +335,7 @@ function renderWish() {
   put($("#wl_top"), W.paused ? `<p class="wlpause">Booth 暂时限制了访问，价格检查将稍后自动继续。</p>` : !W.watch && n ? `<p class="wlpause">已关闭每天的价格检查，价格不会自动更新。</p>` : "");
   const list = $("#wl_list"), grid = W.view === "grid" && shown.length > 0;
   list.classList.toggle("wlgrid", grid);
+  if (shown.length) setTimeout(() => compatLoad(shown.filter(x => x.site === "booth").map(x => x.id)), 0); // (no request to Booth)
   if (!n) { put(list, `<div class="empty"><h2>愿望单为空</h2>${W.likes.on ? "" : ``}</div>`); return; }
   if (!shown.length) { put(list, `<div class="empty"><h2>未找到商品</h2><button class="btn" data-wl="clear">清除筛选</button></div>`); return; }
   // row by row: one item's price being looked at does not redraw the others (nor the one a button is being pressed in)

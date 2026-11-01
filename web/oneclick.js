@@ -21,7 +21,8 @@ const OC_KEEP = "mio.oneclick.basket", OC_DIR = "mio.oneclick.dir", OC_TARGET = 
 // a project of the player's own to put the avatar into instead of a new one ("" = a new project);
 // tool: what the computer has (/api/pipe/toolchain); toolJob: a download and installation under way
 const OC = { items: [], est: null, estErr: "", seq: 0, timer: 0, open: false, job: null, poll: 0, sending: false, dir: "", tool: null, toolJob: null, toolPoll: 0,
-  up: null }; // 上传到 VRChat from the result: {name, release, state, err, poll}
+  up: null, // 上传到 VRChat from the result: {name, release, state, err, poll}
+  outfitOff: new Set() }; // the base's own clothes unticked in a 「素体自带的衣服」 need (kept across redraws)
 
 function ocGroup(key) { return OC_GROUPS.find(g => g[0] === key); }
 function ocGroupOf(cat) { const g = OC_GROUPS.find(g => g[3].includes(cat)); return g ? g[0] : ""; }
@@ -30,6 +31,22 @@ function ocLoad() {
   try { OC.dir = localStorage.getItem(OC_DIR) || ""; OC.target = localStorage.getItem(OC_TARGET) || ""; } catch (_) {}
 }
 function ocSave() { try { localStorage.setItem(OC_KEEP, JSON.stringify(OC.items)); } catch (_) {} }
+// decided before the start, so the run goes on by itself: the base's own clothes, and the base's original menus
+const OC_OPTS = "mio.oneclick.opts";
+OC.opts = { baseOutfit: "", originalMenus: "keep" }; // ("" until the player picks: the base's remembered choice, else 做成菜单)
+try { Object.assign(OC.opts, JSON.parse(localStorage.getItem(OC_OPTS) || "{}")); } catch (_) {}
+function ocOptsSave() { try { localStorage.setItem(OC_OPTS, JSON.stringify(OC.opts)); } catch (_) {} }
+function ocOptsHTML() {
+  if (!OC.items.some(i => i.group === "base")) return "";
+  const known = (OC.est && OC.est.baseOutfit) || {}, clothes = OC.items.some(i => i.group === "clothes");
+  const picked = OC.opts.baseOutfit || known.remembered || "menu", bo = picked === "nude" && !known.nude ? "menu" : picked;
+  const opt = (v, t, cur) => `<option value="${v}"${v === cur ? " selected" : ""}>${esc(t)}</option>`;
+  const outfit = clothes ? `<label class="ocopt"><span>原装衣服</span><select data-oc="bo" aria-label="原装衣服">${opt("menu", "做成菜单", bo)}${opt("remove", "移除", bo)}${opt("keep", "保持不变", bo)}${known.nude ? opt("nude", "改用不带衣服的版本", bo) : ""}${opt("ask", "运行时询问", bo)}</select></label>` : "";
+  const menus = `<label class="ocopt"><span>原菜单</span><select data-oc="om" aria-label="原菜单">${opt("keep", "全部保留", OC.opts.originalMenus)}${opt("ask", "运行时让我选", OC.opts.originalMenus)}</select></label>`;
+  const what = clothes && (known.clothes || []).length ? `<span class="ochint small">${esc("素体自带：")}<span data-i18n="off">${esc(known.clothes.slice(0, 6).join("、"))}</span>${known.nude ? ` · ${esc("不带衣服的版本：")}<span data-i18n="off">${esc(known.nude)}</span>` : ""}</span>` : "";
+  const last = clothes && known.remembered && !OC.opts.baseOutfit ? `<span class="ochint small">按上次的选择</span>` : "";
+  return `<div class="ocopts">${outfit}${last}${menus}${what}</div>`;
+}
 function ocHas(key) { return OC.items.some(i => i.key === key); }
 
 // the round button on a library card (app.js cardHTML)
@@ -111,7 +128,7 @@ function ocBarHTML() {
     return a && a.cover ? `<img class="octh" src="${esc(a.cover)}" alt="" title="${esc(i.name)}" loading="lazy">` : `<span class="octh" title="${esc(i.name)}" data-i18n="off">${esc((i.name || "?").slice(0, 1))}</span>`;
   }).join("") + (OC.items.length > 7 ? `<span class="octh more">+${OC.items.length - 7}</span>` : "");
   return `<div class="ocbar"><b>改模篮</b><span class="octhumbs" title="${esc(counts.map(([t, n]) => `${t} ${n}`).join(" · "))}">${thumbs}</span>
-    <span class="ocbits${over ? " over" : ""}">${ocTerm("params", total === null ? "参数 —" : `参数 ${total} / ${limit}`)}</span>
+    <span class="ocbits${over ? " over" : ""}">${ocTerm("params", total === null ? "参数 —" : `参数 ${total} / ${limit}`)}</span>${OC.est && OC.est.minutes ? `<span class="ocmins" title="按所有玩家的运行记录估算">${esc(`预计约 ${OC.est.minutes} 分钟`)}</span>` : ""}
     <span class="grow"></span>${ocNoBase() ? `<button class="btn small ghost" data-nb="bases">还没有素体</button>` : ""}${OC.job ? `<button class="btn small" data-oc="progress">${ocActive(OC.job) ? "查看进度" : "上次创建"}</button>` : ""}
     <button class="btn small ghost" data-oc="toggle" aria-expanded="${OC.open}">${OC.open ? "收起" : "展开"}</button>
     <button class="btn small primary" data-oc="start"${ocCanStart() ? "" : " disabled"}>一键创建</button></div>`;
@@ -139,7 +156,7 @@ function ocPanelHTML() {
       }).join("")}</section>`;
   }).join("");
   const where = OC.target ? OC.target : ocDir();
-  return `<div class="ocpanel">${typeof ocbPasteHTML === "function" ? ocbPasteHTML() : ""}${lines.join("")}${groups}<div class="btnrow"><select data-oc="where" aria-label="创建到"><option value="new"${OC.target ? "" : " selected"}>新建工程</option><option value="existing"${OC.target ? " selected" : ""}>放进已有工程</option></select>
+  return `<div class="ocpanel">${typeof ocbPasteHTML === "function" ? ocbPasteHTML() : ""}${lines.join("")}${groups}${ocOptsHTML()}<div class="btnrow"><select data-oc="where" aria-label="创建到"><option value="new"${OC.target ? "" : " selected"}>新建工程</option><option value="existing"${OC.target ? " selected" : ""}>放进已有工程</option></select>
     <span class="ocloc" data-i18n="off" title="${esc(where)}">${esc(where || "—")}</span><button class="btn small ghost" data-oc="dir">更改</button><span class="grow"></span><button class="btn small ghost" data-oc="clear">清空</button></div></div>`;
 }
 function ocDraw() {
@@ -168,7 +185,10 @@ function ocWhere() { return OC.target || ocDir(); }
 function ocReady(t) { return !!(t && t.unity && t.hub && ocWhere()); }
 function ocMissing(t) { return !t || !t.unity || !t.hub || !t.license || !(t.alcom || t.vcc) || !ocWhere(); }
 // a new project in the one project folder, or the player's own project
-function ocStartBody() { return OC.target ? { basket: ocBasket(), target: OC.target } : { basket: ocBasket(), parent: ocDir() }; }
+function ocStartBody() {
+  const opts = { baseOutfit: OC.opts.baseOutfit, originalMenus: OC.opts.originalMenus };
+  return Object.assign(OC.target ? { basket: ocBasket(), target: OC.target } : { basket: ocBasket(), parent: ocDir() }, opts);
+}
 async function ocStart() {
   if (!ocCanStart() || OC.sending) return;
   OC.sending = true;
@@ -290,7 +310,9 @@ async function ocPoll() {
 }
 function ocStepHTML(s) {
   const pct = s.status === "running" && s.progress > 0 ? `<span class="ocprog"><i style="width:${Math.max(0, Math.min(100, s.progress))}%"></i></span>` : "";
-  return `<li class="ocstep ${esc(s.status)}"><i aria-hidden="true"></i><span class="nm">${esc(s.name)}</span>${pct}${s.message ? `<span class="msg">${esc(s.message)}</span>` : ""}${s.status === "failed" ? ocActionHTML(s.action) : ""}</li>`;
+  // (a finished step's time, as the run log says it)
+  const took = s.status === "done" && s.seconds >= 1 && typeof aiTook === "function" ? `<span class="octook" data-i18n="off">${esc(aiTook(s.seconds * 1000))}</span>` : "";
+  return `<li class="ocstep ${esc(s.status)}"><i aria-hidden="true"></i><span class="nm">${esc(s.name)}</span>${pct}${took}${s.message ? `<span class="msg">${esc(s.message)}</span>` : ""}${s.status === "failed" ? ocActionHTML(s.action) : ""}</li>`;
 }
 const OC_ACTIONS = { update_plugin: "更新插件", reconnect: "重新连接", open_unity: "打开 Unity", install_android: "安装 Android 模块", open_quest: "打开 Quest 页", signin_sdk: "打开 SDK 面板" };
 function ocActionHTML(action) {
@@ -315,9 +337,17 @@ function ocNeedHTML(n) {
   if (n.kind === "packages") body = (n.choices || []).map(c => `<label class="check"><input type="checkbox" data-ocpkg value="${esc(c.path)}"${c.pick ? " checked" : ""}> <span data-i18n="off">${esc(c.name || c.path)}</span>${c.note ? ` <span class="muted small">${esc(c.note)}</span>` : ""}</label>`).join("");
   else if (n.kind === "prefab") body = (n.prefabs || []).map((p, i) => `<label class="check"><input type="radio" name="ocprefab" data-ocprefab value="${esc(p)}"${i === 0 ? " checked" : ""}> <span data-i18n="off">${esc(p)}</span></label>`).join("");
   else if (n.kind === "original") body = ocMenuHTML(n);
-  const label = n.kind === "original" ? "移除勾选的菜单" : n.kind === "packages" || n.kind === "prefab" ? "使用所选" : "已完成，继续";
+  else if (n.kind === "base_outfit") return ocOutfitHTML(n);
+  const label = n.kind === "original" ? "移除勾选的菜单" : n.kind === "packages" || n.kind === "prefab" ? "使用所选" : n.kind === "save_scene" ? "保存并继续" : "已完成，继续";
   return `<div class="ocneed"><p>${esc(n.message)}</p>${n.kind === "packages" ? pickAllHTML((n.choices || []).length) : ""}${body ? `<div class="occhoices">${body}</div>` : ""}
     <div class="btnrow">${n.kind === "original" ? `<button class="btn small ghost" data-oc="keepall">全部保留</button>` : ""}<button class="btn small primary" data-oc="reply">${label}</button></div></div>`;
+}
+// 「素体自带的衣服」: the base's own clothes, each ticked; made a menu of their own, taken off, or left as they are
+function ocOutfitItems(n) { return n.items || n.outfit || []; }
+function ocOutfitHTML(n) {
+  const body = ocOutfitItems(n).map(it => `<label class="check"><input type="checkbox" data-ocoutfit="${esc(it.path)}"${OC.outfitOff.has(it.path) ? "" : " checked"}> <span data-i18n="off" title="${esc(it.path)}">${esc(it.name || it.path)}</span>${it.menu ? ` <span class="muted small">${esc("原菜单：")}<span data-i18n="off">${esc(it.menu)}</span></span>` : ""}${typeof outfitFromHTML === "function" ? outfitFromHTML(it) : ""}</label>`).join("");
+  return `<div class="ocneed"><p>${esc(n.message || "素体自带的衣服")}</p>${body ? `<div class="occhoices">${body}</div>` : ""}
+    <div class="btnrow"><button class="btn small ghost" data-oc="outfit" data-choice="keep">保持不变</button><button class="btn small" data-oc="outfit" data-choice="remove" title="不上传，可在「部件与穿模」中恢复">移除</button><button class="btn small primary" data-oc="outfit" data-choice="menu" title="穿上新衣服时隐藏，可在菜单中切换回来">做成菜单</button></div></div>`;
 }
 // The base's original menus grouped by top-level menu. A group stands for its first entries; it opens to the level
 // below (the entries of a single top-level submenu, or the first entries themselves). Ticks live in OC.msel, so a
@@ -372,6 +402,7 @@ function ocResultHTML(j) {
     ${ocPluginsHTML(r.plugins || [])}
     ${OC.up && OC.up.id === j.id ? ocUploadHTML(j) : ""}
     ${r.uploaded && !(OC.up && OC.up.id === j.id && OC.up.state === "done") ? `<div class="ocquest"><div class="btnrow">${ocQuestButton(j)}</div>${ocQuestLine(j)}</div>` : ""}
+    ${r.baseOutfitNote ? `<p class="ochint">${esc(r.baseOutfitNote.text)}${r.baseOutfitNote.forget ? ` <button class="linkbtn" data-oc="outfitforget" data-key="${esc(r.baseOutfitNote.forget)}">下次再问我</button>` : ""}</p>` : ""}
     ${(OC.notesOpen ? notes : notes.slice(0, 3)).map(w => `<p class="ochint">${esc(w)}</p>`).join("")}
     ${notes.length > 3 ? `<button class="btn small ghost" data-oc="notes">${OC.notesOpen ? "收起" : "展开"}</button>` : ""}
     ${left.length ? `<p class="ochint">未翻译：<span data-i18n="off">${esc(left.slice(0, 6).join("、"))}</span>${left.length > 6 ? ` 等 ${left.length} 项` : ""}</p>` : ""}
@@ -501,7 +532,7 @@ function ocJobDraw() {
   const html = `<div class="mhead"><span>${esc(head)}</span><span class="muted small" data-i18n="off">${esc(j.name || "")}</span></div>
     <div class="mbody"><ol class="ocsteps">${(j.steps || []).map(ocStepHTML).join("")}</ol>
       ${j.state === "need_player" && j.need ? ocNeedHTML(j.need) : ""}
-      ${j.error ? `<p class="warnc">${esc(j.error)}</p>` : ""}
+      ${j.error ? `<p class="warnc">${esc(j.error)}</p>` : ""}${j.known && typeof knownFixHTML === "function" ? knownFixHTML(j.known, ocActionHTML(j.known.action)) : ""}
       ${OC.fix && OC.fix.id === j.id ? `<p class="warnc">${esc(OC.fix.err)}</p>${ocActionHTML(OC.fix.action)}` : ""}
       ${j.state === "done" ? ocResultHTML(j) : ""}</div>
     <div class="mfoot">${j.state === "failed" ? ocReportHTML(j) : ""}${running ? `<button class="btn" data-oc="stop">停止</button>` : ""}${!running && j.state !== "done" ? `<button class="btn" data-oc="retry">${again}</button>` : ""}<button class="btn" data-oc="close">${running ? "在后台继续" : "关闭"}</button></div>`;
@@ -577,6 +608,14 @@ document.addEventListener("click", async e => {
       return ocReply({});
     }
     case "keepall": return ocReply({ remove: [] });
+    case "outfitforget": { let r; try { r = await api("/api/ai/baseoutfit/forget", { key: b.dataset.key }); } catch (err) { r = { ok: false, err: err.message }; } toast(r.ok ? "下次会再问你" : r.err || "操作失败", 4000); return; }
+    case "outfit": {
+      const n = j && j.need; if (!n) return;
+      const paths = ocOutfitItems(n).map(it => it.path).filter(x => !OC.outfitOff.has(x));
+      if (b.dataset.choice !== "keep" && !paths.length) { toast("请至少勾选一件"); return; }
+      OC.outfitOff = new Set();
+      return ocReply({ confirmed: true, choice: b.dataset.choice, paths });
+    }
     case "notes": OC.notesOpen = !OC.notesOpen; return ocJobDraw();
     case "dir": return ocChooseDir();
     case "install": return ocInstall(b.dataset.tool);
@@ -602,7 +641,9 @@ document.addEventListener("click", async e => {
 });
 document.addEventListener("change", e => {
   if (e.target.matches("[data-ocmg], [data-ocms]")) return ocMenuTick(e.target);
+  if (e.target.matches("[data-ocoutfit]")) { const v = e.target.dataset.ocoutfit; if (e.target.checked) OC.outfitOff.delete(v); else OC.outfitOff.add(v); return; }
   if (e.target.matches("select[data-oc='where']")) return e.target.value === "existing" ? ocChooseTarget() : ocSetTarget("");
+  if (e.target.matches("select[data-oc='bo'], select[data-oc='om']")) { OC.opts[e.target.dataset.oc === "bo" ? "baseOutfit" : "originalMenus"] = e.target.value; ocOptsSave(); return; }
   const s = e.target.closest("select[data-oc='move']"); if (!s) return;
   ocMove(s.closest(".ocitem")?.dataset.key, s.value);
 });
