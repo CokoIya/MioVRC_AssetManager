@@ -4,7 +4,7 @@
 // here, with what to add to each of them and a skill that tells their AI how to use MioVRCA
 "use strict";
 
-const MC = { info: null, busy: "", err: "", dshPath: "" };
+const MC = { info: null, busy: "", err: "", dshPath: "", claude: null, claudeRes: null };
 
 function mcpOpenNow() { const m = $("#modal"); return m.classList.contains("on") && m.dataset.kind === "mcp"; }
 function mcpSettingsRow() {
@@ -13,7 +13,7 @@ function mcpSettingsRow() {
     </div>`;
 }
 async function mcpOpen() {
-  Object.assign(MC, { info: null, busy: "", err: "", dshPath: "" });
+  Object.assign(MC, { info: null, busy: "", err: "", dshPath: "", claude: null, claudeRes: null });
   $("#modal").dataset.kind = "mcp";
   mcpDraw(true); showModal();
   await mcpLoad();
@@ -24,6 +24,27 @@ async function mcpLoad() {
   if (!mcpOpenNow()) return;
   if (!r.ok) MC.err = r.err || "无法读取"; else MC.info = r;
   mcpDraw();
+  mcpClaudeState();
+}
+// whether Claude Code is on this PC and already has MioVRCA (read from its config; nothing is run)
+async function mcpClaudeState() {
+  let r = null;
+  try { r = await api("/api/mcp/claude/state", {}); } catch (e) { }
+  if (!mcpOpenNow()) return;
+  MC.claude = r; mcpDraw();
+}
+function mcpClaudeHTML(c) {
+  const st = MC.claude, res = MC.claudeRes, busy = MC.busy === "claude";
+  let line = "";
+  if (busy) line = `<span class="small muted"><i class="spin"></i>正在接入 Claude Code…</span>`;
+  else if (res) line = `<span class="qvdot ${res.ok && res.connected ? "ok" : "no"}"></span><span class="small">${res.ok && res.connected ? "Claude Code · 已连接" : "Claude Code · 连接失败"}</span>`;
+  else if (st && !st.found) line = `<span class="small muted">未找到 Claude Code，请先安装</span>`;
+  else if (st && st.added) line = `<span class="qvdot ${st.current ? "ok" : "wait"}"></span><span class="small">${st.current ? "Claude Code 已接入" : "Claude Code 接入需要更新"}</span>`;
+  // the CLI's own lines, shown as they are; the program's known messages among them translated
+  const out = res && !(res.ok && res.connected) && res.output
+    ? `<pre class="mcpout" data-i18n="off">${esc(res.output.split("\n").map(l => window.I18N && I18N.t ? I18N.t(l) : l).join("\n"))}</pre>` : "";
+  return `<div class="mcpclaude"><button class="btn small primary" data-mcp="claude"${!st || !st.found || MC.busy ? " disabled" : ""}>接入 Claude Code</button>${line}</div>${out}
+      <div class="small muted mcpsub">也可以在终端（PowerShell 或命令提示符）中运行一次：</div>${mcpCode("mcp_claude", c.claude)}`;
 }
 function mcpCode(id, text) {
   return `<div class="mcpcode"><pre id="${id}" data-i18n="off">${esc(text)}</pre><button class="btn small" data-mcp="copy" data-of="${id}">复制</button></div>`;
@@ -39,7 +60,7 @@ function mcpDraw(fresh) {
     body = `
       <label class="check mcpon"><input type="checkbox" data-mcp="on"${c.on ? " checked" : ""}${MC.busy ? " disabled" : ""}> 允许外部 AI 使用 MioVRCA</label>
       ${c.on ? "" : ``}
-      <h5 class="lmh">Claude Code</h5><div class="small muted mcpsub">在终端（PowerShell 或命令提示符）中运行一次：</div>${mcpCode("mcp_claude", c.claude)}
+      <h5 class="lmh">Claude Code</h5>${mcpClaudeHTML(c)}
       <h5 class="lmh">Codex</h5><div class="small muted mcpsub">${esc(`把下面几行加入 ${c.codexFile}（没有就新建）。导入、流水线、验收可能要好几分钟，所以把工具超时设长：`)}</div>${mcpCode("mcp_codex", c.codex)}
       <h5 class="lmh">DeepSeek Harness</h5><div class="small muted mcpsub">保存后用 dsh web --patch 加载。</div>${mcpCode("mcp_dsh", c.dsh)}
       <div class="btnrow"><button class="btn small" data-mcp="dsh"${MC.busy ? " disabled" : ""}>保存为文件</button>${MC.dshPath ? `<span class="small muted" data-i18n="off">dsh web --patch "${esc(MC.dshPath)}"</span>` : ""}</div>
@@ -61,6 +82,14 @@ async function mcpDo(what, el) {
   if (what === "close") return closeModal();
   if (what === "copy") { const p = $("#" + el.dataset.of); if (p) copyText(p.textContent); return; }
   if (MC.busy) return;
+  if (what === "claude") {
+    MC.busy = "claude"; MC.claudeRes = null; MC.err = ""; mcpDraw();
+    let r;
+    try { r = await api("/api/mcp/claude/add", {}); } catch (e) { r = { ok: false, connected: false, output: e.message }; }
+    MC.busy = ""; MC.claudeRes = r;
+    if (r.ok && r.connected) toast("Claude Code · 已连接", 2500);
+    return mcpClaudeState();
+  }
   if (what === "on") {
     MC.busy = "on"; MC.err = ""; mcpDraw();
     let r;

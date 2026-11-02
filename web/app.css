@@ -917,6 +917,14 @@ body.paneon .toast.on { transform: translate(-50%, 0); }
 .plugs .check.opt { padding: 4px 0; color: var(--text); align-items: flex-start; }
 .plugs .check.opt input { margin-top: 3px; }
 .npenv { margin-top: 12px; font-size: 12.5px; line-height: 1.8; color: var(--muted); }
+.npfrom { margin: 4px 0 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); display: flex; flex-direction: column; gap: 10px; }
+.npgrp { display: flex; flex-direction: column; gap: 4px; }
+.npgh { display: flex; align-items: center; gap: 10px; }
+.nplist { max-height: 200px; overflow: auto; padding: 2px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.nplist .check.opt { padding: 4px 0; align-items: flex-start; }
+.nplist .check.opt input { margin-top: 3px; }
+.nplist .check.opt span { overflow-wrap: anywhere; }
+.nptag { display: inline-block; padding: 0 6px; border-radius: 6px; font-size: 11.5px; line-height: 18px; color: var(--muted); border: 1px solid var(--line); }
 .modal select { width: 100%; height: 36px; background: var(--bg); }
 @media (max-width: 900px) { .belt { grid-template-columns: repeat(5, minmax(0, 1fr)); } .station .ds { display: none; } }
 
@@ -1767,6 +1775,38 @@ body.paneon .offline:not([hidden]) ~ .toast { top: 104px; }
 .modal[data-kind="mcp"] .mbody.mcpbody { overflow-y: auto; }
 .mcpon { margin: 12px 0 4px; font-weight: 600; }
 .mcpsub { margin: 2px 0 6px; line-height: 1.6; }
+.mcpclaude { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 8px; }
+/* what an import could not bring (impGaps) */
+.impgaps { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; font-size: 13px; }
+.impgap summary { cursor: pointer; font-size: 12.5px; color: var(--muted); }
+.impgap ul { margin: 4px 0 0; padding-left: 18px; font-size: 12px; max-height: 160px; overflow: auto; }
+.impgap li { overflow-wrap: anywhere; }
+.impgap .why { margin-left: 8px; color: var(--muted); }
+.impskip .linkbtn { margin-left: 6px; }
+/* 高速下载 (bdopen.js) */
+.bdoqr { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.bdoqr img { width: 200px; height: 200px; border-radius: 10px; background: #fff; padding: 6px; }
+.bdoqr > div { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; min-width: 200px; flex: 1; }
+.bdocode { font: 600 22px/1.2 Consolas, "Cascadia Mono", monospace; letter-spacing: .12em; }
+.bdodone { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
+.bdoqr .spin, .npfrom .spin { display: inline-block; vertical-align: -2px; margin: 0 6px 0 0; }
+/* 工程的插件 (plugins.js) */
+.modal[data-kind="plugins"] { width: min(720px, calc(100vw - 32px)); }
+.plbody { display: flex; flex-direction: column; gap: 10px; }
+.plbar { display: flex; align-items: center; gap: 10px; }
+.pllist { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.plrow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 12px; border-top: 1px solid var(--line); cursor: pointer; }
+.plrow:first-child { border-top: 0; }
+.plrow.off { cursor: default; }
+.plname { display: flex; flex-direction: column; min-width: 0; }
+.plname span { overflow-wrap: anywhere; }
+.plver { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; font-size: 13px; }
+.plarrow { color: var(--muted); }
+.pltag { display: inline-block; padding: 0 6px; border-radius: 6px; font-size: 11.5px; line-height: 18px; color: var(--muted); border: 1px solid var(--line); }
+.pltag.gh { color: var(--accent); border-color: var(--accent); }
+.pltag.pre { color: var(--warn, #c98a00); border-color: currentColor; }
+@media (max-width: 560px) { .plrow { grid-template-columns: auto 1fr; } .plver { grid-column: 2; justify-content: flex-start; } }
+.mcpout { margin: 0 0 8px; padding: 8px 10px; border-radius: 8px; background: var(--card); border: 1px solid var(--line); font: 12px/1.55 Consolas, "Cascadia Mono", monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 180px; overflow: auto; }
 .mcpcode { display: flex; gap: 8px; align-items: flex-start; }
 .mcpcode pre { flex: 1; min-width: 0; margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--card); border: 1px solid var(--line); font: 12px/1.55 Consolas, "Cascadia Mono", monospace;
   white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }

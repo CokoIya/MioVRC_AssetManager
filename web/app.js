@@ -1295,6 +1295,7 @@ function projMenu(btn) {
   popMenuOpen(btn, [
     { label: "打开文件夹", icon: ICON.folder, data: { pa: "folder" } },
     { label: "在 ALCOM 中打开", data: { pa: "alcom" } },
+    { label: "插件", data: { pa: "plugins" } },
     typeof frOpen === "function" ? { label: "3D 试衣间", data: { pa: "fit" } } : null,
     typeof frOpen === "function" ? { label: "部件与穿模", data: { pa: "parts" } } : null,
     { label: "宣传视频", data: { studio: p.path } },
@@ -1326,6 +1327,7 @@ async function projAction(what, path, btn) {
   const p = (S.projs || []).find(x => x.path === path); if (!p) return;
   if (what === "folder") return openPath(p.path);
   if (what === "fit") return frOpen(p.path);
+  if (what === "plugins") return plOpen(p.path, p.name);
   if (what === "parts") return frOpen(p.path, { tab: "parts" });
   if (what === "alcom") { // into ALCOM's project list first: a project from before ALCOM was set up is there next time
     let r; try { r = await api("/api/project/alcom", { path: p.path }); } catch (e) { r = { ok: false, err: e.message }; }
@@ -1927,7 +1929,10 @@ function impResult(j) {
   }
   const tops = (j.tops || []).slice(0, 4).join("、") + ((j.tops || []).length > 4 ? " 等" : "");
   return `<div class="impres ok"><div>已导入 <b>${esc(proj)}</b>：${(j.imported || []).length} 个 unitypackage，共 ${esc(j.files)} 个文件</div>
+    ${impGaps(j)}
+    ${(j.placed || []).length ? `<div class="small okline">已放入场景「MioVRCA 素材（未穿戴）」：${j.placed.length} 件</div>` : ""}
     <div class="small">${tops ? `位置：${esc(tops)}。` : ""}若 Unity 已打开，切换到 Unity 窗口即可刷新；否则将在下次打开工程时生效。</div>
+    ${(j.dependencies || []).length ? `<div class="small"><span>素材引用了以下包中的文件，已一并导入：</span><span data-i18n="off">${j.dependencies.map(d => esc(d.name)).join("、")}</span></div>` : ""}
     ${impSkipped(j)}
     ${j.kept ? `<div class="small">已跳过 ${esc(j.kept)} 个属于已安装插件（Packages）的文件，未覆盖${(j.keptPkgs || []).length ? "：" + j.keptPkgs.map(esc).join("、") : ""}。</div>` : ""}
     ${j.removed ? `<div class="small">已将 ${esc(j.removed)} 个压缩包移至回收站。</div>` : ""}
@@ -1955,12 +1960,36 @@ function pickAll(b) {
     if (x.checked !== v) { x.checked = v; x.dispatchEvent(new Event("change", { bubbles: true })); }
   }
 }
+function impGaps(j) {
+  let h = "";
+  for (const b of j.needsBase || []) h += `<div class="warnline">引用了素体「${esc(b)}」的文件，请先导入素体</div>`;
+  if (j.notWritten) {
+    const list = (j.notWrittenList || []).map(x => `<li><span data-i18n="off">${esc(x.path)}</span><span class="why">${esc(x.reason)}</span></li>`).join("");
+    h += `<div class="warnline">${j.notWritten} 个文件未写入，处理原因后重新导入即可</div>${list ? `<details class="impgap"><summary>查看文件</summary><ul>${list}</ul></details>` : ""}`;
+  }
+  if (j.unresolved && !(j.needsBase || []).length) {
+    const from = (j.unresolvedFrom || []).map(p => `<li data-i18n="off">${esc(p)}</li>`).join("");
+    h += `<div class="warnline">有 ${j.unresolved} 个引用的资源不在工程里，可能需要先导入素体、材质包或插件</div>${from ? `<details class="impgap"><summary>引用缺失资源的文件</summary><ul>${from}</ul></details>` : ""}`;
+  }
+  if (j.unityMissing) h += `<div class="warnline">Unity 中有 ${j.unityMissing} 个文件未能导入，请在 Unity 的「Console」中查看错误</div>`;
+  return h ? `<div class="impgaps">${h}</div>` : "";
+}
 const SKIPWHY = { dup: "重复", old: "旧版本", quest: "Quest 版本", pc: "PC 版本", alt: "与其他包写入同一批文件" };
 function impSkipped(j) {
   const s = j.skipped || [];
   if (!s.length) return "";
-  return `<div class="small impskip">未导入：${s.map(x => `<span class="sk"><span data-i18n="off">${esc(x.name)}</span><span class="why">${esc(SKIPWHY[x.why] || x.why)}</span></span>`).join("")}</div>`;
+  return `<div class="small impskip">未导入：${s.map(x => `<span class="sk"><span data-i18n="off">${esc(x.name)}</span><span class="why">${esc(SKIPWHY[x.why] || x.why)}</span>${x.path && x.why !== "dup" && j.project
+    ? `<button class="linkbtn" data-impalso="${esc(x.path)}" data-impproj="${esc(j.project)}">也导入</button>` : ""}</span>`).join("")}</div>`;
 }
+// 「也导入」: one package that was left out, imported into the same project as a job of its own
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-impalso]"); if (!b) return;
+  b.disabled = true;
+  let r;
+  try { r = await api("/api/import/start", { paths: [b.dataset.impalso], project: b.dataset.impproj, confirmed: true }); } catch (err) { r = { ok: false, err: err.message }; }
+  if (!r.ok) { b.disabled = false; toast(r.err || "无法开始导入", 5000); return; }
+  poll(true);
+});
 // the version checkboxes of an import that waits for a choice: what is ticked, to be ticked again after a redraw
 function ipickMark(root) {
   const was = [...root.querySelectorAll("[data-ipick]")].map(x => x.checked);
@@ -1985,7 +2014,7 @@ function importSec(a) {
     const other = impBusy() && !j;
     body = `${j ? impResult(j) : ""}${bundle}
       <div class="impform">${projSelect()}<button class="btn primary" data-d="import"${bundle ? " disabled title=\"合集包需先拆分，再分别导入\"" : other ? " disabled title=\"另一个素材正在导入\"" : ""}>${ICON.cube}<span>一键导入</span></button></div>
-      <div class="impopts"><input id="imp_pwd" placeholder="解压密码（选填）" autocomplete="off"><label class="check"><input type="checkbox" id="imp_recycle"${S.impRecycle === false ? "" : " checked"}>解压后将压缩包移至回收站</label></div>
+      <div class="impopts"><input id="imp_pwd" placeholder="解压密码（选填）" autocomplete="off"><label class="check"><input type="checkbox" id="imp_recycle"${S.impRecycle === false ? "" : " checked"}>解压后将压缩包移至回收站</label>${impPlaceHTML()}</div>
       ${(S.data.arcTools || []).length ? "" : `<div class="hint2">rar、7z 需安装 7-Zip、Bandizip 或 WinRAR。</div>`}`;
   }
   return `<div class="sec imp" id="impsec"><h4>导入到 Unity 工程</h4>${body}</div>`;
@@ -1993,7 +2022,7 @@ function importSec(a) {
 async function startImport(a) {
   const project = chosenProject(); if (!project) return;
   setProject(project);
-  const req = { key: a.key, project, pwd: ($("#imp_pwd") || {}).value || "", recycle: S.impRecycle !== false };
+  const req = { key: a.key, project, pwd: ($("#imp_pwd") || {}).value || "", recycle: S.impRecycle !== false, place: impPlaceOn() };
   let r = await api("/api/import/start", req);
   if (!r.ok && r.ask) { // a base body into a project built on another one
     if (!confirm(r.ask)) return;
@@ -2002,12 +2031,18 @@ async function startImport(a) {
   if (!r.ok) { toast(r.err || "无法开始导入", 4000); return; }
   await load(); poll(true);
 }
+// 「导入后放入场景」: the same choice on every import form, remembered by the program from the last import
+function impPlaceOn() { return S.impPlace === undefined ? !!(S.data.settings || {}).placeAfterImport : S.impPlace; }
+function impPlaceHTML() {
+  return `<label class="check" title="放在场景的「MioVRCA 素材（未穿戴）」下，方便在 Unity 中查看；不会穿到模型上"><input type="checkbox" data-implace${impPlaceOn() ? " checked" : ""}>导入后放入场景</label>`;
+}
 // a virtual Booth purchase: download, then import
 function dlImportSec(a) {
   if (!a.virtual || !(a.purchase && (a.purchase.dls || []).length)) return "";
   const j = impJobFor(a);
   return `<div class="sec imp" id="impsec"><h4>下载并导入到 Unity 工程</h4>${j && !["done", "failed"].includes(j.stage) ? impProgress(j) : (j ? impResult(j) : "")}
     <div class="impform">${projSelect()}<button class="btn" data-d="dlimport">${ICON.download}<span>下载并导入</span></button></div>
+    <div class="impopts">${impPlaceHTML()}</div>
     </div>`;
 }
 
@@ -2051,9 +2086,11 @@ function panJobHTML(j) {
   }
   const pct = panPct(j);
   const line = j.stage === "download" ? `${stageText} ${j.files + 1 > j.fileN ? j.fileN : j.files + 1}/${j.fileN}　${fmtSize(j.done)} / ${fmtSize(j.total)}　${fmtSpeed(j.speed)}` : (j.msg || stageText);
+  // the membership and the connections open now (each its own span: translated apart)
+  const conn = (j.stage === "download" && j.vip ? `<div class="small muted"><span>${esc(j.vip)}</span> · <span>${j.conns || 0} 个连接</span></div>` : "") + bdoJobHTML(j);
   return `<div class="impprog"><div class="t">${esc(line)}</div><div class="bar wide"><i style="width:${pct}%"></i></div>
-    ${j.file && j.stage === "download" ? `<div class="small muted fn">${esc(j.file)}</div>` : ""}
-    ${j.slow ? panSlowNote() : ""}
+    ${conn}${j.file && j.stage === "download" ? `<div class="small muted fn">${esc(j.file)}</div>` : ""}
+    ${j.slow && j.vip !== "超级会员" ? panSlowNote() : ""}
     ${(j.paths || []).length ? `<div class="small muted">仅下载所选的 ${j.paths.length} 项</div>` : ""}
     ${j.project ? `<div class="small muted">下载完成后导入 ${esc(rootLabel(j.project))}</div>` : ""}
     <div class="btnrow"><button class="btn small ghost" data-d="pancancel">取消下载</button></div></div>`;
@@ -2081,10 +2118,12 @@ function panDLSec(a) {
     body += `<div class="selline">${esc(panSelLine(a))}<button class="linkbtn" data-d="panselclear">取消选择</button></div>
       <div class="impform"><button class="btn${b.loggedIn ? " primary" : ""}" data-d="pandlsel">${ICON.download}<span>下载所选</span></button>${a.panOnly ? `<button class="btn ghost" data-d="pandl">下载全部</button>` : ""}</div>
       <div class="impform">${projSelect("pan_proj")}<button class="btn" data-d="pandlselimp">${ICON.cube}<span>下载所选并导入</span></button></div>
+      <div class="impopts">${impPlaceHTML()}</div>
       `;
   } else if (!busy && a.panOnly) {
     body += `<div class="impform"><button class="btn${b.loggedIn ? " primary" : ""}" data-d="pandl">${ICON.download}<span>下载到素材库</span></button></div>
       <div class="impform">${projSelect("pan_proj")}<button class="btn" data-d="pandlimp">${ICON.cube}<span>下载并导入</span></button></div>
+      <div class="impopts">${impPlaceHTML()}</div>
       `;
   }
   return `<div class="sec imp" id="pansec"><h4>${a.panOnly ? "下载到本地" : "从网盘下载"}</h4>${body}</div>`;
@@ -2111,7 +2150,7 @@ function refreshJobs(imp, pans) {
 // paths: only these parts of the card's file list; importTo: a project (true: the one picked in the drawer)
 async function startPanDL(a, importTo, paths) {
   if (importTo === true) { importTo = chosenProject("pan_proj"); if (!importTo) return; setProject(importTo); }
-  const r = await api("/api/pan/download", { key: a.fromPan || a.key, importTo: importTo || "", paths: paths || [] });
+  const r = await api("/api/pan/download", { key: a.fromPan || a.key, importTo: importTo || "", paths: paths || [], place: importTo ? impPlaceOn() : false });
   if (!r.ok) { toast(r.err || "无法开始下载", 4000); return; }
   if (paths && paths.length) S.panSel = new Set();
   if (r.login) { toast("请先登录百度网盘，登录后自动开始下载", 4000); baiduLogin(false); return; }
@@ -2588,6 +2627,7 @@ function versionNewer(a, b) {
 // Settings in sections, one shown at a time (all of them stay in the form, so 「保存」 saves every field).
 const SET_SECS = [["look", "外观"], ["general", "常规"], ["library", "素材"], ["download", "下载与网络"], ["accounts", "账号"], ["tools", "AI 与工具"], ["about", "关于"]];
 function openSettings(focusId) {
+  bdoRead(); // (高速下载's state: its row is drawn again when it is known)
   const s = S.data.settings; const ov = S.data.overrides || {};
   const m = $("#modal");
   const chk = (id, on, label) => `<label class="check opt"><input type="checkbox" id="${id}"${on ? " checked" : ""}> ${label}</label>`;
@@ -2629,6 +2669,7 @@ function openSettings(focusId) {
     <div class="row"><label>代理</label><input id="s_proxy" value="${esc(s.proxy || "")}" placeholder="留空则使用系统代理，例如 127.0.0.1:7890"></div>`,
     accounts: `<div class="row" id="s_baidu"><label>百度网盘${bd.loggedIn ? `<span class="muted small">　${esc(bd.name || "")}${VIP[bd.vip] ? "（" + VIP[bd.vip] + "）" : ""}</span>` : `<span class="muted small">　未登录</span>`}</label>
       <div class="btnrow" style="margin-top:0">${bd.loggedIn ? `<button class="btn small" data-m="bdswitch">更换账号</button><button class="btn small" data-m="bdlogout">退出登录</button>` : `<button class="btn small" data-m="bdlogin">登录</button>`}</div></div>
+    ${bdoRowHTML()}
     <div class="row"><label>Booth 已购${S.data.purchaseSync ? `<span class="muted small">　${esc(S.data.purchaseCount)} 件</span>` : ""}</label>
       <div class="btnrow" style="margin-top:0"><button class="btn small" data-m="sync">同步</button><button class="btn small" data-m="forget">退出登录</button>${S.data.purchaseSync ? `<button class="btn small" data-m="clearp">清空记录</button>` : ""}</div></div>
     <div class="row"><label>Gumroad 已购<span class="muted small">　${gm.loggedIn ? (gm.name ? esc(gm.name) : "已登录") : "未登录"}${gm.count ? `，${esc(gm.count)} 件` : ""}</span></label>
@@ -3405,7 +3446,7 @@ async function openNewProject() {
   const t = PIPE.tool || { plugins: [], bases: [] };
   if (!PIPE.npForm) {
     const picked = {}; for (const pl of t.plugins || []) picked[pl.pkg] = !!pl.default;
-    PIPE.npForm = { name: "", parent: t.defaultDir || "", base: "", plugins: picked, aiKit: true };
+    PIPE.npForm = { name: "", parent: t.defaultDir || "", base: "", plugins: picked, aiKit: true, mode: "new", from: null };
   }
   m.dataset.kind = "np";
   renderNP(); showModal();
@@ -3415,13 +3456,74 @@ function npKeep() {
   const f = PIPE.npForm; if (!f || !$("#np_name")) return;
   f.name = $("#np_name").value; f.parent = $("#np_parent").value; f.base = $("#np_base").value; f.aiKit = $("#np_kit").checked;
   for (const x of document.querySelectorAll("[data-npplug]")) f.plugins[x.dataset.npplug] = x.checked;
+  const fr = f.from;
+  if (fr && fr.scan) {
+    for (const x of document.querySelectorAll("[data-npfp]")) fr.pk[x.dataset.npfp] = x.checked;
+    for (const x of document.querySelectorAll("[data-npff]")) fr.fd[x.dataset.npff] = x.checked;
+    if ($("#np_fset")) fr.settings = $("#np_fset").checked;
+  }
 }
-const NP_STAGES = [["prepare", "准备"], ["repos", "读取插件仓库"], ["packages", "下载插件"], ["settings", "写入工程设置"], ["base", "导入素体"], ["kit", "安装 Unity 插件"]];
+// 依照现有工程创建: the source project read (its packages, Assets folders, settings), each ticked as it suggests
+async function npFromPick(path) {
+  npKeep();
+  const f = PIPE.npForm; if (!f) return;
+  if (!path) { f.from = null; return renderNP(); }
+  f.from = { project: path, loading: true, scan: null, err: "", pk: {}, fd: {}, settings: false };
+  renderNP();
+  let r;
+  try { r = await api("/api/newproject/from/scan", { project: path }); } catch (e) { r = { ok: false, err: e.message }; }
+  const fr = PIPE.npForm && PIPE.npForm.from;
+  if (!fr || fr.project !== path) return; // another project was picked meanwhile
+  fr.loading = false;
+  if (!r.ok) fr.err = r.err || "无法读取来源工程";
+  else {
+    fr.scan = r.scan;
+    for (const p of r.scan.packages || []) fr.pk[p.id] = !!p.ticked;
+    for (const d of r.scan.folders || []) fr.fd[d.path] = !!d.ticked;
+    fr.settings = !!r.scan.settings;
+  }
+  renderNPLive();
+}
+const NP_KIND = { vpm: "VCC 插件", upm: "Unity 包", embedded: "工程内插件" };
+function npFromHTML() {
+  const f = PIPE.npForm, fr = f.from, projs = projsToPick(fr ? fr.project : "");
+  const pick = `<div class="row"><label for="np_from">来源工程</label><select id="np_from"><option value="">选择工程…</option>${projs.map(p =>
+    `<option value="${esc(p.path)}"${fr && fr.project === p.path ? " selected" : ""}>${esc(p.name)}</option>`).join("")}</select></div>`;
+  if (!fr) return pick;
+  if (fr.loading) return pick + `<div class="npfrom"><span class="small muted"><i class="spin"></i>正在读取工程…</span></div>`;
+  if (!fr.scan) return pick + `<div class="npfrom"><div class="small err">${esc(fr.err)}</div></div>`;
+  const s = fr.scan, u = s.unity || {};
+  const group = (title, key, rows, on) => {
+    const n = rows.filter(on).length;
+    return `<div class="npgrp"><div class="npgh"><b>${title}</b><span class="muted small">已选 ${n} / ${rows.length}</span><span class="spacer"></span>
+      ${rows.length ? `<button class="linkbtn" data-np="all" data-g="${key}">全选</button><button class="linkbtn" data-np="inv" data-g="${key}">反选</button>` : ""}</div>
+      <div class="nplist">${rows.length ? rows.map(r => r.html).join("") : `<div class="small muted">没有</div>`}</div></div>`;
+  };
+  const pk = (s.packages || []).map(p => ({ id: p.id, html: `<label class="check opt"><input type="checkbox" data-npfp="${esc(p.id)}"${fr.pk[p.id] ? " checked" : ""}><span>
+      <b>${esc(p.name || p.id)}</b> <span class="muted small" data-i18n="off">${esc(p.version || "")}</span> <span class="nptag">${NP_KIND[p.kind] || esc(p.kind)}</span>${p.ours ? ` <span class="muted small">本软件的编辑器插件（默认不选）</span>` : ""}</span></label>` }));
+  const fd = (s.folders || []).map(d => {
+    const label = d.path === "Assets/（根目录文件）" ? "Assets/（根目录文件）" : d.path.replace(/^Assets\//, "");
+    return { path: d.path, html: `<label class="check opt"><input type="checkbox" data-npff="${esc(d.path)}"${fr.fd[d.path] ? " checked" : ""}><span>
+      <b${label === d.path ? "" : ` data-i18n="off"`}>${esc(label)}</b> <span class="muted small">${fmtSize(d.size || 0)}</span>${d.files ? ` <span class="muted small">${d.files} 个文件</span>` : ""}${d.scenes ? ` <span class="muted small">${d.scenes} 个场景</span>` : ""}${d.partial ? ` <span class="muted small">大小尚未统计完整</span>` : ""}</span></label>` };
+  });
+  const anyScene = (s.folders || []).some(d => d.scenes && fr.fd[d.path]);
+  return pick + `<div class="npfrom">
+    <div class="small muted">选择要带入新工程的内容</div>
+    <div class="small">${u.version ? (u.installed ? `<span class="okline">Unity ${esc(u.version)} 已安装，新工程使用同一版本</span>` : `<span class="warnline">来源工程使用 Unity ${esc(u.version)}，本机未安装，将使用 Unity 2022.3.22f1</span>`) : ""}</div>
+    ${group("插件", "pk", pk, r => fr.pk[r.id])}
+    ${group("Assets 文件夹", "fd", fd, r => fr.fd[r.path])}
+    ${anyScene ? `<div class="small muted">所选场景将作为文件复制</div>` : ""}
+    <label class="check opt"><input type="checkbox" id="np_fset"${fr.settings ? " checked" : ""}${s.settings ? "" : " disabled"}><span><b>工程设置</b> <span class="muted small">标签、层、画质等</span></span></label>
+  </div>`;
+}
+const NP_STAGES = [["prepare", "准备"], ["copy", "复制所选内容"], ["repos", "读取插件仓库"], ["packages", "下载插件"], ["settings", "写入工程设置"], ["base", "导入素体"], ["kit", "安装 Unity 插件"]];
 function renderNP() {
   const m = $("#modal"), t = PIPE.tool || { plugins: [], bases: [] }, f = PIPE.npForm, j = npJob();
   if (j) { // a job is running or just ended: its progress replaces the form
-    const idx = NP_STAGES.findIndex(s => s[0] === j.stage);
-    const list = NP_STAGES.map((s, i) => {
+    // (copying is a stage only of a project made after another)
+    const stages = NP_STAGES.filter(s => s[0] !== "copy" || (f && f.mode === "from") || j.stage === "copy");
+    const idx = stages.findIndex(s => s[0] === j.stage);
+    const list = stages.map((s, i) => {
       const cls = j.stage === "done" || i < idx ? "done" : i === idx && j.stage !== "failed" ? "cur" : i === idx ? "bad" : "";
       return `<li class="${cls}"><i>${cls === "done" ? "✓" : cls === "cur" ? "" : cls === "bad" ? "!" : ""}</i>${s[1]}${i === idx && j.stage !== "done" && j.stage !== "failed" && (j.msg || "").replace(/^正在/, "") !== s[1] ? `<span class="muted">　${esc(j.msg || "")}</span>` : ""}</li>`;
     }).join("");
@@ -3453,30 +3555,45 @@ function renderNP() {
     <div class="row"><label for="np_name">工程名称</label><input id="np_name" value="${esc(f.name)}" placeholder="例如 Kaguya_Mod" autocomplete="off" spellcheck="false"></div>
     <div class="row"><label for="np_parent">保存位置</label><div class="inline"><input id="np_parent" value="${esc(f.parent)}" placeholder="D:\\VRChat_Project" autocomplete="off" spellcheck="false"><button class="btn small" data-np="pick">选择…</button></div>
       </div>
+    <div class="row"><label>创建方式</label><div class="seg"><button class="segbtn${f.mode !== "from" ? " on" : ""}" data-np="mode" data-v="new">全新工程</button><button class="segbtn${f.mode === "from" ? " on" : ""}" data-np="mode" data-v="from">依照现有工程创建</button></div></div>
+    ${f.mode === "from" ? npFromHTML() : ""}
     <div class="row"><label for="np_base">素体</label><select id="np_base"><option value="">不导入（可稍后在素材库中一键导入）</option>${(t.bases || []).map(b => `<option value="${esc(b.key)}"${b.key === f.base ? " selected" : ""}>${esc(b.name)}${(b.bases || []).length ? "（" + esc(b.bases.join("、")) + "）" : ""}</option>`).join("")}</select>
       </div>
-    <div class="row"><label>插件</label><div class="plugs">${(t.plugins || []).map(pl => `<label class="check opt"><input type="checkbox" data-npplug="${esc(pl.pkg)}"${f.plugins[pl.pkg] ? " checked" : ""}${pl.fixed ? " disabled" : ""}><span><b>${esc(pl.label)}</b><span class="muted">　${esc(pl.note || "")}</span></span></label>`).join("")}</div>
+    <div class="row"${f.mode === "from" ? " hidden" : ""}><label>插件</label><div class="plugs">${(t.plugins || []).map(pl => `<label class="check opt"><input type="checkbox" data-npplug="${esc(pl.pkg)}"${f.plugins[pl.pkg] ? " checked" : ""}${pl.fixed ? " disabled" : ""}><span><b>${esc(pl.label)}</b><span class="muted">　${esc(pl.note || "")}</span></span></label>`).join("")}</div>
       </div>
     <label class="check opt"><input type="checkbox" id="np_kit"${f.aiKit ? " checked" : ""}><span>创建完成后安装 Unity 插件并打开 Unity</span></label>
     <div class="npenv">${unity}<br>${alcom}</div>
   </div><div class="mfoot"><button class="btn ghost" data-m="close">取消</button><button class="btn primary" data-np="create">创建</button></div>`;
 }
 function renderNPLive() { if ($("#modal").dataset.kind === "np" && $("#modal").classList.contains("on")) renderNP(); }
+document.addEventListener("change", e => { if (e.target.id === "np_from") npFromPick(e.target.value); });
 async function npAction(b) {
   const what = b.dataset.np, j = npJob();
   if (what === "pick") { npKeep(); const p = await pickInto("选择工程保存位置"); if (p) { PIPE.npForm.parent = p; renderNP(); } return; }
   if (what === "create") {
     npKeep();
-    const f = PIPE.npForm, plugins = Object.keys(f.plugins).filter(k => f.plugins[k]);
+    const f = PIPE.npForm, fr = f.mode === "from" ? f.from : null;
+    // made after another project: its packages replace the usual list (the ones every project needs stay)
+    const plugins = fr ? (PIPE.tool && PIPE.tool.plugins || []).filter(p => p.fixed).map(p => p.pkg) : Object.keys(f.plugins).filter(k => f.plugins[k]);
     if (!f.name.trim()) { toast("请输入工程名称"); $("#np_name").focus(); return; }
     if (!f.parent.trim()) { toast("请选择工程保存位置"); $("#np_parent").focus(); return; }
+    if (f.mode === "from" && !(fr && fr.scan)) { toast("请选择来源工程"); return; }
+    const req = { name: f.name.trim(), parent: f.parent.trim(), base: f.base, plugins, aiKit: f.aiKit };
+    if (fr) req.from = { project: fr.scan.project, packages: Object.keys(fr.pk).filter(k => fr.pk[k]), folders: Object.keys(fr.fd).filter(k => fr.fd[k]), settings: !!fr.settings };
     b.disabled = true; let r;
-    try { r = await api("/api/pipe/create", { name: f.name.trim(), parent: f.parent.trim(), base: f.base, plugins, aiKit: f.aiKit }); }
+    try { r = await api("/api/pipe/create", req); }
     finally { if (!r || !r.ok) b.disabled = false; }
     if (!r.ok) { toast(r.err || "启动失败", 5000); return; }
     S.data.newProject = r.job; renderNP(); poll(true); return;
   }
   if (what === "cancel") { await api("/api/pipe/create/cancel", {}); toast("正在取消"); return poll(true); }
+  if (what === "mode") { npKeep(); PIPE.npForm.mode = b.dataset.v; return renderNP(); }
+  if (what === "all" || what === "inv") { // 全选 / 反选 of one list
+    npKeep();
+    const fr = PIPE.npForm.from, set = b.dataset.g === "pk" ? fr.pk : fr.fd;
+    for (const k of Object.keys(set)) set[k] = what === "all" ? true : !set[k];
+    return renderNP();
+  }
   if (what === "impgo") {
     const cs = (S.data.importJob || {}).choices || [];
     const paths = [...document.querySelectorAll("#modal [data-ipick]")].filter(x => x.checked).map(x => (cs[+x.dataset.ipick] || {}).path).filter(Boolean);
@@ -3863,7 +3980,7 @@ document.addEventListener("click", async e => {
       case "dlimport": {
         const importTo = chosenProject(); if (!importTo) return;
         setProject(importTo); S.dlAsked = Date.now();
-        const r = await api("/api/booth/download", { item: a.purchase.id, ids: [], importTo });
+        const r = await api("/api/booth/download", { item: a.purchase.id, ids: [], importTo, place: impPlaceOn() });
         if (!r.ok) { toast(r.err || "无法开始下载", 3500); return; }
         toast("开始下载，完成后自动导入"); await load(); return poll(true);
       }
@@ -4057,6 +4174,7 @@ document.addEventListener("change", e => {
   }
   if (e.target.id === "imp_proj" || e.target.id === "pan_proj") { S.dirty.delete(e.target.id); if (e.target.value === "__pick") pickProject(e.target); else if (e.target.value) setProject(e.target.value); return; }
   if (e.target.id === "imp_recycle") { S.impRecycle = e.target.checked; return; }
+  if (e.target.matches("[data-implace]")) { S.impPlace = e.target.checked; document.querySelectorAll("[data-implace]").forEach(x => { x.checked = S.impPlace; }); return; }
   if (e.target.dataset && e.target.dataset.aioutfit !== undefined) { const v = e.target.dataset.aioutfit; if (e.target.checked) AI.outfitOff.delete(v); else AI.outfitOff.add(v); return; }
   if (e.target.id === "xy_clip") { xyPref(e.target.checked ? "clipon" : "clipoff"); return; }
   if (e.target.id === "xy_ext") { // (inside the window only after the note about it has been read)
@@ -4182,13 +4300,15 @@ async function poll(fast) {
       if (p.downloads && JSON.stringify(p.downloads) !== JSON.stringify(S.data.downloads || [])) refreshDL(p.downloads);
       if (JSON.stringify([p.importJob || null, p.panJobs || []]) !== JSON.stringify([S.data.importJob || null, S.data.panJobs || []])) refreshJobs(p.importJob, p.panJobs);
       if (JSON.stringify(p.newProject || null) !== JSON.stringify(S.data.newProject || null)) { S.data.newProject = p.newProject || null; renderNPLive(); }
+      if (JSON.stringify(p.pluginJob || null) !== JSON.stringify(S.data.pluginJob || null)) { const was = S.data.pluginJob; S.data.pluginJob = p.pluginJob || null; plLive(was); }
       if (flip && S.view === "lib") renderSide();
       if (typeof W !== "undefined") wishSyncTick(!!p.purchaseBusy, flip); // the wish list's 「立即同步」, and the list again after a sync it began
     }
     if (p.rev !== S.rev) await load();
     announceUpdate();
     if ((S.view === "proj" || S.view === "pipe") && !document.hidden) loadProjects();
-    const dling = (p.tasks || []).some(t => ["download", "pandl", "import", "newproject"].includes(t.name) && t.running);
+    const dling = (p.tasks || []).some(t => ["download", "pandl", "import", "newproject"].includes(t.name) && t.running)
+      || !!(p.pluginJob && !["done", "failed"].includes(p.pluginJob.stage));
     pollTimer = setTimeout(poll, p.busy || p.purchaseBusy || fast || S.updWatch || dling ? 1000 : 5000);
   } catch (e) {
     if (S.updWatch) { S.updRestart = true; if ($("#modal").dataset.kind === "update") renderUpdateModal(); }
