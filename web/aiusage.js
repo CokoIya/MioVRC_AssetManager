@@ -38,7 +38,7 @@ function aiUsageRow(row) {
   const u = (AI.sess || {}).usage;
   if (!u) return "";
   const pk = u.peak ? `<span class="sub warnline"><span>DeepSeek 当前为高峰时段，价格为平时的 2 倍</span> <span>（北京时间 ${esc(u.peak.until)} 后恢复）</span></span>` : "";
-  return row("", "用量", `<span>本次对话</span> ${usageShort(u.conv)}<span class="sub"><span>今日</span> ${usageShort(u.today)}</span>${pk}`,
+  return row("", "用量", `<span>本次对话</span> ${usageShort(u.conv)}<span class="sub">　<span>今日</span> ${usageShort(u.today)}</span>${pk}`,
     `<button class="btn small ghost" data-aiu="open">明细</button>`);
 }
 // under 「运行流水线」: what a run took on average lately, with this model

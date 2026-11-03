@@ -5162,7 +5162,19 @@ I18N.add("en", {
     "衣服等素材仅供查看，尚未穿戴。": "Clothing and other assets are for viewing and are not worn.",
     "导入后放入场景，默认 false；衣服等放在未穿戴素材区": "Place assets in the scene after import; defaults to false. Clothing and similar items go into the assets area as not worn.",
     // --- 2.0.5 导入后放入场景 tooltip ---
-    "放在场景的「MioVRCA 素材（未穿戴）」下，方便在 Unity 中查看；不会穿到模型上": "Placed in the scene under “MioVRCA 素材（未穿戴）” so you can look at it in Unity; it is not put on the avatar"
+    "放在场景的「MioVRCA 素材（未穿戴）」下，方便在 Unity 中查看；不会穿到模型上": "Placed in the scene under “MioVRCA 素材（未穿戴）” so you can look at it in Unity; it is not put on the avatar",
+    // --- 思考强度 for every AI service: the service dialog and the pipeline page ---
+    "最快、最省，适合简单的操作": "Fastest and cheapest, for simple steps",
+    "思考较少，回答更快": "Thinks less, answers sooner",
+    "按服务商的默认设置": "The service's own default",
+    "思考更充分，耗时和用量更多": "Thinks it through; takes longer and uses more",
+    "通义千问在本软件中以不思考方式运行，此设置不生效": "Tongyi Qianwen runs without thinking in this app; this setting has no effect",
+    "当前模型不支持调节思考强度，按默认方式运行": "This model doesn't take a thinking setting and runs as it does by default",
+    "kimi-k3 始终思考，选择「不思考」时以最低强度运行": "kimi-k3 always thinks; 「No thinking」 runs it at its lowest",
+    "GLM-5.3 无法关闭思考，选择「不思考」时按默认方式运行": "GLM-5.3 can't turn thinking off; 「No thinking」 runs it as by default",
+    "该模型无法完全关闭思考，选择「不思考」时以最低强度运行": "This model can't turn thinking off entirely; 「No thinking」 runs it at its lowest",
+    "已切换，从下一条消息起生效": "Switched; applies from the next message",
+    "已切换思考强度": "Thinking level switched"
   },
   "patterns": [
     // --- the player's スキ！ on Booth onto the wish list ---

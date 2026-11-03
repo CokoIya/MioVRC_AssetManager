@@ -3124,6 +3124,13 @@ function aiStatHTML() {
       off: ["", "已关闭，截图仅显示在记录中", set],
     }[c.looks || "unknown"];
     if (window.gptStatRow) h += gptStatRow(row);
+    const gpt = window.gptOn && gptOn(c);
+    if (!gpt) {
+      const info = (c.providers || []).find(x => x.id === c.provider) || {}, name = (c.profiles[c.provider] || {}).model || info.model || "";
+      h += row("ok", "AI 服务", `<span>${esc(info.label || c.provider)}</span>${name ? `<span class="sub" data-i18n="off">　${esc(name)}</span>` : ""}`, set);
+    }
+    const model = (c.profiles[c.provider] || {}).model || "", note = aiThinkNote(c.provider, model, c.thinkRefused);
+    h += row("", "思考强度", `${aiThinkSegHTML(c.think || "", "thinkq", c.provider === "qwen")}${note ? `<span class="sub thinknote">${esc(note)}</span>` : ""}`);
     h += row(looks[0], "识图", looks[1], looks[2] || "");
     if (window.aiUsageRow) h += aiUsageRow(row);
   }
@@ -3312,6 +3319,16 @@ async function aiAction(b) {
   if (b.dataset.aiprov) { aiCfgKeep(); AI.cfgForm.provider = b.dataset.aiprov; return openAICfg(true); }
   if (what === "cfg") { pipeKeep(); AI.back = p ? p.path : null; return openAICfg(); }
   if (what === "hierdef") { $("#pipe_hier").value = AI.cfg.defaultHierarchy; PIPE.hier = AI.cfg.defaultHierarchy; return; }
+  if (what === "thinkq") { // the level, from the pipeline page: saved at once, used from the next request the AI is sent
+    if (b.dataset.v === ((AI.cfg || {}).think || "")) return;
+    b.disabled = true;
+    try {
+      const r = await api("/api/ai/think", { think: b.dataset.v });
+      if (!r.ok) { toast(r.err || "保存失败", 4000); return; }
+      AI.cfg = r.ai; toast((AI.sess || {}).busy ? "已切换，从下一条消息起生效" : "已切换思考强度");
+    } finally { aiFresh(); }
+    return;
+  }
   if (what === "install") {
     const k = (AI.sess || {}).kit || {};
     const sv = S.data.skillsVersion || (PIPE.tool || {}).skillsVersion || ""; // the UnitySkills version the program carries, if it says
@@ -3652,12 +3669,29 @@ function aiCfgBody() {
   const f = AI.cfgForm, v = f.vals[f.provider];
   return { provider: f.provider, baseUrl: v.base.trim(), model: v.model.trim(), key: v.key.trim() };
 }
-// DeepSeek's thinking (its own API only): how hard the model thinks over each kind of request
-const THINK_LEVELS = [["", "标准"], ["fast", "快速"], ["deep", "深度"], ["off", "不思考"]];
-function aiThinkHTML() {
-  const f = AI.cfgForm, cur = f.think != null ? f.think : (AI.cfg.think || "");
-  return `<div class="row"><label>思考强度</label><div class="seg">${THINK_LEVELS.map(([id, label]) => `<button class="segbtn${id === cur ? " on" : ""}" data-ai="think" data-v="${id}" aria-pressed="${id === cur}">${label}</button>`).join("")}</div>
-    </div>`;
+// how hard the AI thinks, for every service (what each service makes of a level: internal/ai/think.go), from the
+// least to the most; 标准 is the service's own default
+const THINK_LEVELS = [["off", "不思考", "最快、最省，适合简单的操作"], ["fast", "快速", "思考较少，回答更快"], ["", "标准", "按服务商的默认设置"], ["deep", "深度", "思考更充分，耗时和用量更多"]];
+// what a level cannot change for this service or model ("" = nothing to say). refused: the service turned down
+// every thinking setting since the program started.
+function aiThinkNote(provider, model, refused) {
+  const m = String(model || "").toLowerCase();
+  if (provider === "qwen") return "通义千问在本软件中以不思考方式运行，此设置不生效";
+  if (refused) return "当前模型不支持调节思考强度，按默认方式运行";
+  if (provider === "kimi" && /k3/.test(m)) return "kimi-k3 始终思考，选择「不思考」时以最低强度运行";
+  if (provider === "glm" && /glm-5\.3/.test(m)) return "GLM-5.3 无法关闭思考，选择「不思考」时按默认方式运行";
+  if (provider === "claude" && /(opus|sonnet|haiku)-5|fable|mythos/.test(m)) return "该模型无法完全关闭思考，选择「不思考」时以最低强度运行";
+  return "";
+}
+// the four buttons; kind: think (the service dialog, saved with it) or thinkq (the pipeline page, saved at once)
+function aiThinkSegHTML(cur, kind, off) {
+  return `<div class="seg thinkseg">${THINK_LEVELS.map(([id, label, tip]) => `<button class="segbtn${id === cur ? " on" : ""}" data-ai="${kind}" data-v="${id}" aria-pressed="${id === cur}" title="${tip}"${off ? " disabled" : ""}>${label}</button>`).join("")}</div>`;
+}
+function aiThinkHTML(provider, model) {
+  const f = AI.cfgForm, c = AI.cfg, cur = f.think != null ? f.think : (c.think || "");
+  const now = provider === c.provider && model === ((c.profiles[provider] || {}).model || ""); // (what the service refused is known of the one set up)
+  const note = aiThinkNote(provider, model, now && c.thinkRefused);
+  return `<div class="row"><label>思考强度</label>${aiThinkSegHTML(cur, "think", provider === "qwen")}${note ? `<div class="muted small thinknote">${esc(note)}</div>` : ""}</div>`;
 }
 // the 识图 part of the service form: who looks at the screenshots the AI takes
 const VISION_MODES = [["", "自动"], ["main", "主模型识别"], ["other", "视觉模型识别"], ["off", "不发送给 AI"]];
@@ -3711,7 +3745,7 @@ async function openAICfg(keep) {
       <div class="inline"><input id="ai_model" value="${esc(v.model)}" placeholder="${esc(info.model || "点击「选择模型」选取，或直接填写模型名称")}" autocomplete="off" spellcheck="false" aria-controls="ai_modelist"><button class="btn small" data-ai="models" aria-expanded="false">选择模型 ▾</button></div>
       <div class="modelist" id="ai_modelist" hidden></div>
       ${aiModelHealthHTML(c, f.provider, v.model)}</div>
-    ${f.provider === "deepseek" ? aiThinkHTML() : ""}
+    ${aiThinkHTML(f.provider, v.model)}
     ${aiVisionHTML()}
     <div class="aitest" id="ai_test" role="status"></div>
   </div><div class="mfoot"><button class="btn" data-ai="test">测试连接</button><span class="spacer"></span><button class="btn ghost" data-ai="cfgclose">取消</button><button class="btn primary" data-ai="cfgsave">保存</button></div>`;
