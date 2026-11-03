@@ -715,6 +715,7 @@ function renderStatus() {
   }
   if (d.dlNeedLogin) h += `<span class="err">下载前需登录 Booth <button class="verbtn linkish" id="btnDLLogin">登录</button></span>`;
   if (running.some(t => t.name === "download")) h += `<button class="verbtn linkish" id="btnDLCancel">取消下载</button>`;
+  if ((d.importJob || {}).stage === "choose") h += `<button class="verbtn linkish" data-impdlg="open">选择…</button>`;
   if ((d.panJobs || []).some(j => j.stage === "login")) h += `<span class="err">下载网盘分享前需登录百度网盘 <button class="verbtn linkish" id="btnBdLogin">登录</button></span>`;
   if (capJob()) h += `<span class="err">网盘下载需要输入验证码 <button class="verbtn linkish" data-cap="open">输入</button></span>`;
   if (running.some(t => t.name === "pandl")) h += `<button class="verbtn linkish" id="btnPanCancel">取消网盘下载</button>`;
@@ -724,6 +725,7 @@ function renderStatus() {
   }
   h += `<span class="right"><button class="verbtn author" data-link="author" title="打开作者的 VRChat 主页">作者：${AUTHOR}</button>${linkBtns("verbtn")}<button class="verbtn" id="btnFeedback">反馈与建议</button><button class="verbtn" id="btnVersion" title="更新日志">v${esc(d.version)}</button></span>`;
   put($("#status"), h);
+  impChooseAuto();
   renderUpdateBtn();
   const sb = $("#btnScan"), st = d.busy ? "正在扫描…" : "重新扫描";
   sb.disabled = !!d.busy; sb.classList.toggle("busy", !!d.busy);
@@ -1914,9 +1916,26 @@ async function pickProject(sel) {
   if (!r.ok) { toast(r.err || "所选文件夹不是 Unity 工程", 4000); sel.value = lastProject() || ""; return; }
   setProject(r.path); await load();
 }
+// 「合并为一个素材」: the folder a card's folder lies in, when the scan made cards of what is in it (two or more)
+// and it is no asset folder itself — one product's versions, unpacked in place, are scanned so
+function mergeUpOf(a) {
+  if (!a.hasDir) return null;
+  const norm = p => String(p || "").replace(/\//g, "\\").replace(/\\+$/, "").toLowerCase();
+  const loc = (a.locations || []).find(l => l.kind === "dir"); if (!loc) return null;
+  const path = String(loc.path).replace(/[\\/]+$/, ""), cut = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
+  if (cut <= 0) return null;
+  const dir = path.slice(0, cut), d = norm(dir);
+  if (((S.data.settings || {}).roots || []).some(r => norm(r) === d)) return null;
+  const n = (S.data.assets || []).filter(x => !x.virtual && (x.locations || []).some(l => norm(l.path).startsWith(d + "\\"))).length;
+  return n >= 2 ? { dir, n } : null;
+}
 function impJobFor(a) {
   const j = S.data.importJob; if (!j) return null;
-  return j.key === a.key || (a.fromPan && j.key === a.fromPan) || (a.purchase && j.key === "purchase:" + a.purchase.id) ? j : null;
+  if (j.key === a.key || (a.fromPan && j.key === a.fromPan) || (a.purchase && j.key === "purchase:" + a.purchase.id)) return j;
+  // a card in what the job imports: the folder was scanned again into cards of other names meanwhile
+  const norm = p => String(p || "").replace(/\//g, "\\").replace(/\\+$/, "").toLowerCase();
+  const tops = (j.places || []).map(norm).filter(Boolean);
+  return tops.length && (a.locations || []).some(l => { const p = norm(l.path); return tops.some(t => p === t || p.startsWith(t + "\\")); }) ? j : null;
 }
 function impBusy() { const j = S.data.importJob; return !!(j && !["done", "failed"].includes(j.stage)); }
 function impResult(j) {
@@ -1989,6 +2008,39 @@ document.addEventListener("click", async e => {
   try { r = await api("/api/import/start", { paths: [b.dataset.impalso], project: b.dataset.impproj, confirmed: true }); } catch (err) { r = { ok: false, err: err.message }; }
   if (!r.ok) { b.disabled = false; toast(r.err || "无法开始导入", 5000); return; }
   poll(true);
+});
+// An import that waits for the player's choice of packages, in a dialog of its own: from 「选择…」 in the status
+// bar, or by itself when no card shows the choice (the card's folder was scanned into other cards, or the card
+// is gone) — an import nobody can answer would hold every other one back.
+function impChooseDlg() {
+  const j = S.data.importJob; if (!j || j.stage !== "choose") return;
+  const m = $("#modal");
+  S.impDlg = j.id; m.dataset.kind = "impchoose";
+  m.innerHTML = `<div class="mhead">导入到 Unity 工程</div><div class="mbody">
+    ${j.project ? `<div class="small muted">目标工程：${esc(rootLabel(j.project))}</div>` : ""}
+    <div class="impchoose"><div>${impChooseHead(j)}</div>${impChoiceRows(j.choices, "data-ipick", c => c.pick)}</div></div>
+    <div class="mfoot"><span class="spacer"></span><button class="btn ghost" data-impdlg="cancel">取消导入</button><button class="btn primary" data-impdlg="go">导入所选</button></div>`;
+  showModal();
+}
+function impChooseAuto() {
+  const j = S.data.importJob, m = $("#modal"), asking = j && j.stage === "choose";
+  if (m.dataset.kind === "impchoose" && m.classList.contains("on") && (!asking || j.id !== S.impDlg)) { closeModal(); return; } // answered, called off, or over
+  if (!asking || S.impDlgShown === j.id || m.classList.contains("on") || S.setup) return;
+  if ((S.data.assets || []).some(a => impJobFor(a))) return; // its card shows the choice
+  S.impDlgShown = j.id; impChooseDlg();
+}
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-impdlg]"); if (!b) return;
+  if (b.dataset.impdlg === "open") return impChooseDlg();
+  const m = $("#modal");
+  if (b.dataset.impdlg === "go") {
+    const cs = (S.data.importJob || {}).choices || [];
+    const paths = [...m.querySelectorAll("[data-ipick]")].filter(x => x.checked).map(x => (cs[+x.dataset.ipick] || {}).path).filter(Boolean);
+    if (!paths.length) { toast("请至少选择一项"); return; }
+    b.disabled = true;
+    await api("/api/import/choose", { paths });
+  } else await api("/api/import/dismiss", {});
+  closeModal(); poll(true);
 });
 // the version checkboxes of an import that waits for a choice: what is ticked, to be ticked again after a redraw
 function ipickMark(root) {
@@ -2380,6 +2432,7 @@ function renderDrawer(key, keepScroll) {
       <div class="muted small" style="margin-bottom:8px">原始名称：${esc(a.rawName)}${(a.hints || []).length ? `　分类文件夹：${esc(a.hints.join(" / "))}` : ""}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${a.hasDir ? `<button class="btn" data-d="split">拆分为多个素材</button>` : ""}
+        ${mergeUpOf(a) ? `<button class="btn" data-d="mergeup" title="${esc(`将「${rootLabel(mergeUpOf(a).dir)}」中的 ${mergeUpOf(a).n} 个素材合并为一个素材`)}">合并为一个素材</button>` : ""}
         <button class="btn" data-d="hide">${u.hidden ? "取消隐藏" : "隐藏"}</button>
         <button class="btn" data-d="ignore" title="扫描时跳过该文件夹">排除</button>
         <button class="btn" data-d="delcard">删除卡片</button>
@@ -2719,7 +2772,7 @@ function closeModal(force) {
   const m = $("#modal"), kind = m.dataset.kind, was = m.classList.contains("on");
   if (kind === "feedback") fbKeep();
   if (kind === "np") npKeep();
-  if (["settings", "update", "feedback", "whatsnew", "aicfg", "np", "xynotice", "pancaptcha", "pandisk", "carddel"].includes(kind)) m.dataset.kind = "";
+  if (["settings", "update", "feedback", "whatsnew", "aicfg", "np", "xynotice", "pancaptcha", "pandisk", "carddel", "impchoose"].includes(kind)) m.dataset.kind = "";
   m.classList.remove("on"); m.setAttribute("aria-hidden", "true"); scrimSync();
   const back = S.modalBack; S.modalBack = null;
   if (was && back && back.isConnected && back !== document.body) back.focus({ preventScroll: true }); // the focus goes back where it was
@@ -4084,6 +4137,12 @@ document.addEventListener("click", async e => {
       case "nogroup": { const u = collectUser(a); u.noGroup = !a.user.noGroup; return saveUser(a, u, u.noGroup ? "已取消版本合并" : "已恢复版本合并"); }
       case "hide": { const u = collectUser(a); u.hidden = !a.user.hidden; return saveUser(a, u, u.hidden ? "已隐藏" : "已取消隐藏"); }
       case "rebooth": { await api("/api/booth", { keys: [a.key], force: true }); toast("正在刷新"); poll(true); return; }
+      case "mergeup": { // the folder this card was split out of, one asset again (the versions of one product, as unpacked)
+        const m = mergeUpOf(a); if (!m) return;
+        if (!confirm(`将「${m.dir}」中的 ${m.n} 个素材合并为一个素材？可在设置的「手动调整」中恢复。`)) return;
+        await api("/api/override", { path: m.dir, mode: "asset" });
+        closeDrawer(); toast("正在重新扫描"); poll(true); return;
+      }
       case "split": case "ignore": {
         const dirLoc = (a.locations || []).find(l => l.kind === "dir") || a.locations[0];
         const ask = btn.dataset.d === "split" ? `将「${dirLoc.path}」拆分为多个素材？` : `排除「${dirLoc.path}」？后续扫描将跳过该文件夹，文件不会被删除。`;

@@ -5174,7 +5174,11 @@ I18N.add("en", {
     "GLM-5.3 无法关闭思考，选择「不思考」时按默认方式运行": "GLM-5.3 can't turn thinking off; 「No thinking」 runs it as by default",
     "该模型无法完全关闭思考，选择「不思考」时以最低强度运行": "This model can't turn thinking off entirely; 「No thinking」 runs it at its lowest",
     "已切换，从下一条消息起生效": "Switched; applies from the next message",
-    "已切换思考强度": "Thinking level switched"
+    "已切换思考强度": "Thinking level switched",
+    // --- an import's choice of packages, answered from the status bar ---
+    "取消导入": "Cancel import",
+    // --- an import's choice of packages from the status bar; 合并为一个素材 ---
+    "合并为一个素材": "Merge into one asset"
   },
   "patterns": [
     // --- the player's スキ！ on Booth onto the wish list ---
@@ -6458,6 +6462,9 @@ I18N.add("en", {
     ["放入场景失败：{x}", "Could not place assets in the scene: {x|raw}"],
     ["读取素材清单失败：{x}", "Could not read the imported asset list: {x|raw}"],
     ["读取场景记录失败：{x}", "Could not read the scene placement record: {x|raw}"],
-    ["未找到导入记录：{x}", "Import record not found: {x|raw}"]
+    ["未找到导入记录：{x}", "Import record not found: {x|raw}"],
+    // --- an import's choice of packages from the status bar; 合并为一个素材 ---
+    ["将「{p}」中的 {#n} 个素材合并为一个素材", "Merge the {n} assets in “{p|raw}” into one"],
+    ["将「{p}」中的 {#n} 个素材合并为一个素材？可在设置的「手动调整」中恢复。", "Merge the {n} assets in “{p|raw}” into one? You can undo this under “Manual adjustments” in Settings."]
   ]
 });
