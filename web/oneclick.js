@@ -107,7 +107,7 @@ async function ocEstimate() {
 function ocEstItem(key) { return OC.est ? (OC.est.items || []).find(x => x.id === key) : null; }
 function ocCompat(x) {
   if (!x) return "";
-  const cls = x.compatibility === "incompatible" ? "bad" : x.compatibility === "unknown" ? "" : "ok";
+  const cls = x.compatibility === "incompatible" || x.compatibility === "mismatch" ? "bad" : x.compatibility === "unknown" ? "" : "ok"; // (mismatch: no version for the base, skipped when it runs)
   return `<span class="tag ${cls}"${x.reason ? ` title="${esc(x.reason)}"` : ""}>${esc(x.compatibilityLabel || "")}</span>`;
 }
 // job states (oneclick_job.go): running, need_player, stopping; paused (the program restarted mid-run), failed,
@@ -223,8 +223,8 @@ function ocPrepDraw() {
   const install = tool => `<button class="btn small" data-oc="install" data-tool="${tool}"${busy ? " disabled" : ""}>下载安装</button>`;
   const rows = [
     ocPrepRow(!!t.hub, "Unity Hub", t.hub ? "已安装" : "未安装", install("hub")),
-    ocPrepRow(!!t.unity, `Unity <span data-i18n="off">${esc(t.unityWant || "")}</span>`, t.unity ? "已安装" : "未安装",
-      install("unity") + (t.hub && t.hubInstallLink ? `<button class="btn small ghost" data-url="${esc(t.hubInstallLink)}">用 Unity Hub 安装</button>` : "")),
+    ocPrepRow(!!t.unity, `Unity <span data-i18n="off">${esc(t.unityWant || "")}</span>`, t.unity ? "已安装" : OC.unityScan ? "正在查找…" : "未找到",
+      OC.unityScan ? "" : install("unity") + (t.hub && t.hubInstallLink ? `<button class="btn small ghost" data-url="${esc(t.hubInstallLink)}">用 Unity Hub 安装</button>` : "")),
     t.hub ? ocPrepRow(!!t.license, "Unity 账号", t.license ? "已登录" : "未登录", `<button class="btn small" data-oc="hub">登录 Unity Hub</button>`) : "",
     ocPrepRow(!!(t.alcom || t.vcc), ocTerm("alcom", "ALCOM"), t.alcom ? "已安装" : t.vcc ? "VCC" : "未安装", install("alcom")),
     ocPrepRow(!!ocWhere(), OC.target ? "已有工程" : "工程位置", ocWhere() ? `<span data-i18n="off">${esc(ocWhere())}</span>` : "未选择", ""),
@@ -238,7 +238,7 @@ function ocPrepDraw() {
     if (busy && j.warn) progress += `<p class="ochint">${esc(j.warn)}</p>`; // the drive is left nearly full
   }
   put(m, `<div class="mhead">准备环境</div>
-    <div class="mbody"><ul class="ocprep">${rows.join("")}</ul>${progress}</div>
+    <div class="mbody"><ul class="ocprep">${rows.join("")}</ul>${t.unity || OC.unityScan ? "" : `<p class="ocprepnote"><span>Unity 已经装好了？</span><button class="linkbtn" data-oc="unitydir">选择安装文件夹</button></p>`}${progress}</div>
     <div class="mfoot"><button class="btn" data-oc="dir">更改工程位置</button><button class="btn" data-oc="recheck">重新检测</button>
       <button class="btn primary" data-oc="go"${ocReady(t) && !busy ? "" : " disabled"}>开始创建</button></div>`);
 }
@@ -392,9 +392,24 @@ function ocMenuRemove() {
   const n = OC.job.need, sel = ocMenuSel(n);
   return ocMenuGroups(n.menus).flatMap(g => sel.g.has(g.name) ? g.roots.map(m => m.id) : g.subs.filter(m => sel.s.has(m.id)).map(m => m.id));
 }
+// 发到社区？: asked once for each run that went well (pictures, not taken back), until 「不再询问」; 「发布到社区」 below
+// stays for later. The runs asked about are kept in this window's storage.
+function ocShareAsked() { try { return JSON.parse(localStorage.getItem("vrclib.ocshare.asked") || "[]"); } catch (e) { return []; } }
+function ocShareAsk(j, off) {
+  try {
+    if (off) localStorage.setItem("vrclib.ocshare", "off");
+    localStorage.setItem("vrclib.ocshare.asked", JSON.stringify([j.id, ...ocShareAsked().filter(x => x !== j.id)].slice(0, 50)));
+  } catch (e) {}
+}
+function ocShareAskHTML(j) {
+  if (typeof socialPublishOneClick !== "function" || j.undone || !((j.result || {}).images || []).length) return "";
+  let off = false; try { off = localStorage.getItem("vrclib.ocshare") === "off"; } catch (e) {}
+  if (off || ocShareAsked().includes(j.id)) return "";
+  return `<div class="ocshareask"><span>把这次的改模发到社区？</span><button class="btn small primary" data-oc="publish">发布到社区</button><button class="btn small ghost" data-oc="shareno">不了</button><button class="linkbtn" data-oc="shareoff">不再询问</button></div>`;
+}
 // the result: pictures, figures, the first notes (the rest behind 「展开」) and a few of the names left untranslated
 function ocResultHTML(j) {
-  const r = j.result || {}, perf = Object.entries(r.performance || {}), notes = r.warnings || [], left = r.untranslated || [];
+  const r = j.result || {}, perf = Object.entries(r.performance || {}), notes = r.warnings || [], left = r.untranslated || [], ask = ocShareAskHTML(j);
   const rank = v => (typeof RANK_ZH === "object" && RANK_ZH[v]) || v, platform = k => ({ pc: "PC", quest: "Quest" })[k] || k;
   return `<div class="ocresult">
     ${(r.images || []).length ? `<div class="ocshots">${r.images.slice(0, 4).map(n => `<img src="/shot?f=${encodeURIComponent(n)}" alt="">`).join("")}</div>` : ""}
@@ -406,7 +421,8 @@ function ocResultHTML(j) {
     ${(OC.notesOpen ? notes : notes.slice(0, 3)).map(w => `<p class="ochint">${esc(w)}</p>`).join("")}
     ${notes.length > 3 ? `<button class="btn small ghost" data-oc="notes">${OC.notesOpen ? "收起" : "展开"}</button>` : ""}
     ${left.length ? `<p class="ochint">未翻译：<span data-i18n="off">${esc(left.slice(0, 6).join("、"))}</span>${left.length > 6 ? ` 等 ${left.length} 项` : ""}</p>` : ""}
-    <div class="btnrow">${typeof frOpen === "function" ? `<button class="btn small" data-oc="fit">3D 预览</button><button class="btn small" data-oc="parts">部件与穿模</button>` : ""}${typeof openAI === "function" ? `<button class="btn small" data-oc="askai" title="在 AI 助手中询问这个模型的问题">问 AI</button>` : ""}<button class="btn small ghost" data-oc="folder">打开工程文件夹</button>${OC.tool && OC.tool.alcom ? `<button class="btn small ghost" data-oc="alcom">在 ALCOM 中打开</button>` : ""}${typeof socialPublishOneClick === "function" ? `<button class="btn small" data-oc="publish">发布到社区</button>` : ""}${j.undone ? `<span class="muted small">已撤销</span>` : `<button class="btn small ghost" data-nb="ocundo">撤销这次改动</button>`}<button class="btn small primary" data-oc="upload"${j.undone ? " disabled" : ""}>上传到 VRChat</button></div></div>`;
+    ${ask}
+    <div class="btnrow">${typeof frOpen === "function" ? `<button class="btn small" data-oc="fit">3D 预览</button><button class="btn small" data-oc="parts">部件与穿模</button>` : ""}${typeof openAI === "function" ? `<button class="btn small" data-oc="askai" title="在 AI 助手中询问这个模型的问题">问 AI</button>` : ""}<button class="btn small ghost" data-oc="folder">打开工程文件夹</button>${OC.tool && OC.tool.alcom ? `<button class="btn small ghost" data-oc="alcom">在 ALCOM 中打开</button>` : ""}${typeof socialPublishOneClick === "function" && !ask ? `<button class="btn small" data-oc="publish">发布到社区</button>` : ""}${j.undone ? `<span class="muted small">已撤销</span>` : `<button class="btn small ghost" data-nb="ocundo">撤销这次改动</button>`}<button class="btn small primary" data-oc="upload"${j.undone ? " disabled" : ""}>上传到 VRChat</button></div></div>`;
 }
 // 上传到 VRChat: the VRChat SDK in the job's Unity builds the avatar and uploads it to the player's account
 // (oneclick_upload.go); the player signs in once in the SDK's panel and confirms there that they own the rights
@@ -620,7 +636,12 @@ document.addEventListener("click", async e => {
     case "dir": return ocChooseDir();
     case "install": return ocInstall(b.dataset.tool);
     case "toolcancel": try { await api("/api/tools/cancel", {}); } catch (_) {} return;
-    case "recheck": await ocTools(); return ocPrepDraw();
+    case "recheck": { // Unity still not found: the drives are looked through again
+      const t = await ocTools();
+      if (t && !t.unity && !OC.unityScan) { OC.unityScan = true; ocPrepDraw(); try { await api("/api/unity/scan", {}); } catch (_) {} OC.unityScan = false; await ocTools(); }
+      return ocPrepDraw();
+    }
+    case "unitydir": { if (await unityDirAdd()) await ocTools(); return ocPrepDraw(); } // Unity installed where it is not looked for (app.js)
     case "go": if (!ocReady(OC.tool)) return; closeModal(true); $("#modal").classList.remove("ocwin"); return ocGo();
     case "hub": case "alcom": { let r; try { r = await api("/api/pipe/launch", { what: what }); } catch (e) { r = { ok: false, err: e.message }; } if (!r.ok) toast(r.err || "无法打开", 4000); return; }
     case "mopen": { const sel = j && j.need && ocMenuSel(j.need), g = b.dataset.g; if (!sel) return; if (sel.open.has(g)) sel.open.delete(g); else sel.open.add(g); return ocJobDraw(); }
@@ -635,7 +656,8 @@ document.addEventListener("click", async e => {
     case "uploadweb": openWeb("https://vrchat.com/home/avatars"); return;
     case "quest": if (typeof qvOpen === "function" && OC.job) qvOpen(OC.job.project); return; // (the Quest page: its checks, its setup, the steps to upload)
     case "questupload": if (j) ocQuestUpload(j); return;
-    case "publish": if (j && typeof socialPublishOneClick === "function") socialPublishOneClick(j); return; // the post composer with the job's pictures and its 装配方案 (social.js)
+    case "publish": if (j && typeof socialPublishOneClick === "function") { ocShareAsk(j, false); socialPublishOneClick(j); } return; // the post composer with the job's pictures and its 装配方案 (social.js)
+    case "shareno": case "shareoff": if (j) { ocShareAsk(j, what === "shareoff"); ocJobDraw(); } return;
     case "report": if (j) ocReport(j); return; // 「发送这次的失败报告」
   }
 });

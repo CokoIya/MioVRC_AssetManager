@@ -165,6 +165,7 @@ const SO_BTN = {
   linkdel: "x", askboothdel: "x", askworkdrop: "x", xworkdrop: "x", xpolldrop: "x", xpolldel: "x", assetdel: "x", assetclear: "x", avclear: "x", bdclear: "x", basedclear: "x", dmpicclear: "x",
   wish: "star", wishmissing: "star", showcasewish: "star", shareimage: "share", recipeshare: "share", recipesharego: "share", recipe: "recipes", wrecipe: "recipes", xrecipe: "recipes", assetrecipe: "recipes",
   assetlib: "library", assetproject: "folder", ask: "ask", booth: "booth",
+  xboothweek: "booth", xmodbooth: "booth", xfirstpost: "pen", xfirstask: "ask", xfillbases: "edit", xfirstskip: "x",
   "sort:latest": "clock", "sort:popular": "hot", recipefilter: "recipes", videofilter: "video",
   "nav:explore": "trend", "nav:groups": "creators", "nav:asks": "ask", "nav:works": "work", "nav:images": "posts", "nav:creators": "creators", "nav:recipes": "recipes",
   "htab:recommend": "spark", "htab:following": "creators", "htab:latest": "clock", "m:close": "x",
@@ -777,7 +778,7 @@ function soHomeDraft() {
   const src = me.signedIn ? p : d;
   SO.home = {
     nickname: src.nickname || "", bio: src.bio || "", langs: (src.langs || []).slice(), vrchat: src.vrchat || "",
-    bases: (src.bases || []).join("，"), links: (src.links || []).map(l => ({ url: l.url, label: l.label || "", kind: l.kind })),
+    bases: ((src.bases || []).length ? src.bases : soTakeBasesPrefill()).join("，"), links: (src.links || []).map(l => ({ url: l.url, label: l.label || "", kind: l.kind })),
     month: src.birthday ? src.birthday.month : 0, day: src.birthday ? src.birthday.day : 0,
     showBirthday: !!(src.show_birthday ?? src.showBirthday), showFollowing: !!(src.show_following ?? src.showFollowing),
     showcase: (src.showcase || []).map(a => ({ booth_id: a.booth_id || a.boothId, name: a.name, shop: a.shop || "" })),
@@ -2550,6 +2551,7 @@ setTimeout(() => soServiceLoad(false), 20000);
 const soPostCache = new Map();
 function soSessionReset() {
   SO.timeline = null; SO.hfeed = null; SO.posts = null; SO.unread = {}; SO.notices = null; SO.dm = null; SO.settings = null; SO.booth = null; SO.page = null; SO.session++;
+  SO.suggest = null; SO.boothPeek = null; SO.me = null; // (为你推荐's cards and 第一次来 are the account's)
   SO.groups = null; if (SO.group) SO.group = {id: SO.group.id, back: SO.group.back, data: null, posts: null}; SO.asks = null;
   soPostCache.clear(); soViewPending.clear(); soViewSent.clear();
 }
@@ -2609,11 +2611,62 @@ function soTimelineFilters() {
   const mine = bases.length ? `<div class="sxbmine"><button class="sxfilter${SO.boothMine ? " on" : ""}" aria-pressed="${SO.boothMine}" data-so="xboothmine">${SO_ICON.person || ""}<span>只看我的素体</span></button><span class="sxbminebases" data-i18n="off" title="${esc(bases.join("、"))}">${esc(bases.slice(0, 4).join("、"))}${bases.length > 4 ? " …" : ""}</span></div>` : "";
   return `<div class="sxfilters" role="radiogroup" aria-label="筛选">${SO_TFILTERS.map(([k, label, i]) => `<button class="sxfilter${SO.timelineFilter === k ? " on" : ""}" role="radio" aria-checked="${SO.timelineFilter === k}" data-so="xfilter" data-filter="${k}">${icon(i)}<span>${label}</span></button>`).join("")}</div>${mine}`;
 }
+// ---------- 为你推荐's cards ----------
+// X puts its modules (who to follow, topics) at fixed places of the timeline; 为你推荐 has three, after the 3rd, 7th
+// and 11th post (after the last when there are fewer): people to follow, new players' works, and the Booth 情报 of
+// the player's bases (the library's, in the program). Each is read once a session; a card with nothing is left out.
+const SO_MODULE_AT = [3, 7, 11];
+function soModulesKick() {
+  if (SO.timelineTab !== "for_you" || SO.timelineFilter) return;
+  if (!SO.suggest) {
+    SO.suggest = {busy: true};
+    soServiceAPI("suggest", {limit: 5}).then(r => { SO.suggest = {accounts: (r.ok && r.accounts) || []}; soDraw(); });
+  }
+  if (!SO.lists && !SO.busy.lists) soLoad("lists");
+  if (SO.service?.account && !SO.me && !SO.busy.me) soLoad("me");
+  if (!SO.boothPeek) {
+    const bases = !SO_WEB && typeof nbMyBases === "function" ? nbMyBases().slice(0, 20) : [];
+    SO.boothPeek = {bases, items: null};
+    soServiceAPI("timeline", Object.assign({tab: "for_you", filter: "booth"}, bases.length ? {bases} : {})).then(r => {
+      const items = [];
+      for (const it of (r.ok && r.items) || []) for (const x of it.post?.boothCards || it.post?.booth_items || []) if (x?.id && items.length < 3) items.push(x);
+      SO.boothPeek = {bases, items}; soDraw();
+    });
+  }
+}
+function soModulesHTML() {
+  const out = [], me = SO.service?.account?.id;
+  const people = (SO.suggest?.accounts || []).filter(a => a.id && a.id !== me).slice(0, 3);
+  if (people.length) out.push(`<section class="sxmodule"><h3 class="sxmodhead">推荐关注</h3>${people.map(a => `<div class="sxmodperson">${soPersonRow(a)}${soFollowBtn(a.id, !!SO.follows?.[a.id], !!a.follows_you)}</div>`).join("")}</section>`);
+  const works = (SO.lists?.newcomers || []).slice(0, 4);
+  if (works.length) out.push(`<section class="sxmodule"><h3 class="sxmodhead">新人作品</h3><div class="sogrid works">${works.map(soWorkCard).join("")}</div></section>`);
+  const peek = SO.boothPeek;
+  if (peek?.items?.length) out.push(`<section class="sxmodule"><div class="sxmodhead"><h3>${peek.bases.length ? "Booth 情报 · 你的素体" : "Booth 情报"}</h3><button class="linkbtn" data-so="xmodbooth">查看全部</button></div>${soBoothCardsHTML({boothCards: peek.items})}</section>`);
+  return out;
+}
+// 第一次来: a signed-in player without a post yet is shown how to begin — a post about the bases they use, or 求同款;
+// a post, 「不了」 or 「求同款」 ends it on this device
+function soFirstPostHTML() {
+  if (SO.timelineTab !== "for_you" || SO.timelineFilter || !SO.service?.account) return "";
+  let off = false; try { off = localStorage.getItem("so-first-post") === "done"; } catch (e) {}
+  const profile = SO.me?.profile, counts = profile?.counts;
+  if (off || !counts || counts.posts > 0) return "";
+  const bases = (!SO_WEB && typeof nbMyBases === "function" ? nbMyBases() : profile.bases || []).slice(0, 3);
+  return `<section class="sxmodule sxfirst"><h3 class="sxmodhead">第一次来？</h3><p class="muted">${bases.length ? esc(`发一条帖子介绍自己：你在用 ${bases.join("、")}，最近在改什么`) : "发一条帖子介绍自己：你在用哪些素体，最近在改什么"}</p>
+    <div class="btnrow"><button class="btn small primary" data-so="xfirstpost">发帖</button><button class="btn small" data-so="xfirstask">求同款</button>${(profile.bases || []).length ? "" : `<button class="btn small" data-so="xfillbases">填写常用素体</button>`}<button class="btn small ghost" data-so="xfirstskip">不了</button></div></section>`;
+}
+function soFirstPostDone() { try { localStorage.setItem("so-first-post", "done"); } catch (e) {} }
+function soTakeBasesPrefill() { const b = SO.basesPrefill || []; SO.basesPrefill = null; return b; }
 function soTimelineDraw() {
   const t = SO.timeline;
   soBar(null, "", soTabs(SO_TTABS, SO.timelineTab, "xtab"));
-  const rows = (t?.items || []).map(it => `${it.kind === "repost" ? `<div class="sxreposted">${SO_ACT.repost}<span data-i18n="off">${esc(it.by?.nickname || "")}</span> <span>转帖了</span></div>` : ""}${soPostCard(it.post)}`).join("");
-  gridPut(`<div class="sxtimeline">${SO.timelineTab === "for_you" ? soTimelineFilters() + soThemeHTML(true) : ""}${SO_WEB && !SO.service?.account ? "" : soComposerHTML("home")}<button class="sxnew" id="sx_new" data-so="xnew"${t?.newer?.length ? "" : " hidden"}>${esc(`显示 ${t?.newer?.length || 0} 条新帖子`)}</button>
+  soModulesKick();
+  const row = it => `${it.kind === "repost" ? `<div class="sxreposted">${SO_ACT.repost}<span data-i18n="off">${esc(it.by?.nickname || "")}</span> <span>转帖了</span></div>` : ""}${soPostCard(it.post)}`;
+  const list = (t?.items || []).map(row), mods = SO.timelineTab === "for_you" && !SO.timelineFilter && t?.loaded ? soModulesHTML() : [];
+  // (from the last place to the first, so that the earlier places stay where they were counted)
+  for (let i = mods.length - 1; i >= 0; i--) list.splice(Math.min(SO_MODULE_AT[i], list.length), 0, mods[i]);
+  const rows = list.join("");
+  gridPut(`<div class="sxtimeline">${SO.timelineTab === "for_you" ? soTimelineFilters() + soThemeHTML(true) : ""}${soFirstPostHTML()}${SO_WEB && !SO.service?.account ? "" : soComposerHTML("home")}<button class="sxnew" id="sx_new" data-so="xnew"${t?.newer?.length ? "" : " hidden"}>${esc(`显示 ${t?.newer?.length || 0} 条新帖子`)}</button>
     ${t?.error ? `<p class="warnc">${esc(t.error)}</p><button class="btn" data-so="xretry">重试</button>` : ""}
     ${rows || (t?.loaded ? soEmpty(t.noBases ? "素材库中还没有素体" : t.bases?.length ? "你的素体还没有 Booth 情报" : "暂无内容") : !t?.error ? `<p class="muted">正在读取…</p>` : "")}
     ${t?.next ? `<button class="btn sxmore" id="sx_more" data-so="xmore"${t.busy ? " disabled" : ""}>加载更多</button>` : t?.loaded ? `<p class="sohend">没有更多了</p>` : ""}</div>`);
@@ -2819,10 +2872,16 @@ async function soNoticesLoad() {
 // person); a reply, a quote or a mention is the post itself under a line that says which it is
 const SO_NOTICE = {like: ["like", "喜欢了你的帖子"], repost: ["repost", "转帖了你的帖子"], quote: ["quote", "引用了你的帖子"], reply: ["reply", "回复了你的帖子"],
   mention: ["mention", "提到了你"], follow: ["follow", "关注了你"], answer: ["answer", "将你的回复设为答案"], featured: ["featured", "你的帖子被选为精选"]};
+// booth_week: the Booth 情报 of the bases of the player's profile, once a week (the service counts the new items)
+function soBoothWeekHTML(n) {
+  const bases = (n.bases || []).filter(Boolean);
+  return `<section class="sxnotice${n.unread ? " unread" : ""}" data-kind="booth_week" data-seq="${esc(n.seq)}"><span class="sxnicon k-booth" aria-hidden="true">${SO_TOOL.booth || ""}</span><div class="sxnoticebody"><div class="sxnoticewho"><span>${esc(`你的素体本周有 ${n.count || 0} 件新衣服`)}</span>${bases.length ? ` <span class="muted" data-i18n="off">${esc(bases.join("、"))}</span>` : ""}</div><button class="btn small" data-so="xboothweek">查看</button></div></section>`;
+}
 function soNoticesDraw() {
   const r = SO.notices;
   soBar(null);
   const rows = (r?.notices || []).map(n => {
+    if (n.kind === "booth_week") return soBoothWeekHTML(n);
     const [icon, label] = SO_NOTICE[n.kind] || SO_NOTICE.mention;
     const actors = n.from || [], first = actors[0], extra = Math.max(0, (n.count || actors.length) - 1);
     const mark = `<span class="sxnicon k-${esc(icon)}" aria-hidden="true">${SO_ACT[icon]}</span>`;
@@ -2870,7 +2929,7 @@ function soComposerHTML(key) {
     ${key === "dialog" && c.workDraft ? soWorkDraftHTML(c.workDraft) : key === "dialog" && !c.reply_to && !c.quote_of && !c.ask ? `<label class="sxworkpick" for="sc_dialog_work"><span>关联作品</span><select id="sc_dialog_work"><option value="">不关联</option>${(SO.lists?.works || []).map(w => `<option value="${esc(w.id)}"${c.work === w.id ? " selected" : ""} data-i18n="off">${esc(w.title)}</option>`).join("")}</select></label>` : ""}
     <p class="warnc small" id="sc_${key}_error" role="status">${esc(c.error)}</p>
     ${soComposeNote(c) ? `<p class="small sxsensnote" id="sc_${key}_note" role="status">${soComposeNote(c)}</p>` : ""}
-    <div class="sxtools"><button class="sxtool" data-so="xpick" title="添加图片" aria-label="添加图片"${c.pictures.length >= 4 || c.busy || c.poll ? " disabled" : ""}>${SO_TOOL.picture}<span data-i18n="off">${c.pictures.length}/4</span></button><button class="sxtool" data-so="emoji" data-for="sc_${key}_text" title="插入表情" aria-label="插入表情"${c.busy ? " disabled" : ""}>${SO_TOOL.smile}</button>${answering ? soAnswerToolsHTML(c) : ""}${!c.reply_to && !c.quote_of && !c.workDraft && !c.ask ? `<button class="sxtool" data-so="xpoll" title="投票" aria-label="投票"${c.pictures.length || c.busy || c.poll ? " disabled" : ""}>${SO_TOOL.poll}</button>` : ""}${c.pictures.length && !c.workDraft ? `<button class="chip sxsenstoggle${c.sensitive ? " on" : ""}" data-so="xsensitive" aria-pressed="${!!c.sensitive}">敏感内容</button>` : ""}<span class="spacer"></span><span id="sc_${key}_count" data-i18n="off" class="sxcnt${count > 1000 ? " over" : count > 900 ? " near" : ""}">${count}/1000</span><button class="btn primary sxsend" data-so="xpublish"${c.busy || pending || count > 1000 ? " disabled" : ""}>${c.reply_to ? "回复" : "发布"}</button></div></section>`;
+    <div class="sxtools"><button class="sxtool" data-so="xpick" title="添加图片" aria-label="添加图片"${c.pictures.length >= 4 || c.busy || c.poll ? " disabled" : ""}>${SO_TOOL.picture}<span data-i18n="off">${c.pictures.length}/4</span></button><button class="sxtool" data-so="emoji" data-for="sc_${key}_text" title="插入表情" aria-label="插入表情"${c.busy ? " disabled" : ""}>${SO_TOOL.smile}</button>${answering ? soAnswerToolsHTML(c) : ""}${!c.reply_to && !c.quote_of && !c.workDraft && !c.ask ? `<button class="sxtool" data-so="xpoll" title="投票" aria-label="投票"${c.pictures.length || c.busy || c.poll ? " disabled" : ""}>${SO_TOOL.poll}</button>` : ""}${key === "home" ? `<button class="sxtool sxasktool" data-so="ask" title="求同款：发图问这套是什么" aria-label="求同款">${SO_TOOL.ask}<span>求同款</span></button>` : ""}${c.pictures.length && !c.workDraft ? `<button class="chip sxsenstoggle${c.sensitive ? " on" : ""}" data-so="xsensitive" aria-pressed="${!!c.sensitive}">敏感内容</button>` : ""}<span class="spacer"></span><span id="sc_${key}_count" data-i18n="off" class="sxcnt${count > 1000 ? " over" : count > 900 ? " near" : ""}">${count}/1000</span><button class="btn primary sxsend" data-so="xpublish"${c.busy || pending || count > 1000 ? " disabled" : ""}>${c.reply_to ? "回复" : "发布"}</button></div></section>`;
 }
 // The pictures under the text, as X lays them out (one large, two side by side, three or four in a grid), each with
 // its own 「移除」 always in sight; a picture still uploading shows at once, dimmed, and can be removed as well
@@ -3120,6 +3179,23 @@ async function soXAction(b, e) {
     case "xtab": SO.timelineTab = b.dataset.tab; return soTimelineLoad(false, true);
     case "xfilter": SO.timelineFilter = b.dataset.filter || ""; try { localStorage.setItem("so-for-you", SO.timelineFilter); } catch (x) {} $(".main").scrollTop = 0; return soTimelineLoad(false, true);
     case "xboothmine": SO.boothMine = !SO.boothMine; try { localStorage.setItem("so-booth-mine", SO.boothMine ? "1" : "0"); } catch (x) {} $(".main").scrollTop = 0; return soTimelineLoad(false, true);
+    case "xmodbooth": case "xboothweek": // Booth 情报, for the player's bases where the program knows them
+      SO.nav = "home"; SO.page = null; SO.timelineTab = "for_you"; SO.timelineFilter = "booth";
+      if (!SO_WEB && typeof nbMyBases === "function" && nbMyBases().length) { SO.boothMine = true; try { localStorage.setItem("so-booth-mine", "1"); } catch (x) {} }
+      try { localStorage.setItem("so-for-you", "booth"); } catch (x) {}
+      if (S.view !== "social") setView("social");
+      $(".main").scrollTop = 0; return soTimelineLoad(false, true);
+    case "xfirstpost": {
+      const bases = (!SO_WEB && typeof nbMyBases === "function" ? nbMyBases() : SO.me?.profile?.bases || []).slice(0, 3);
+      soFirstPostDone(); soDraw(); // (the card goes at once)
+      const text = bases.length ? `#自我介绍 我在用 ${bases.join("、")}，最近在改：` : "#自我介绍 ";
+      return soComposeOpen("", null, {text: window.I18N ? I18N.t(text) : text}); // (the draft in the page's language)
+    }
+    case "xfirstask": soFirstPostDone(); soDraw(); return soComposeOpen("ask");
+    case "xfirstskip": soFirstPostDone(); return soDraw();
+    case "xfillbases": // the profile, its 常用素体 filled from the library when it has none (the player saves it)
+      SO.basesPrefill = !SO_WEB && typeof nbMyBases === "function" ? nbMyBases().slice(0, 20) : [];
+      SO.home = null; SO.nav = "edit"; SO.page = null; soNeed(false); soDraw(); $(".main").scrollTop = 0; return;
     case "xretry": case "xnew": return soTimelineLoad(false, true);
     case "xtranslate": return soTranslate(id);
     case "xtranslatehide": SO.trans.delete(id); return soTranslateDraw(id);

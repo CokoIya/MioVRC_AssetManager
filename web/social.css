@@ -459,6 +459,15 @@ button.sxcount:hover { text-decoration: underline; }
 .sxnoticepost { display: block; border: 0; padding: 0; background: transparent; color: var(--muted); text-align: left; width: 100%; cursor: pointer; }
 .sxperson { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 16px; border-bottom: 1px solid var(--line); }
 .sxperson > .btn { margin-left: auto; }
+/* 为你推荐's cards between the posts (social.js soModulesHTML) and 第一次来 */
+.sxmodule { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.sxmodhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 8px; font-size: 15px; font-weight: 700; }
+.sxmodhead h3 { margin: 0; font-size: 15px; }
+.sxmodperson { display: flex; align-items: center; gap: 8px; }
+.sxmodperson .sxperson { flex: 1; min-width: 0; padding: 6px 0; border: 0; }
+.sxmodule .sxbooth { margin-top: 4px; }
+.sxfirst { box-shadow: inset 3px 0 0 var(--accent); }
+.sxfirst p { margin: 0 0 10px; }
 /* 设置: sections of rows — what it is, what it is now (a note under it), what to do — and switches */
 .sxsettings { padding: 0 0 24px; }
 .sxsettings .sxpagetitle { padding: 20px 20px 8px; }

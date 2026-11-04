@@ -61,6 +61,9 @@
 .ocmg .check { flex: 1; min-width: 0; }
 .ocmsubs { display: grid; gap: 8px; padding-left: 28px; }
 .ocresult { margin-top: 20px; display: grid; gap: 12px; }
+/* 发到社区？ after a run that went well (oneclick.js ocShareAskHTML) */
+.ocshareask { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); }
+.ocshareask > span { margin-right: auto; }
 .ocloc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ocprep { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
 .ocprow { display: grid; grid-template-columns: 14px 120px 1fr auto; align-items: center; column-gap: 12px; min-height: 32px; }
@@ -68,6 +71,8 @@
 .ocprow > i { width: 10px; height: 10px; border-radius: 50%; background: var(--warn); }
 .ocprow.ok > i { background: var(--ok); }
 .ocprow .st { color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ocprepnote { margin: 14px 0 0; color: var(--muted); font-size: 13px; }
+.ocprepnote .linkbtn { margin-left: 4px; }
 .ocjobline { margin-top: 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .ocjobline .ocprog { flex-basis: 100%; }
 .ocshots { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }

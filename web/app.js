@@ -2712,6 +2712,8 @@ function openSettings(focusId) {
       <button class="btn small addbtn" data-pickto="s_roots">${ICON.folder}<span>添加…</span></button></div>
     <div class="row"><label>Unity 工程文件夹</label><textarea id="s_proj">${esc((s.projectRoots || []).join("\n"))}</textarea>
       <button class="btn small addbtn" data-pickto="s_proj">${ICON.folder}<span>添加…</span></button></div>
+    <div class="row"><label>Unity 安装文件夹</label><textarea id="s_unitydirs" placeholder="找不到已安装的 Unity 时，在这里添加它的安装文件夹">${esc((s.unityDirs || []).join("\n"))}</textarea>
+      <div class="btnrow unitydirs"><button class="btn small" data-unitydir="set">${ICON.folder}<span>添加…</span></button><button class="btn small" data-unitydir="scan">重新查找</button><span class="small" id="s_unityfound"></span></div></div>
     <div class="row"><label>素体识别规则</label><textarea id="s_bases" style="min-height:120px" placeholder="显示名=别名1|别名2">${esc((s.bases || []).join("\n"))}</textarea></div>
     <div class="row"><label>风格标签规则</label><textarea id="s_styles" style="min-height:140px" placeholder="标签名=关键词1|关键词2">${esc((s.styles || []).join("\n"))}</textarea></div>
     ${Object.keys(ov).length ? `<div class="row"><label>手动调整</label>${(window.bundleOverrides ? bundleOverrides(ov) : Object.entries(ov)).map(([p, v]) => `<div class="ov"><span>${esc(p)}</span><span class="muted" style="flex:none">${esc({ split: "已拆分", ignore: "已排除", asset: "已合并", bundle: "合集包（自动拆分）" }[v] || v)}</span><button class="btn" data-ov="${esc(p)}">恢复</button></div>`).join("")}</div>` : ""}`,
@@ -2748,7 +2750,7 @@ function openSettings(focusId) {
     <nav class="setnav" aria-label="设置分类">${SET_SECS.map(([id, t]) => `<button class="navitem${id === cur ? " on" : ""}" data-setsec="${id}"${id === cur ? ' aria-current="true"' : ""}>${t}</button>`).join("")}</nav>
     <div class="setpane">${SET_SECS.map(([id, t]) => `<section class="setsec" data-sec="${id}" aria-label="${t}"${id === cur ? "" : " hidden"}>${secs[id]}</section>`).join("")}</div>
   </div><div class="mfoot"><button class="btn ghost" data-m="close">取消</button><button class="btn primary" data-m="save">保存</button></div>`;
-  showModal();
+  showModal(); unitySetFill();
   const f = focusId && $("#" + focusId);
   if (f) { setSecShow(f.closest(".setsec").dataset.sec); f.scrollIntoView({ block: "center" }); f.focus(); }
 }
@@ -3009,7 +3011,8 @@ function renderPipeSide() {
   const tool = (ok, name, val, btn) => `<div class="toolrow"><i class="dot ${ok ? "ok" : "warn"}"></i><span class="k">${name}</span><span class="v">${val}</span>${btn || ""}</div>`;
   let tools = "";
   if (t) {
-    tools += tool(!!t.unity, "Unity", t.unity ? `已安装 ${esc(t.unityWant)}` : `未安装 ${esc(t.unityWant)}`, t.unity ? "" : `<button class="btn small" data-url="${esc(t.hubInstallLink)}" title="通过 Unity Hub 安装 VRChat 要求的版本">安装</button>`);
+    tools += tool(!!t.unity, "Unity", t.unity ? `已安装 ${esc(t.unityWant)}` : `未找到 ${esc(t.unityWant)}`, t.unity ? "" : `<button class="btn small" data-url="${esc(t.hubInstallLink)}" title="通过 Unity Hub 安装 VRChat 要求的版本">安装</button>`);
+    if (!t.unity) tools += `<div class="toolrow toolsub"><span>已经装好了？</span><button class="linkbtn" data-unitydir="pipe">选择安装文件夹</button></div>`;
     tools += tool(t.alcomSeen, "ALCOM", t.alcom ? "已安装" : t.alcomSeen ? "有配置，未找到程序" : "未安装", t.alcom ? `<button class="btn small" data-pipe="launch" data-what="alcom">打开</button>` : `<button class="btn small" data-url="https://vrc-get.anatawa12.com/alcom/" title="ALCOM 是 VCC 的开源替代工具，用于管理工程中的插件">下载</button>`);
     if (t.vcc) tools += tool(true, "VCC", "已安装", `<button class="btn small" data-pipe="launch" data-what="vcc">打开</button>`);
     if (!t.alcom && !t.vcc) tools += tool(false, "VCC", "未安装", "");
@@ -3507,6 +3510,59 @@ async function aiAction(b) {
   }
 }
 
+// ---------- Unity installed where it is not looked for ----------
+// The program looks for Unity by itself (Unity Hub's lists, the usual folders, and once a run the drives); one it still
+// does not find, the player names by its folder — any folder above Unity.exe will do (/api/unity/dir) — or has the
+// drives looked through again (/api/unity/scan). The folders are kept in the settings' 「Unity 安装文件夹」.
+async function toolchainFresh() {
+  try { const r = await api("/api/pipe/toolchain", {}); if (r.ok) PIPE.tool = r.toolchain; } catch (_) {}
+  return PIPE.tool || null;
+}
+async function unityDirAdd() {
+  const p = await pickInto("选择 Unity 的安装文件夹");
+  if (!p) return null;
+  let r; try { r = await api("/api/unity/dir", { path: p }); } catch (e) { r = { ok: false, err: e.message }; }
+  if (!r.ok) { toast(r.err || "这个文件夹里没有找到 Unity", 6000); return null; }
+  toast(r.found ? `已找到 Unity ${r.want}` : `已添加 Unity ${Object.keys(r.editors || {}).join("、")}，但 VRChat 需要的是 ${r.want}`, 6000);
+  return r;
+}
+// the settings' list: folders named or found since the page read the settings are added to it
+function unityDirsMerge(dirs) {
+  const ta = $("#s_unitydirs"); if (!ta) return;
+  const have = ta.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean), key = s => s.toLowerCase().replace(/[\\/]+$/, "");
+  const known = new Set(have.map(key)), add = (dirs || []).filter(d => d && !known.has(key(d)));
+  if (add.length) ta.value = have.concat(add).join("\n");
+}
+function unityFoundHTML(t) {
+  if (!t) return "";
+  if (t.unity) return `<span class="okline">已找到 VRChat 需要的 Unity ${esc(t.unityWant)}</span>`;
+  const vs = Object.keys(t.editorPaths || {});
+  return `<span class="warnline">未找到 VRChat 需要的 Unity ${esc(t.unityWant)}</span>${vs.length ? `<span class="muted">（本机已有 ${esc(vs.join("、"))}）</span>` : ""}`;
+}
+async function unitySetFill() {
+  const ta = $("#s_unitydirs"); if (!ta) return;
+  const was = ta.value, t = await toolchainFresh(), el = $("#s_unityfound"), ta2 = $("#s_unitydirs");
+  if (!el || !t) return;
+  el.innerHTML = unityFoundHTML(t);
+  if (ta2 && ta2.value === was) unityDirsMerge(t.unityDirs);
+}
+async function unityDirAct(b) {
+  const where = b.dataset.unitydir;
+  if (where === "scan") {
+    const el = $("#s_unityfound"); if (el) el.innerHTML = `<span class="muted">正在查找 Unity…</span>`;
+    b.disabled = true;
+    try { await api("/api/unity/scan", {}); } catch (_) {}
+    b.disabled = false;
+  } else {
+    if (where === "np") npKeep();
+    if (!await unityDirAdd()) return; // (what is kept is the install folder found, merged into the settings' list below)
+  }
+  const t = await toolchainFresh();
+  if (where === "set" || where === "scan") { const el = $("#s_unityfound"); if (el) el.innerHTML = unityFoundHTML(t); if (t) unityDirsMerge(t.unityDirs); }
+  else if (where === "pipe") { if (S.view === "pipe") renderPipeSide(); }
+  else if (where === "np") renderNPLive();
+}
+
 // ---------- 新建基础工程 ----------
 function npJob() { return (S.data || {}).newProject || null; }
 function npBusy() { const j = npJob(); return !!(j && !["done", "failed"].includes(j.stage)); }
@@ -3619,7 +3675,7 @@ function renderNP() {
     m._np = html; m.innerHTML = html; repick(); refocus();
     return;
   }
-  const unity = t.unity ? `<span class="okline">Unity ${esc(t.unityWant)} 已安装</span>` : `<span class="warnline">本机未安装 Unity ${esc(t.unityWant)}</span>　<button class="linkbtn" data-url="${esc(t.hubInstallLink || "")}">通过 Unity Hub 安装</button>`;
+  const unity = t.unity ? `<span class="okline">Unity ${esc(t.unityWant)} 已安装</span>` : `<span class="warnline">未找到 Unity ${esc(t.unityWant)}</span>　<button class="linkbtn" data-url="${esc(t.hubInstallLink || "")}">通过 Unity Hub 安装</button>　<span>已经装好了？</span><button class="linkbtn" data-unitydir="np">选择安装文件夹</button>`;
   const alcom = t.alcom ? `<span class="okline">已安装 ALCOM，新工程将自动加入其工程列表</span>` : t.alcomSeen ? `<span class="muted">检测到 ALCOM / VCC 配置，新工程将加入其工程列表</span>` : `<span class="muted">未安装 ALCOM / VCC 也可创建，插件将直接从官方仓库下载</span>`;
   m.innerHTML = `<div class="mhead">新建基础工程</div><div class="mbody">
     <div class="row"><label for="np_name">工程名称</label><input id="np_name" value="${esc(f.name)}" placeholder="例如 Kaguya_Mod" autocomplete="off" spellcheck="false"></div>
@@ -3857,6 +3913,8 @@ document.addEventListener("click", async e => {
   if (t.closest("#btnNewProj")) return openNewProject();
   const npb = t.closest("[data-np]");
   if (npb) return npAction(npb);
+  const udb = t.closest("[data-unitydir]");
+  if (udb) return unityDirAct(udb);
   const pp = t.closest("[data-pipeproj]");
   if (pp) { const p = pipeProject(pp.dataset.pipeproj); if (p) pipeSelect(p); return; }
   const pb = t.closest("[data-pipe]");
@@ -4241,7 +4299,7 @@ document.addEventListener("click", async e => {
     }
     if (b.dataset.m === "save") {
       const lines = id => $(id).value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-      const s = Object.assign({}, S.data.settings, { roots: lines("#s_roots"), projectRoots: lines("#s_proj"), proxy: $("#s_proxy").value.trim(),
+      const s = Object.assign({}, S.data.settings, { roots: lines("#s_roots"), projectRoots: lines("#s_proj"), unityDirs: lines("#s_unitydirs"), proxy: $("#s_proxy").value.trim(),
         autoBooth: $("#s_auto").checked, manualRescan: !$("#s_rescan").checked, bases: lines("#s_bases"),
         hideZh: !$("#s_zh").checked, noAutoMatch: !$("#s_match").checked, windowMode: $("#s_win").value, styles: lines("#s_styles"),
         noUpdateCheck: !$("#s_upd").checked, noWatch: !$("#s_watch").checked, noSync: !$("#s_sync").checked,

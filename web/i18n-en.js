@@ -5178,7 +5178,39 @@ I18N.add("en", {
     // --- an import's choice of packages, answered from the status bar ---
     "取消导入": "Cancel import",
     // --- an import's choice of packages from the status bar; 合并为一个素材 ---
-    "合并为一个素材": "Merge into one asset"
+    "合并为一个素材": "Merge into one asset",
+    // --- community growth: 为你推荐's cards, 第一次来, 求同款 in the composer, the weekly note of the player's bases, 发到社区？ after one-click ---
+    "推荐关注": "Who to follow",
+    "Booth 情报 · 你的素体": "Booth news · your bases",
+    "查看全部": "See all",
+    "发一条帖子介绍自己：你在用哪些素体，最近在改什么": "Introduce yourself: which bases you use and what you're working on",
+    "填写常用素体": "Add your bases",
+    "不了": "No thanks",
+    "求同款：发图问这套是什么": "Find this outfit: post a picture and ask what it is",
+    "#自我介绍 ": "#intro ",
+    "把这次的改模发到社区？": "Share this avatar edit with the community?",
+    "不再询问": "Don't ask again",
+    // --- Booth 情报's daily summary: what the admin page says of a run ---
+    "机器人账号不可用，没有发布": "The bot account is unavailable; nothing was posted",
+    "保存失败，请查看服务日志": "Couldn't save; see the service log",
+    "没有可发布的新商品": "No new items to post",
+    "发布失败：": "Couldn't post: ",
+    // --- One-click item skips and missing menu objects ---
+    "不适配": "Does not fit",
+    "没有可装配的素材，请更换素材后重试": "No assets could be fitted. Choose other assets and try again.",
+    // --- the start of the bridge's 「模型中未找到」 answer (read by one-click to find the missing object) ---
+    "模型中未找到「": "Not found in the model: “",
+    // --- Unity installed where it is not looked for: the settings' folders, 「选择安装文件夹」, looking again ---
+    "Unity 安装文件夹": "Unity installation folders",
+    "找不到已安装的 Unity 时，在这里添加它的安装文件夹": "If your installed Unity is not found, add its installation folder here",
+    "重新查找": "Search again",
+    "已经装好了？": "Already installed?",
+    "Unity 已经装好了？": "Unity already installed?",
+    "选择安装文件夹": "Choose its installation folder",
+    "这个文件夹里没有找到 Unity": "No Unity was found in this folder",
+    "正在查找 Unity…": "Searching for Unity…",
+    // --- Unity installed where it is not looked for: the folder picked, and opening a project without its Unity ---
+    "这个文件夹里没有找到 Unity，请选择 Unity 的安装文件夹（里面有 Editor 文件夹）": "No Unity was found in this folder. Choose the Unity installation folder (the one with the Editor folder in it)"
   },
   "patterns": [
     // --- the player's スキ！ on Booth onto the wish list ---
@@ -6465,6 +6497,32 @@ I18N.add("en", {
     ["未找到导入记录：{x}", "Import record not found: {x|raw}"],
     // --- an import's choice of packages from the status bar; 合并为一个素材 ---
     ["将「{p}」中的 {#n} 个素材合并为一个素材", "Merge the {n} assets in “{p|raw}” into one"],
-    ["将「{p}」中的 {#n} 个素材合并为一个素材？可在设置的「手动调整」中恢复。", "Merge the {n} assets in “{p|raw}” into one? You can undo this under “Manual adjustments” in Settings."]
+    ["将「{p}」中的 {#n} 个素材合并为一个素材？可在设置的「手动调整」中恢复。", "Merge the {n} assets in “{p|raw}” into one? You can undo this under “Manual adjustments” in Settings."],
+    // --- community growth: 为你推荐's cards, 第一次来, 求同款 in the composer, the weekly note of the player's bases, 发到社区？ after one-click ---
+    ["发一条帖子介绍自己：你在用 {x}，最近在改什么", "Introduce yourself: you use {x|raw} — what are you working on?"],
+    ["#自我介绍 我在用 {x}，最近在改：", "#intro I use {x|raw}. Working on: "],
+    ["你的素体本周有 {#n} 件新衣服", "{n} new outfit{n|s} for your bases this week"],
+    // --- Booth 情报's daily summary post ---
+    ["今日 Booth 情报：{#n} 件", "Today's Booth news: {n} item{n|s}"],
+    ["全新发布：{#n} 件", "New: {n}"],
+    ["打折：{#n} 件", "On sale: {n}"],
+    ["限时免费：{#n} 件", "Free for a while: {n}"],
+    ["预售：{#n} 件", "Preorder: {n}"],
+    // --- Booth 情报's daily summary: what the admin page says of a run ---
+    ["发布了 1 帖（{#n} 件商品）", "Posted 1 post ({n} item{n|s})"],
+    // --- One-click item skips and missing menu objects ---
+    ["没有适配「{base}」的版本，运行时会跳过", "No version for “{base|raw}”; this item will be skipped"],
+    ["「{item}」没有适配「{base}」的版本，已跳过", "“{item|raw}” has no version for “{base|raw}” and was skipped"],
+    ["「{item}」只有整套模型，没有可单独穿上的衣服，已跳过", "“{item|raw}” only contains complete avatars, with no separate outfit to wear, and was skipped"],
+    ["「{item}」里没有可穿戴的 prefab（可能是材质或贴图包），已跳过", "“{item|raw}” has no wearable prefab (it may be a material or texture pack) and was skipped"],
+    ["「{item}」的物体未找到，已跳过该菜单项", "The object for “{item|raw}” was not found; its menu entry was skipped"],
+    // --- Unity installed where it is not looked for: the settings' folders, 「选择安装文件夹」, looking again ---
+    ["已找到 Unity {v}", "Found Unity {v|raw}"],
+    ["已添加 Unity {list}，但 VRChat 需要的是 {v}", "Added Unity {list|raw}, but VRChat needs {v|raw}"],
+    ["已找到 VRChat 需要的 Unity {v}", "Found Unity {v|raw}, the version VRChat needs"],
+    ["未找到 VRChat 需要的 Unity {v}", "Unity {v|raw}, the version VRChat needs, was not found"],
+    ["（本机已有 {list}）", " (this computer has {list|raw})"],
+    // --- Unity installed where it is not looked for: the folder picked, and opening a project without its Unity ---
+    ["本机未找到 Unity {v}：请通过 Unity Hub 安装；已经安装的，请在「设置」→「素材」→「Unity 安装文件夹」中添加它的安装文件夹", "Unity {v|raw} was not found on this computer. Install it through Unity Hub; if it is already installed, add its installation folder in Settings → Assets → “Unity installation folders”"]
   ]
 });

@@ -506,7 +506,7 @@
   struct("CommentReq", "text string; reply_to string?");
   struct("Comment", "id string; work string?; post string?; author Person; by_author bool?; text string; reply_to string?; created string");
   struct("Comments", "comments []Comment; next string?");
-  struct("Notice", "seq int; kind string; work string?; post string?; from []Person; count int; comment string?; at string");
+  struct("Notice", "seq int; kind string; work string?; post string?; from []Person; count int; bases []string?; comment string?; at string");
   struct("Notices", "notices []Notice");
   struct("ReportReq", "reason string?; sensitive bool?");
   struct("ProfileCounts", "works int; recipes int; followers int; following int; posts int; likes int");
@@ -528,7 +528,7 @@
   struct("PostPage", "posts []Post; next string?");
   struct("Thread", "ancestors []Post; post Post; replies []Post; next string?");
   struct("Timeline", "items []TimelineItem; next string?");
-  struct("TimelineItem", "kind string; post Post; by *Person?");
+  struct("TimelineItem", "kind string; post Post; by *Person?; head bool?");
   struct("HandleAvailable", "available bool");
   struct("Search", "posts []Post?; accounts []Profile?; next string?");
   struct("Trends", "trends []Trend");
@@ -1127,7 +1127,8 @@
     const headers = Object.assign({ Accept: "application/json" }, extra || {});
     if (input !== undefined) headers["Content-Type"] = "application/json";
     if (token) headers.Authorization = "Bearer " + token;
-    if (path === "views") headers["X-MioVRCA-Device"] = viewDevice();
+    // (the timeline too: what this device has seen of a featured or promoted post decides whether it heads 为你推荐)
+    if (path === "views" || path.startsWith("timeline?")) headers["X-MioVRCA-Device"] = viewDevice();
     const timeout = path === "auth/code" || path === "me/email/code" || path === "me/booth/check" ? 25000 : 10000;
     const bytes = await exchange(method, BASE + "/api/v1/" + path, headers, input === undefined ? undefined : JSON.stringify(input),
       timeout, token, [token, linkSecret || ""]);
@@ -3111,7 +3112,11 @@
     let page = zero("Timeline");
     if (!err) err = await attempt(async () => { page = await call("GET", "timeline?" + valuesEncode(q), a.token, undefined, "Timeline"); });
     const row = timelineRows(a), items = [];
-    for (const it of page.items || []) items.push({ kind: it.kind, post: marshal("timelinePost", await row(it.post)), by: marshal("*Person", it.by) });
+    for (const it of page.items || []) {
+      const item = { kind: it.kind, post: marshal("timelinePost", await row(it.post)), by: marshal("*Person", it.by) };
+      if (it.head) item.head = true; // (the one-time head of 为你推荐: not kept for the quick start, web.js webKeep)
+      items.push(item);
+    }
     Object.assign(res, { items, next: page.next });
     return answer(res, err);
   });
@@ -3212,6 +3217,20 @@
   // ---------- social/pages.go ----------
 
   const RE_MESSAGE_ID = /^m[1-9][0-9]{0,18}$/;
+  route("suggest", async b => {
+    let limit = 5;
+    if (has(b, "limit")) {
+      const r = unmarshal(b, "limit", "int", limit);
+      if (!r.ok || r.v < 1 || r.v > 10) return badRequest();
+      limit = r.v;
+    }
+    const a = accountCopy();
+    let profiles = zero("Profiles");
+    const err = await attempt(async () => {
+      profiles = await call("GET", "suggest/accounts?limit=" + limit, a.token, undefined, "Profiles");
+    });
+    return answer({ accounts: marshal("[]pagePerson", peopleRows(profiles.accounts)) }, err);
+  });
   route("profile/posts", async b => {
     const id = str(b, "id"), filter = firstOf(str(b, "filter"), "posts"), after = str(b, "after");
     let validID = accountIDOK(id);
@@ -3380,7 +3399,7 @@
         try { posts.set(n.post, await row(await svc.getPost(a.token, n.post))); } catch (e) { goErr(e); posts.set(n.post, null); }
       }
       const actors = (n.from || []).map(actor => Object.assign(zero("Profile"), actor, { pic: profilePic(actor) }));
-      rows.push({ seq: n.seq, kind: n.kind, post: n.post, from: marshal("[]pagePerson", actors), count: n.count, at: n.at,
+      rows.push({ seq: n.seq, kind: n.kind, post: n.post, from: marshal("[]pagePerson", actors), count: n.count, bases: marshal("[]string", n.bases), at: n.at,
         unread: n.seq > a.seen, item: marshal("*timelinePost", posts.has(n.post) ? posts.get(n.post) : null) });
     }
     cache.noticeAccount = a.acc.id; cache.noticeMax = highest;

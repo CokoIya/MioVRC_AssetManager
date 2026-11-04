@@ -184,6 +184,8 @@ function webKeepKey(route, body) {
   return "miovrca.web.keep:" + uid + ":" + route + (args ? "?" + args : "");
 }
 function webKeep(key, r) {
+  // (a post that headed 为你推荐 once — 精选, 运营推广 — is not kept: the next start would show it at the top again)
+  if (Array.isArray(r.items) && r.items.some(it => it && it.head)) r = { ...r, items: r.items.filter(it => !(it && it.head)) };
   try { const s = JSON.stringify(r); if (s.length < 300000) localStorage.setItem(key, s); } catch (e) {} // (full: the page works without it)
 }
 function webKept(key) {

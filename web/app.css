@@ -911,6 +911,9 @@ body.paneon .toast.on { transform: translate(-50%, 0); }
 .toolrow .k { color: var(--text); flex: none; }
 .toolrow .v { flex: 1; min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toolrow .btn.small { height: 26px; padding: 0 8px; font-size: 12px; }
+.toolrow.toolsub { padding-top: 0; padding-left: 22px; flex-wrap: wrap; gap: 2px 6px; color: var(--muted); }
+.modal .btnrow.unitydirs { align-items: center; margin-top: 6px; }
+.modal .btnrow.unitydirs #s_unityfound { margin-left: 4px; }
 .empty .btnrow.center { display: flex; gap: 10px; justify-content: center; margin-top: 16px; }
 .empty .btnrow.center .btn { display: inline-flex; align-items: center; gap: 6px; }
 .npstages { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }

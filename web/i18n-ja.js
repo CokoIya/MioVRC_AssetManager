@@ -5178,7 +5178,39 @@ I18N.add("ja", {
     // --- an import's choice of packages, answered from the status bar ---
     "取消导入": "インポートを中止",
     // --- an import's choice of packages from the status bar; 合并为一个素材 ---
-    "合并为一个素材": "1 つのアセットにまとめる"
+    "合并为一个素材": "1 つのアセットにまとめる",
+    // --- community growth: 为你推荐's cards, 第一次来, 求同款 in the composer, the weekly note of the player's bases, 发到社区？ after one-click ---
+    "推荐关注": "おすすめユーザー",
+    "Booth 情报 · 你的素体": "Booth 情報 · あなたの素体",
+    "查看全部": "すべて見る",
+    "发一条帖子介绍自己：你在用哪些素体，最近在改什么": "自己紹介を投稿しましょう：使っている素体と、最近改変しているもの",
+    "填写常用素体": "よく使う素体を入力",
+    "不了": "今はしない",
+    "求同款：发图问这套是什么": "同じ衣装を探す：画像を投稿して何の衣装か聞く",
+    "#自我介绍 ": "#自己紹介 ",
+    "把这次的改模发到社区？": "今回の改変をコミュニティに投稿しますか？",
+    "不再询问": "今後は確認しない",
+    // --- Booth 情报's daily summary: what the admin page says of a run ---
+    "机器人账号不可用，没有发布": "ボットアカウントが使えないため、投稿していません",
+    "保存失败，请查看服务日志": "保存できませんでした。サービスのログを確認してください",
+    "没有可发布的新商品": "投稿できる新しい商品はありません",
+    "发布失败：": "投稿できませんでした：",
+    // --- One-click item skips and missing menu objects ---
+    "不适配": "非対応",
+    "没有可装配的素材，请更换素材后重试": "セットアップできる素材がありません。素材を変更して再試行してください",
+    // --- the start of the bridge's 「模型中未找到」 answer (read by one-click to find the missing object) ---
+    "模型中未找到「": "モデル内に見つかりません：「",
+    // --- Unity installed where it is not looked for: the settings' folders, 「选择安装文件夹」, looking again ---
+    "Unity 安装文件夹": "Unity のインストールフォルダー",
+    "找不到已安装的 Unity 时，在这里添加它的安装文件夹": "インストール済みの Unity が見つからない場合は、ここにインストールフォルダーを追加してください",
+    "重新查找": "再検索",
+    "已经装好了？": "インストール済みですか？",
+    "Unity 已经装好了？": "Unity はインストール済みですか？",
+    "选择安装文件夹": "インストールフォルダーを選択",
+    "这个文件夹里没有找到 Unity": "このフォルダーに Unity が見つかりません",
+    "正在查找 Unity…": "Unity を検索中…",
+    // --- Unity installed where it is not looked for: the folder picked, and opening a project without its Unity ---
+    "这个文件夹里没有找到 Unity，请选择 Unity 的安装文件夹（里面有 Editor 文件夹）": "このフォルダーに Unity が見つかりません。Unity のインストールフォルダー（Editor フォルダーがあるフォルダー）を選んでください"
   },
   "patterns": [
     // --- the player's スキ！ on Booth onto the wish list ---
@@ -6464,6 +6496,32 @@ I18N.add("ja", {
     ["未找到导入记录：{x}", "インポート記録が見つかりません：{x|raw}"],
     // --- an import's choice of packages from the status bar; 合并为一个素材 ---
     ["将「{p}」中的 {#n} 个素材合并为一个素材", "「{p|raw}」の {n} 件のアセットを 1 つにまとめます"],
-    ["将「{p}」中的 {#n} 个素材合并为一个素材？可在设置的「手动调整」中恢复。", "「{p|raw}」の {n} 件のアセットを 1 つにまとめますか？設定の「手動調整」で元に戻せます。"]
+    ["将「{p}」中的 {#n} 个素材合并为一个素材？可在设置的「手动调整」中恢复。", "「{p|raw}」の {n} 件のアセットを 1 つにまとめますか？設定の「手動調整」で元に戻せます。"],
+    // --- community growth: 为你推荐's cards, 第一次来, 求同款 in the composer, the weekly note of the player's bases, 发到社区？ after one-click ---
+    ["发一条帖子介绍自己：你在用 {x}，最近在改什么", "自己紹介を投稿しましょう：{x|raw} を使っていて、最近改変しているもの"],
+    ["#自我介绍 我在用 {x}，最近在改：", "#自己紹介 {x|raw} を使っています。最近の改変："],
+    ["你的素体本周有 {#n} 件新衣服", "あなたの素体の新しい衣装が今週 {n} 件"],
+    // --- Booth 情报's daily summary post ---
+    ["今日 Booth 情报：{#n} 件", "今日の Booth 情報：{n} 点"],
+    ["全新发布：{#n} 件", "新作：{n} 点"],
+    ["打折：{#n} 件", "セール：{n} 点"],
+    ["限时免费：{#n} 件", "期間限定無料：{n} 点"],
+    ["预售：{#n} 件", "予約販売：{n} 点"],
+    // --- Booth 情报's daily summary: what the admin page says of a run ---
+    ["发布了 1 帖（{#n} 件商品）", "1 件投稿しました（商品 {n} 点）"],
+    // --- One-click item skips and missing menu objects ---
+    ["没有适配「{base}」的版本，运行时会跳过", "「{base|raw}」対応版がないため、実行時にスキップします"],
+    ["「{item}」没有适配「{base}」的版本，已跳过", "「{item|raw}」には「{base|raw}」対応版がないため、スキップしました"],
+    ["「{item}」只有整套模型，没有可单独穿上的衣服，已跳过", "「{item|raw}」にはアバター一式しかなく、単体で着せられる衣装がないため、スキップしました"],
+    ["「{item}」里没有可穿戴的 prefab（可能是材质或贴图包），已跳过", "「{item|raw}」には着用できる prefab がありません（マテリアルやテクスチャのパックの可能性があります）。スキップしました"],
+    ["「{item}」的物体未找到，已跳过该菜单项", "「{item|raw}」のオブジェクトが見つからないため、メニュー項目をスキップしました"],
+    // --- Unity installed where it is not looked for: the settings' folders, 「选择安装文件夹」, looking again ---
+    ["已找到 Unity {v}", "Unity {v|raw} が見つかりました"],
+    ["已添加 Unity {list}，但 VRChat 需要的是 {v}", "Unity {list|raw} を追加しましたが、VRChat に必要なのは {v|raw} です"],
+    ["已找到 VRChat 需要的 Unity {v}", "VRChat に必要な Unity {v|raw} が見つかりました"],
+    ["未找到 VRChat 需要的 Unity {v}", "VRChat に必要な Unity {v|raw} が見つかりません"],
+    ["（本机已有 {list}）", "（この PC にあるのは {list|raw}）"],
+    // --- Unity installed where it is not looked for: the folder picked, and opening a project without its Unity ---
+    ["本机未找到 Unity {v}：请通过 Unity Hub 安装；已经安装的，请在「设置」→「素材」→「Unity 安装文件夹」中添加它的安装文件夹", "この PC に Unity {v|raw} が見つかりません。Unity Hub でインストールしてください。インストール済みの場合は、「設定」→「アセット」→「Unity のインストールフォルダー」にそのインストールフォルダーを追加してください"]
   ]
 });
