@@ -153,6 +153,13 @@ select, .btn {
 .resultbar { display: flex; align-items: center; gap: 10px; min-height: 30px; margin-bottom: 12px; color: var(--muted); font-size: 13px; flex-wrap: wrap; }
 .resultbar b { color: var(--text); font-size: 15px; }
 .resultbar .clear { color: var(--accent); background: none; border: 0; cursor: pointer; padding: 0; }
+.side .sideclear { color: var(--accent); margin-bottom: 4px; }
+.side .sideclear svg { width: 14px; height: 14px; flex: none; }
+.pickav { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.pickav .check span.small { margin-left: 8px; }
+.aiallow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+.aiallow .aiop { display: inline-flex; align-items: center; gap: 6px; }
+.aiallow code { font-size: 12px; padding: 1px 6px; border-radius: 5px; background: var(--card); border: 1px solid var(--line); color: var(--text); }
 .warnline { color: var(--warn); }
 /* how a search with "/", "-" or quotes was read */
 .qsense { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; cursor: help; }

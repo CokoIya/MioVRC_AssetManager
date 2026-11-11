@@ -389,7 +389,7 @@ function renderSide() {
   const tally = (list, keysOf) => { const m = {}; for (const a of list) for (const k of keysOf(a)) (m[k] = m[k] || new Set()).add(unitKey(a)); const out = {}; for (const k in m) out[k] = m[k].size; return out; };
   const rcb = all.filter(a => matches(a, "recent"));
   const nNew = countUnits(rcb.filter(a => a.new)), nNews = countUnits(rcb.filter(hasNews)), nUpd = countUnits(rcb.filter(hasUpd));
-  let h = "";
+  let h = libFiltered() ? `<button class="navitem sideclear" data-clearf>${ICON.x}<span>清除筛选</span></button>` : ""; // (at hand however far the list goes)
   if (nNew || nNews || nUpd || S.recent) {
     h += `<h3>动态</h3>` + (nNew || S.recent === "new" ? navItem("新增", nNew, S.recent === "new", `data-recent="new"`, "#3fd0a6") : "") + ltRecentNav(nUpd) +
       (nNews || S.recent === "news" ? navItem("有变更", nNews, S.recent === "news", `data-recent="news"`, "#8aa2ff") : "");
@@ -569,14 +569,23 @@ function cardHTML(a) {
     </div></article>`;
 }
 
+// any filter of the library in use (the search included)
+function libFiltered() {
+  return !!(S.q || S.cat !== "全部" || S.style || S.recent || S.bases.size || S.usage !== "all" || S.share !== "all" || S.root !== "all" || S.purchase !== "all" || S.link !== "all");
+}
+function clearFilters() {
+  S.q = ""; $("#q").value = ""; S.cat = "全部"; S.style = ""; S.recent = ""; S.bases.clear(); S.usage = S.share = S.root = S.purchase = S.link = "all";
+  renderSide(); renderGrid(); $(".main").scrollTop = 0;
+}
+
 function renderGrid() {
   const d = S.data; if (!d) return;
   const list = sorted(unitsOf((d.assets || []).filter(a => matches(a))));
   const total = countUnits((d.assets || []).filter(a => (S.showHidden || !a.hidden) && !a.virtual));
-  const filtered = S.q || S.cat !== "全部" || S.style || S.recent || S.bases.size || S.usage !== "all" || S.share !== "all" || S.root !== "all" || S.purchase !== "all" || S.link !== "all";
+  const filtered = libFiltered();
   let rb = `<b>${list.length}</b><span>个${S.purchase === "missing" || S.purchase === "bought" ? "商品" : "素材"}${filtered ? `（共 ${total} 个）` : ""}</span>`;
   if (S.q && !S.bulk) rb += qSenseHTML(S.q);
-  if (filtered) rb += `<button class="clear" id="clearFilters">清除筛选</button>`;
+  if (filtered) rb += `<button class="clear" id="clearFilters" data-clearf>清除筛选</button>`;
   if (S.purchase === "missing" && list.length) rb += `<button class="btn small" id="btnDLMissing">${ICON.download}<span>全部下载</span></button>`;
   if (S.bulk) rb = bulkBarHTML(list);
   else if (list.length && S.purchase !== "missing") rb += `<button class="btn small ghost" id="btnBulk" title="批量选择素材，移动分类、隐藏或排除">批量整理</button>`;
@@ -2731,6 +2740,7 @@ function openSettings(focusId) {
       <div class="btnrow" style="margin-top:0"><button class="btn small" data-m="gumsync">${gm.loggedIn ? "同步" : "登录"}</button>${gm.loggedIn ? `<button class="btn small" data-m="gumlogout">退出登录</button>` : ""}${gm.count ? `<button class="btn small" data-m="gumclear">清空记录</button>` : ""}</div></div>`,
     tools: `<div class="row"><label>流水线 AI 服务<span class="muted small">　${AI.cfg && AI.cfg.ready ? esc(aiProvLabel(AI.cfg)) : "未配置"}</span></label>
       <div class="btnrow" style="margin-top:0"><button class="btn small" data-m="aicfg">配置 AI 服务</button></div></div>
+    ${aiAllowRowHTML()}
     ${window.vrSettingsRow ? vrSettingsRow() : ""}
     ${window.mcpSettingsRow ? mcpSettingsRow() : ""}
     ${window.fitsSettingsRow ? fitsSettingsRow() : ""}
@@ -2750,9 +2760,29 @@ function openSettings(focusId) {
     <nav class="setnav" aria-label="设置分类">${SET_SECS.map(([id, t]) => `<button class="navitem${id === cur ? " on" : ""}" data-setsec="${id}"${id === cur ? ' aria-current="true"' : ""}>${t}</button>`).join("")}</nav>
     <div class="setpane">${SET_SECS.map(([id, t]) => `<section class="setsec" data-sec="${id}" aria-label="${t}"${id === cur ? "" : " hidden"}>${secs[id]}</section>`).join("")}</div>
   </div><div class="mfoot"><button class="btn ghost" data-m="close">取消</button><button class="btn primary" data-m="save">保存</button></div>`;
-  showModal(); unitySetFill();
+  showModal(); unitySetFill(); aiAllowFill();
   const f = focusId && $("#" + focusId);
   if (f) { setSecShow(f.closest(".setsec").dataset.sec); f.scrollIntoView({ block: "center" }); f.focus(); }
+}
+// operations the player said 「以后都允许」 to: the AI does not ask about them again (/api/ai/allow), until taken back here
+function aiAllowRowHTML() {
+  return `<div class="row" id="s_aiallow"><label>以后都允许的操作</label><div class="aiallow small muted">正在读取…</div></div>`;
+}
+async function aiAllowFill(r) {
+  if (!r) { try { r = await api("/api/ai/allow", {}); } catch (_) { r = null; } }
+  const el = $("#s_aiallow .aiallow"); if (!el) return;
+  const ops = (r && r.ok && r.ops) || [];
+  el.classList.toggle("muted", !ops.length);
+  el.innerHTML = ops.length
+    ? ops.map(op => `<span class="aiop"><code data-i18n="off">${esc(op)}</code><button class="linkbtn" data-aiallow="${esc(op)}">撤销</button></span>`).join("")
+      + (ops.length > 1 ? `<button class="linkbtn" data-aiallow="">全部撤销</button>` : "")
+    : `<span>暂无。AI 请求在 Unity 中执行操作时，可以选择「以后都允许」</span>`;
+}
+async function aiAllowRevoke(b) {
+  b.disabled = true; let r;
+  try { r = await api("/api/ai/allow/revoke", { op: b.dataset.aiallow }); } catch (e) { r = { ok: false, err: e.message }; }
+  if (!r.ok) { b.disabled = false; toast(r.err || "操作失败", 4000); return; }
+  aiAllowFill(r);
 }
 function setSecShow(id) {
   S.setSec = id;
@@ -2774,7 +2804,8 @@ function closeModal(force) {
   const m = $("#modal"), kind = m.dataset.kind, was = m.classList.contains("on");
   if (kind === "feedback") fbKeep();
   if (kind === "np") npKeep();
-  if (["settings", "update", "feedback", "whatsnew", "aicfg", "np", "xynotice", "pancaptcha", "pandisk", "carddel", "impchoose"].includes(kind)) m.dataset.kind = "";
+  if (kind === "pickav" && typeof PIPE !== "undefined" && PIPE.pickAv) { const pa = PIPE.pickAv; PIPE.pickAv = null; pa.resolve(null); } // (closed: not started)
+  if (["settings", "update", "feedback", "whatsnew", "aicfg", "np", "xynotice", "pancaptcha", "pandisk", "carddel", "impchoose", "pickav"].includes(kind)) m.dataset.kind = "";
   m.classList.remove("on"); m.setAttribute("aria-hidden", "true"); scrimSync();
   const back = S.modalBack; S.modalBack = null;
   if (was && back && back.isConnected && back !== document.body) back.focus({ preventScroll: true }); // the focus goes back where it was
@@ -3211,7 +3242,7 @@ function aiLogHTML(steps = (AI.sess || {}).steps || [], history = true) {
         ? `<button class="btn small primary" data-ai="allow">继续运行</button><button class="btn small" data-ai="deny">停止</button>`
         : s.opts === "save" // a scene in Unity has unsaved changes: saved on the player's word, then the step again
         ? `<button class="btn small primary" data-ai="allow">保存并继续</button><button class="btn small" data-ai="deny">取消</button>`
-        : `<button class="btn small primary" data-ai="allow">仅本次允许</button>${s.opts === "once" ? "" : `<button class="btn small" data-ai="allowall" title="本次对话中不再询问这项操作">本次对话始终允许</button>`}<button class="btn small" data-ai="deny">拒绝</button>`;
+        : `<button class="btn small primary" data-ai="allow">仅本次允许</button>${s.opts === "once" ? "" : `<button class="btn small" data-ai="allowall" title="本次对话中不再询问这项操作">本次对话始终允许</button><button class="btn small" data-ai="allowforever" title="以后执行这项操作不再询问，可在「设置」→「AI 与工具」中撤销">以后都允许</button>`}<button class="btn small" data-ai="deny">拒绝</button>`;
       return `<div class="aistep ask${s.busy ? " open" : ""}"><div>${esc(s.text)}</div>${s.busy
         ? `<div class="btnrow">${btns}</div>`
         : `<div class="out">${esc(s.out || "")}</div>`}</div>`;
@@ -3336,7 +3367,43 @@ async function pipeStart() {
   if (!noAI && !AI.cfg.ready) { toast("请先配置 AI 服务，或勾选「不使用 AI」"); pipeKeep(); AI.back = p.path; return openAICfg(); }
   if (!k.alive) { toast(k.hint || "Unity 尚未连接", 5000); const s = $("#stn1"); if (s) s.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
   pipeKeep();
-  await aiRun({ mode: "dress", assets: picked.map(a => ({ folder: a.folder, kind: a.kind, name: a.name })), hierarchy, noAI });
+  const avatar = await pipeScene(p);
+  if (avatar === null) return;
+  const rows = pipePicked();
+  await aiRun({ mode: "dress", assets: rows.map(a => ({ folder: a.folder, kind: a.kind, name: a.name })), hierarchy, noAI, avatar });
+}
+// The scene before the run (/api/pipe/precheck): with no model in it, a 素体 must be ticked — the only one there is
+// is ticked for the player, one without a whole model (a tool package) is refused; with several models, the player
+// picks the one to dress. "" = go on as it is, null = not started (the reason told).
+async function pipeScene(p) {
+  const bases = pipeRows().filter(a => a.kind === "素体");
+  let r; try { r = await api("/api/pipe/precheck", { project: p.path, folders: bases.map(a => a.folder).slice(0, 20) }); } catch (e) { r = null; }
+  if (!r || !r.ok) return ""; // (the run says what is wrong)
+  const avs = r.avatars || [], whole = r.whole || {}, toList = () => { const s = $("#stn2"); if (s) s.scrollIntoView({ behavior: "smooth", block: "start" }); };
+  if (avs.length > 1) return pipeChooseAvatar(avs);
+  if (avs.length) return "";
+  const ticked = bases.filter(a => a.pick), usable = bases.filter(a => whole[a.folder] > 0);
+  if (ticked.length && !ticked.some(a => whole[a.folder] > 0)) {
+    toast(`「${ticked[0].name}」中没有完整模型（带 VRC Avatar Descriptor 的 prefab），请勾选素体本身的文件夹`, 6500); toList(); return null;
+  }
+  if (ticked.length) return "";
+  if (usable.length === 1) {
+    PIPE.pick[usable[0].folder] = true; pipeAssetsDraw();
+    toast(`场景中没有模型，已勾选素体「${usable[0].name}」`, 4500); return "";
+  }
+  toast(usable.length ? "场景中没有模型，请在「素材」中勾选一个素体" : "场景中没有模型：请在「素材」中加入素体，或先在 Unity 中打开包含模型的场景", 6500);
+  toList(); return null;
+}
+// several models in the scene: the one the run dresses (the others are left as they are); null = not started
+function pipeChooseAvatar(avs) {
+  return new Promise(resolve => {
+    const m = $("#modal"); m.dataset.kind = "pickav";
+    m.innerHTML = `<div class="mhead">选择要装配的模型</div><div class="mbody"><p class="small muted">场景中有 ${avs.length} 个模型，流水线只修改所选的一个。</p>
+      <div class="pickav">${avs.map((a, i) => `<label class="check opt"><input type="radio" name="pickav" value="${i}"${i ? "" : " checked"}><span data-i18n="off">${esc(a.name)}</span>${a.path && a.path !== a.name ? `<span class="muted small" data-i18n="off">${esc(a.path)}</span>` : ""}</label>`).join("")}</div></div>
+      <div class="mfoot"><button class="btn ghost" data-pickav="cancel">取消</button><button class="btn primary" data-pickav="go">开始</button></div>`;
+    PIPE.pickAv = { avs, resolve };
+    showModal();
+  });
 }
 async function pipeAction(b) {
   const what = b.dataset.pipe, p = AI.proj;
@@ -3436,9 +3503,9 @@ async function aiAction(b) {
     try { await api("/api/ai/answer", { project: p.path, choice: b.dataset.choice, paths }); AI.outfitOff = new Set(); } finally { aiFresh(); }
     return;
   }
-  if (what === "allow" || what === "allowall" || what === "deny") {
+  if (what === "allow" || what === "allowall" || what === "allowforever" || what === "deny") {
     b.disabled = true;
-    try { await api("/api/ai/answer", { project: p.path, ok: what !== "deny", all: what === "allowall" }); } finally { aiFresh(); }
+    try { await api("/api/ai/answer", { project: p.path, ok: what !== "deny", all: what === "allowall" || what === "allowforever", forever: what === "allowforever" }); } finally { aiFresh(); }
     return;
   }
   if (what === "pick") { closeModal(); return openAI(b.dataset.path); }
@@ -3911,10 +3978,18 @@ document.addEventListener("click", async e => {
   if (go) { if (go.dataset.go === "shop" || go.dataset.go === "xianyu") S.shopTab = go.dataset.go; setView(go.dataset.go); return; }
   if (t.closest("#vSocial")) { if (S.view === "social" && SO.page) { SO.page = null; renderAll(); } else setView("social"); return; }
   if (t.closest("#btnNewProj")) return openNewProject();
+  const pav = t.closest("[data-pickav]");
+  if (pav && PIPE.pickAv) {
+    const pa = PIPE.pickAv, x = $('#modal input[name="pickav"]:checked'), a = x && pa.avs[+x.value];
+    PIPE.pickAv = null; closeModal();
+    return pa.resolve(pav.dataset.pickav === "go" && a ? (a.path || a.name) : null);
+  }
   const npb = t.closest("[data-np]");
   if (npb) return npAction(npb);
   const udb = t.closest("[data-unitydir]");
   if (udb) return unityDirAct(udb);
+  const aab = t.closest("[data-aiallow]");
+  if (aab) return aiAllowRevoke(aab);
   const pp = t.closest("[data-pipeproj]");
   if (pp) { const p = pipeProject(pp.dataset.pipeproj); if (p) pipeSelect(p); return; }
   const pb = t.closest("[data-pipe]");
@@ -4005,7 +4080,7 @@ document.addEventListener("click", async e => {
     if (ds.base !== undefined) { S.bases.has(ds.base) ? S.bases.delete(ds.base) : S.bases.add(ds.base); }
     renderSide(); renderGrid(); $(".main").scrollTop = 0; return;
   }
-  if (t.closest("#clearFilters")) { S.q = ""; $("#q").value = ""; S.cat = "全部"; S.style = ""; S.recent = ""; S.bases.clear(); S.usage = S.share = S.root = S.purchase = S.link = "all"; renderSide(); renderGrid(); return; }
+  if (t.closest("[data-clearf]")) return clearFilters();
   if (t.closest("#emptySettings") || t.closest("#btnSettings")) { openSettings(); return; }
   if (t.closest("#btnPanAdd")) { openPanAdd(""); return; }
   if (t.closest("#btnUpdate")) { openUpdate(false); return; }

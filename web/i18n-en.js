@@ -5210,7 +5210,18 @@ I18N.add("en", {
     "这个文件夹里没有找到 Unity": "No Unity was found in this folder",
     "正在查找 Unity…": "Searching for Unity…",
     // --- Unity installed where it is not looked for: the folder picked, and opening a project without its Unity ---
-    "这个文件夹里没有找到 Unity，请选择 Unity 的安装文件夹（里面有 Editor 文件夹）": "No Unity was found in this folder. Choose the Unity installation folder (the one with the Editor folder in it)"
+    "这个文件夹里没有找到 Unity，请选择 Unity 的安装文件夹（里面有 Editor 文件夹）": "No Unity was found in this folder. Choose the Unity installation folder (the one with the Editor folder in it)",
+    // --- 2.0.9: 「以后都允许」 and its list in the settings; the pipeline's check of the scene before it starts ---
+    "以后都允许": "Always allow",
+    "以后执行这项操作不再询问，可在「设置」→「AI 与工具」中撤销": "Don't ask about this operation again. You can undo this in Settings → “AI & tools”",
+    "以后都允许的操作": "Always-allowed operations",
+    "全部撤销": "Revoke all",
+    "暂无。AI 请求在 Unity 中执行操作时，可以选择「以后都允许」": "None. When the AI asks to run an operation in Unity, you can choose “Always allow”",
+    "场景中没有模型，请在「素材」中勾选一个素体": "The scene has no avatar. Tick a base body under “Assets”",
+    "场景中没有模型：请在「素材」中加入素体，或先在 Unity 中打开包含模型的场景": "The scene has no avatar: add a base body under “Assets”, or open a scene with an avatar in Unity first",
+    "选择要装配的模型": "Choose the avatar to dress",
+    // --- 2.0.9: the model to dress, and plugin downloads tried again ---
+    "要装配的场景模型路径或名称，可不写": "Path or name of the scene avatar to dress (optional)"
   },
   "patterns": [
     // --- the player's スキ！ on Booth onto the wish list ---
@@ -6523,6 +6534,14 @@ I18N.add("en", {
     ["未找到 VRChat 需要的 Unity {v}", "Unity {v|raw}, the version VRChat needs, was not found"],
     ["（本机已有 {list}）", " (this computer has {list|raw})"],
     // --- Unity installed where it is not looked for: the folder picked, and opening a project without its Unity ---
-    ["本机未找到 Unity {v}：请通过 Unity Hub 安装；已经安装的，请在「设置」→「素材」→「Unity 安装文件夹」中添加它的安装文件夹", "Unity {v|raw} was not found on this computer. Install it through Unity Hub; if it is already installed, add its installation folder in Settings → Assets → “Unity installation folders”"]
+    ["本机未找到 Unity {v}：请通过 Unity Hub 安装；已经安装的，请在「设置」→「素材」→「Unity 安装文件夹」中添加它的安装文件夹", "Unity {v|raw} was not found on this computer. Install it through Unity Hub; if it is already installed, add its installation folder in Settings → Assets → “Unity installation folders”"],
+    // --- 2.0.9: 「以后都允许」 and its list in the settings; the pipeline's check of the scene before it starts ---
+    ["「{x}」中没有完整模型（带 VRC Avatar Descriptor 的 prefab），请勾选素体本身的文件夹", "“{x|raw}” has no whole avatar (a prefab with a VRC Avatar Descriptor). Tick the base body's own folder"],
+    ["场景中没有模型，已勾选素体「{x}」", "The scene has no avatar; base body “{x|raw}” was ticked"],
+    ["场景中有 {#n} 个模型，流水线只修改所选的一个。", "The scene has {n} avatars. The pipeline changes only the one you choose."],
+    // --- 2.0.9: the model to dress, and plugin downloads tried again ---
+    ["场景中没有找到所选的模型「{x}」，请重新开始", "The chosen avatar “{x|raw}” is not in the scene. Start again"],
+    ["场景中有 {#n} 个模型（{x}）：请重新点击「运行流水线」并选择要装配的模型，或在 Unity 中只保留一个处于显示状态", "The scene has {n} avatar{n|s} ({x|raw}). Click “Run pipeline” again and choose the avatar to dress, or keep only one shown in Unity"],
+    ["下载失败，正在重试（第 {#n} 次）…", "Download failed. Retrying (attempt {n})…"]
   ]
 });

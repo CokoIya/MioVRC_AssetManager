@@ -5210,7 +5210,18 @@ I18N.add("ja", {
     "这个文件夹里没有找到 Unity": "このフォルダーに Unity が見つかりません",
     "正在查找 Unity…": "Unity を検索中…",
     // --- Unity installed where it is not looked for: the folder picked, and opening a project without its Unity ---
-    "这个文件夹里没有找到 Unity，请选择 Unity 的安装文件夹（里面有 Editor 文件夹）": "このフォルダーに Unity が見つかりません。Unity のインストールフォルダー（Editor フォルダーがあるフォルダー）を選んでください"
+    "这个文件夹里没有找到 Unity，请选择 Unity 的安装文件夹（里面有 Editor 文件夹）": "このフォルダーに Unity が見つかりません。Unity のインストールフォルダー（Editor フォルダーがあるフォルダー）を選んでください",
+    // --- 2.0.9: 「以后都允许」 and its list in the settings; the pipeline's check of the scene before it starts ---
+    "以后都允许": "今後も許可",
+    "以后执行这项操作不再询问，可在「设置」→「AI 与工具」中撤销": "今後この操作は確認しません。「設定」→「AI とツール」で取り消せます",
+    "以后都允许的操作": "今後も許可する操作",
+    "全部撤销": "すべて取り消す",
+    "暂无。AI 请求在 Unity 中执行操作时，可以选择「以后都允许」": "なし。AI が Unity で操作を実行するよう求めたときに「今後も許可」を選べます",
+    "场景中没有模型，请在「素材」中勾选一个素体": "シーンにアバターがありません。「素材」で素体をひとつチェックしてください",
+    "场景中没有模型：请在「素材」中加入素体，或先在 Unity 中打开包含模型的场景": "シーンにアバターがありません。「素材」に素体を追加するか、先に Unity でアバターのあるシーンを開いてください",
+    "选择要装配的模型": "セットアップするアバターを選択",
+    // --- 2.0.9: the model to dress, and plugin downloads tried again ---
+    "要装配的场景模型路径或名称，可不写": "セットアップするシーン内アバターのパスまたは名前（省略可）"
   },
   "patterns": [
     // --- the player's スキ！ on Booth onto the wish list ---
@@ -6522,6 +6533,14 @@ I18N.add("ja", {
     ["未找到 VRChat 需要的 Unity {v}", "VRChat に必要な Unity {v|raw} が見つかりません"],
     ["（本机已有 {list}）", "（この PC にあるのは {list|raw}）"],
     // --- Unity installed where it is not looked for: the folder picked, and opening a project without its Unity ---
-    ["本机未找到 Unity {v}：请通过 Unity Hub 安装；已经安装的，请在「设置」→「素材」→「Unity 安装文件夹」中添加它的安装文件夹", "この PC に Unity {v|raw} が見つかりません。Unity Hub でインストールしてください。インストール済みの場合は、「設定」→「アセット」→「Unity のインストールフォルダー」にそのインストールフォルダーを追加してください"]
+    ["本机未找到 Unity {v}：请通过 Unity Hub 安装；已经安装的，请在「设置」→「素材」→「Unity 安装文件夹」中添加它的安装文件夹", "この PC に Unity {v|raw} が見つかりません。Unity Hub でインストールしてください。インストール済みの場合は、「設定」→「アセット」→「Unity のインストールフォルダー」にそのインストールフォルダーを追加してください"],
+    // --- 2.0.9: 「以后都允许」 and its list in the settings; the pipeline's check of the scene before it starts ---
+    ["「{x}」中没有完整模型（带 VRC Avatar Descriptor 的 prefab），请勾选素体本身的文件夹", "「{x|raw}」に完全なアバター（VRC Avatar Descriptor 付きの prefab）がありません。素体そのもののフォルダーをチェックしてください"],
+    ["场景中没有模型，已勾选素体「{x}」", "シーンにアバターがないため、素体「{x|raw}」をチェックしました"],
+    ["场景中有 {#n} 个模型，流水线只修改所选的一个。", "シーンに {n} 体のアバターがあります。パイプラインは選択した 1 体だけを変更します。"],
+    // --- 2.0.9: the model to dress, and plugin downloads tried again ---
+    ["场景中没有找到所选的模型「{x}」，请重新开始", "選択したアバター「{x|raw}」がシーンにありません。もう一度開始してください"],
+    ["场景中有 {#n} 个模型（{x}）：请重新点击「运行流水线」并选择要装配的模型，或在 Unity 中只保留一个处于显示状态", "シーンにアバターが {n} 体あります（{x|raw}）。「パイプラインを実行」をもう一度クリックしてセットアップするアバターを選ぶか、Unity で 1 体だけ表示してください"],
+    ["下载失败，正在重试（第 {#n} 次）…", "ダウンロードに失敗しました。再試行しています（{n} 回目）…"]
   ]
 });
