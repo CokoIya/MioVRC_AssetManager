@@ -160,6 +160,13 @@ select, .btn {
 .aiallow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
 .aiallow .aiop { display: inline-flex; align-items: center; gap: 6px; }
 .aiallow code { font-size: 12px; padding: 1px 6px; border-radius: 5px; background: var(--card); border: 1px solid var(--line); color: var(--text); }
+/* 自定义分类 (catset.js) */
+.ccats { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+.ccat { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--line); background: var(--card); border-radius: 14px; padding: 1px 4px 1px 10px; font-size: 12px; color: var(--text); }
+.ccat .ccbtn { display: inline-grid; place-items: center; width: 20px; height: 20px; border: 0; border-radius: 50%; background: none; color: var(--faint); cursor: pointer; padding: 0; }
+.ccat .ccbtn:hover { color: var(--text); background: var(--accent-soft); }
+.ccat .ccbtn svg { width: 12px; height: 12px; }
+.ccat .ccedit { width: 9em; font-size: 12px; padding: 1px 4px; margin-right: 4px; }
 .warnline { color: var(--warn); }
 /* how a search with "/", "-" or quotes was read */
 .qsense { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; cursor: help; }

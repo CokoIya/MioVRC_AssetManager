@@ -3,7 +3,7 @@
 "use strict";
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const CAT_COLOR = { "素体": "#c78bff", "衣服": "#ff7aa8", "头发": "#ffb547", "配饰": "#6fd3ff", "道具": "#9be36b", "材质": "#ff9f6b",
+const CAT_COLOR = { "素体": "#c78bff", "衣服": "#ff7aa8", "头发": "#ffb547", "配饰": "#6fd3ff", "道具": "#9be36b", "材质": "#ff9f6b", "妆容": "#ff8fd1",
   "面捕": "#5ee0c5", "插件": "#8aa2ff", "动作": "#f0e26b", "音效": "#b9b2ff", "字体": "#d0d0d0", "其他": "#8b8fa6" };
 const ICON = {
   folder: '<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
@@ -673,26 +673,30 @@ async function bulkApply(body, done) {
 
 // 「删除卡片」 (details panel, 批量整理): a card whose files are gone goes at once; for files still on disk the player
 // says first whether they go to the Recycle Bin too, or stay (and the scan skips them). 撤销 brings back what can come back.
-async function delCards(keys, label, files) {
-  const r = await api("/api/card/remove", { keys, files: files || "" });
+// A netdisk card goes from the library at once (the netdisk's files are not touched); a downloaded card takes the
+// netdisk entry it came from with it, unless the player keeps that as a cloud card (pan "keep").
+async function delCards(keys, label, files, pan) {
+  const r = await api("/api/card/remove", { keys, files: files || "", pan: pan || "drop" });
   if (!r.ok) { toast(r.err || "删除失败", 4000); return; }
-  if (r.ask) return delCardsAsk(keys, label, r.ask);
+  if (r.ask) return delCardsAsk(keys, label, r.ask, r.askPan || 0);
   if (S.bulk) { S.bulk.keys.clear(); S.bulk.last = null; }
   if (S.openKey && keys.includes(S.openKey)) closeDrawer();
   const failed = r.failed || [];
   if (failed.length && !r.removed) { toast(`未能移到回收站：${failed[0].err}`, 6000); return load(); }
-  let msg = keys.length === 1 && label ? `已删除「${label}」` : `已删除 ${r.removed} 张卡片`;
+  const cloudOnly = keys.every(k => { const a = findAsset(k); return a && a.panOnly; });
+  let msg = keys.length === 1 && label ? (cloudOnly ? `已从素材库移除「${label}」` : `已删除「${label}」`) : (cloudOnly ? `已从素材库移除 ${r.removed} 张卡片` : `已删除 ${r.removed} 张卡片`);
   if (r.recycled) msg += "，文件已移到回收站";
   if (failed.length) msg += `；${failed.length} 个文件未能移到回收站`;
   if (r.undo) msg += "，点此撤销";
   toast(msg, r.undo || failed.length ? 6000 : 3000, r.undo ? () => undoCards(r.undo) : null);
   await load();
 }
-function delCardsAsk(keys, label, n) {
+function delCardsAsk(keys, label, n, nPan) {
   S.cardDel = { keys, label };
   const m = $("#modal");
   m.dataset.kind = "carddel";
-  m.innerHTML = `<div class="mhead">删除卡片</div><div class="mbody"><p>${keys.length > 1 ? `其中 ${n} 个素材的文件仍在本地，是否同时移到回收站？` : "文件仍在本地，是否同时移到回收站？"}</p></div>
+  m.innerHTML = `<div class="mhead">删除卡片</div><div class="mbody"><p>${keys.length > 1 ? `其中 ${n} 个素材的文件仍在本地，是否同时移到回收站？` : "文件仍在本地，是否同时移到回收站？"}</p>
+    ${nPan ? `<label class="check"><input type="checkbox" id="cdel_pan" checked> ${keys.length > 1 ? `同时移除 ${nPan} 个对应的网盘分享条目` : "同时移除对应的网盘分享条目"}</label><div class="muted small" style="padding-left:24px">不勾选时，卡片会以「不在本地」的网盘卡片保留，之后可以重新下载。</div>` : ""}</div>
     <div class="mfoot"><button class="btn ghost" data-m="close">取消</button><button class="btn" data-cdel="keep" title="文件保留，扫描时跳过，可在设置中恢复">仅删除卡片</button><button class="btn primary" data-cdel="recycle">移到回收站</button></div>`;
   showModal();
 }
@@ -2436,7 +2440,7 @@ function renderDrawer(key, keepScroll) {
       ${(a.usage || []).length ? `<div class="uses">${a.usage.map(x => `<div class="use"><span class="st ${esc(x.status)}">${x.status === "used" ? "使用中" : "部分使用"}</span><span>${esc(x.project)}</span><span class="pct">${esc(x.matched)}/${esc(x.total)} 个资源（${Math.round(x.ratio * 100)}%）</span></div>`).join("")}</div>`
         : `<div class="muted small">${a.guidCount ? "未被任何工程使用" : (a.packages ? "尚未统计" : "不含 unitypackage，无法统计")}</div>`}
     </div>`}
-    ${a.panOnly ? `<div class="sec"><h4>管理</h4><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-d="hide">${u.hidden ? "取消隐藏" : "隐藏"}</button>${a.panParent ? "" : `<button class="btn" data-d="pandelete">从素材库移除</button>`}</div></div>`
+    ${a.panOnly ? `<div class="sec"><h4>管理</h4><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-d="hide">${u.hidden ? "取消隐藏" : "隐藏"}</button><button class="btn" data-d="pandelete" title="网盘中的文件不受影响">从素材库移除</button></div></div>`
     : a.virtual ? `<div class="sec"><h4>管理</h4><button class="btn" data-d="hide">${u.hidden ? "取消隐藏" : "隐藏"}</button></div>` : `<div class="sec"><h4>识别调整</h4>
       <div class="muted small" style="margin-bottom:8px">原始名称：${esc(a.rawName)}${(a.hints || []).length ? `　分类文件夹：${esc(a.hints.join(" / "))}` : ""}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -2723,6 +2727,7 @@ function openSettings(focusId) {
       <button class="btn small addbtn" data-pickto="s_proj">${ICON.folder}<span>添加…</span></button></div>
     <div class="row"><label>Unity 安装文件夹</label><textarea id="s_unitydirs" placeholder="找不到已安装的 Unity 时，在这里添加它的安装文件夹">${esc((s.unityDirs || []).join("\n"))}</textarea>
       <div class="btnrow unitydirs"><button class="btn small" data-unitydir="set">${ICON.folder}<span>添加…</span></button><button class="btn small" data-unitydir="scan">重新查找</button><span class="small" id="s_unityfound"></span></div></div>
+    ${window.customCatsHTML ? customCatsHTML(s) : ""}
     <div class="row"><label>素体识别规则</label><textarea id="s_bases" style="min-height:120px" placeholder="显示名=别名1|别名2">${esc((s.bases || []).join("\n"))}</textarea></div>
     <div class="row"><label>风格标签规则</label><textarea id="s_styles" style="min-height:140px" placeholder="标签名=关键词1|关键词2">${esc((s.styles || []).join("\n"))}</textarea></div>
     ${Object.keys(ov).length ? `<div class="row"><label>手动调整</label>${(window.bundleOverrides ? bundleOverrides(ov) : Object.entries(ov)).map(([p, v]) => `<div class="ov"><span>${esc(p)}</span><span class="muted" style="flex:none">${esc({ split: "已拆分", ignore: "已排除", asset: "已合并", bundle: "合集包（自动拆分）" }[v] || v)}</span><button class="btn" data-ov="${esc(p)}">恢复</button></div>`).join("")}</div>` : ""}`,
@@ -4015,7 +4020,7 @@ document.addEventListener("click", async e => {
   const xp = t.closest("[data-xyp]");
   if (xp) return xyPref(xp.dataset.xyp, !!xp.closest("#modal"));
   const cd = t.closest("[data-cdel]"); // 「删除卡片」: the files go to the Recycle Bin too, or stay
-  if (cd) { const c = S.cardDel; S.cardDel = null; closeModal(); if (c) await delCards(c.keys, c.label, cd.dataset.cdel); return; }
+  if (cd) { const c = S.cardDel, pk = $("#cdel_pan"), pan = pk && !pk.checked ? "keep" : "drop"; S.cardDel = null; closeModal(); if (c) await delCards(c.keys, c.label, cd.dataset.cdel, pan); return; }
   const cb = t.closest("[data-clip]");
   if (cb) return clipAction(cb.dataset.clip);
   const bl = t.closest("[data-bl]");
@@ -4115,9 +4120,9 @@ document.addEventListener("click", async e => {
       return bulkApply({ ignore: true }, r => `已排除 ${r.ignored} 个，正在重新扫描`);
     }
     if (what === "delete") {
-      const local = bulkAssets().filter(isLocal);
-      if (!local.length) { toast("所选素材均不在本地文件夹中"); return; }
-      return delCards(local.map(a => a.key), "");
+      const list = bulkAssets().filter(a => (isLocal(a) || a.panOnly) && !a.splitInto); // (a purchase not downloaded has no card to delete)
+      if (!list.length) { toast("所选素材中没有可删除的卡片"); return; }
+      return delCards(list.map(a => a.key), "");
     }
     return;
   }
@@ -4236,8 +4241,7 @@ document.addEventListener("click", async e => {
       case "buypage": return openBuyPage(a);
       case "dlall": return startDownload(a.purchase.id);
       case "panrefresh": await api("/api/pan/refresh", { key: a.key }); toast("正在刷新"); poll(true); return;
-      case "pandelete": if (!confirm("从素材库移除该素材？网盘中的文件不受影响。")) return;
-        await api("/api/user", { key: a.key, delete: true }); closeDrawer(); toast("已移除"); load(); return;
+      case "pandelete": return delCards([a.key], a.name);
       case "delcard": return delCards([a.key], a.name);
       case "bsearch": return runBoothSearch(a, ($("#bs_q").value || "").trim());
       case "bopen": return openLink(boothSearchURL(($("#bs_q") || {}).value || a.boothQuery || a.name));

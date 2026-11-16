@@ -5221,7 +5221,28 @@ I18N.add("en", {
     "场景中没有模型：请在「素材」中加入素体，或先在 Unity 中打开包含模型的场景": "The scene has no avatar: add a base body under “Assets”, or open a scene with an avatar in Unity first",
     "选择要装配的模型": "Choose the avatar to dress",
     // --- 2.0.9: the model to dress, and plugin downloads tried again ---
-    "要装配的场景模型路径或名称，可不写": "Path or name of the scene avatar to dress (optional)"
+    "要装配的场景模型路径或名称，可不写": "Path or name of the scene avatar to dress (optional)",
+    // --- 自定义分类管理与素材搜索分类说明 ---
+    "分类名称不能为空": "Category name cannot be empty",
+    "分类名称最多 12 个字": "Category names can contain up to 12 characters",
+    "分类名称不能含控制字符": "Category names cannot contain control characters",
+    "已有同名分类": "A category with this name already exists",
+    "最多 20 个自定义分类": "You can create up to 20 custom categories",
+    "内置分类不能修改": "Built-in categories cannot be changed",
+    "只看这个类别：素体、衣服、头发、配饰、道具、材质、妆容、面捕、插件、动作、音效、字体、其他，也可填写玩家的自定义分类": "Filter by category: base, clothes, hair, accessories, props, materials, makeup, face tracking, plugins, animations, sound effects, fonts, other, or a player's custom category",
+    // --- 2.0.10: custom categories in the settings, the Booth page's avatars the base table lacks, netdisk cards deleted from the library ---
+    "自定义分类": "Custom categories",
+    "暂无": "None",
+    "新分类名称": "New category name",
+    "删除分类": "Delete category",
+    "在素材详情或「批量整理」中把素材移入；删除分类后，其中的素材恢复自动分类。": "Move assets into it from their details or “Bulk edit”. When a category is deleted, its assets go back to automatic categories.",
+    "加入素体识别规则": "Add to base rules",
+    "加入后，这些素体会被自动识别": "Once added, these bases are recognized automatically",
+    "这些素体已在识别规则中": "These bases are already in the rules",
+    "同时移除对应的网盘分享条目": "Also remove the matching netdisk share entry",
+    "不勾选时，卡片会以「不在本地」的网盘卡片保留，之后可以重新下载。": "If unchecked, the card stays as a netdisk card “not on this PC” and can be downloaded again later.",
+    "所选素材中没有可删除的卡片": "None of the selected cards can be deleted",
+    "网盘中的文件不受影响": "Files on the netdisk are not affected"
   },
   "patterns": [
     // --- the player's スキ！ on Booth onto the wish list ---
@@ -6542,6 +6563,18 @@ I18N.add("en", {
     // --- 2.0.9: the model to dress, and plugin downloads tried again ---
     ["场景中没有找到所选的模型「{x}」，请重新开始", "The chosen avatar “{x|raw}” is not in the scene. Start again"],
     ["场景中有 {#n} 个模型（{x}）：请重新点击「运行流水线」并选择要装配的模型，或在 Unity 中只保留一个处于显示状态", "The scene has {n} avatar{n|s} ({x|raw}). Click “Run pipeline” again and choose the avatar to dress, or keep only one shown in Unity"],
-    ["下载失败，正在重试（第 {#n} 次）…", "Download failed. Retrying (attempt {n})…"]
+    ["下载失败，正在重试（第 {#n} 次）…", "Download failed. Retrying (attempt {n})…"],
+    // --- 2.0.10: custom categories in the settings, the Booth page's avatars the base table lacks, netdisk cards deleted from the library ---
+    ["已添加分类「{x}」", "Category “{x|raw}” added"],
+    ["已重命名为「{x}」，{#n} 个素材随之更改", "Renamed to “{x|raw}”; {n} asset{n|s} updated"],
+    ["已重命名为「{x}」", "Renamed to “{x|raw}”"],
+    ["删除分类「{x}」？其中的素材将恢复自动分类。", "Delete category “{x|raw}”? Its assets go back to automatic categories."],
+    ["已删除分类「{x}」，{#n} 个素材已恢复自动分类", "Category “{x|raw}” deleted; {n} asset{n|s} back to automatic categories"],
+    ["已删除分类「{x}」", "Category “{x|raw}” deleted"],
+    ["商品页还列出：{x}", "The product page also lists: {x|raw}"],
+    ["已加入素体识别规则：{x}", "Added to base rules: {x|raw}"],
+    ["已从素材库移除「{x}」", "Removed “{x|raw}” from the library"],
+    ["已从素材库移除 {#n} 张卡片", "Removed {n} card{n|s} from the library"],
+    ["同时移除 {#n} 个对应的网盘分享条目", "Also remove the matching netdisk share entries ({n})"]
   ]
 });

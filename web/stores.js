@@ -381,11 +381,13 @@ function wishCatBtn(x) {
 function wishCatOpen(key) {
   const x = W.byKey.get(key); if (!x) return;
   const m = $("#modal"), auto = x.autoCategory || "其他", own = x.category !== auto ? x.category : "";
+  // Wish categories are stored separately from the library's custom categories.
+  const cats = (S.data.categories || []).filter(c => !(S.data.settings?.customCats || []).includes(c));
   m.dataset.kind = "wlcat";
   m.innerHTML = `<div class="mhead">更改分类</div><div class="mbody">
     <p class="lead">${esc(x.title)}</p>
     <div class="row"><label for="wl_cat">分类</label><select id="wl_cat"><option value="">自动（${esc(auto)}）</option>${
-      (S.data.categories || []).map(c => `<option${c === own ? " selected" : ""}>${esc(c)}</option>`).join("")}</select></div>
+      cats.map(c => `<option${c === own ? " selected" : ""}>${esc(c)}</option>`).join("")}</select></div>
   </div><div class="mfoot"><button class="btn ghost" data-m="close">取消</button><button class="btn primary" data-wl="catsave" data-key="${esc(key)}">保存</button></div>`;
   showModal();
   $("#wl_cat").focus();
