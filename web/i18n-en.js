@@ -2874,7 +2874,7 @@ I18N.add("en", {
     "Quest 版设置": "Quest version setup",
     "Quest 设置前": "Before the Quest setup",
     "未找到 Unity Hub": "Unity Hub was not found",
-    "未连接 Unity": "Not connected to Unity",
+    "未连接 Unity": "Unity not connected",
     "AI 请求把 VRCQuestTools（kurotu 制作，MIT 许可）安装到该工程，用来制作 Quest（安卓）版。": "The AI asks to install VRCQuestTools (by kurotu, MIT license) into this project to make the Quest (Android) version.",
     "会从它的 VPM 仓库下载，放进工程的 Packages 文件夹并写入 vpm-manifest.json（和在 ALCOM 中添加插件一样），之后 Unity 会导入并编译一两分钟。": "It is downloaded from its VPM repository into the project's Packages folder and added to vpm-manifest.json (just like adding it in ALCOM); Unity then imports and compiles it for a minute or two.",
     "玩家未同意安装": "The player did not agree to install it",
@@ -5242,7 +5242,50 @@ I18N.add("en", {
     "同时移除对应的网盘分享条目": "Also remove the matching netdisk share entry",
     "不勾选时，卡片会以「不在本地」的网盘卡片保留，之后可以重新下载。": "If unchecked, the card stays as a netdisk card “not on this PC” and can be downloaded again later.",
     "所选素材中没有可删除的卡片": "None of the selected cards can be deleted",
-    "网盘中的文件不受影响": "Files on the netdisk are not affected"
+    "网盘中的文件不受影响": "Files on the netdisk are not affected",
+    // --- 2.0.11: a picture of the Booth item page as the cover; 关闭硬件加速 ---
+    "关闭硬件加速": "Turn off hardware acceleration",
+    "关闭或最小化窗口时出现闪屏、电脑卡住时可以打开（通常与显卡驱动有关），重启 MioVRCA 后生效。": "Turn this on if the screen flickers or the computer stops responding when the window is closed or minimized (usually a graphics driver issue). Takes effect after MioVRCA restarts.",
+    "已保存，重启 MioVRCA 后生效": "Saved. Takes effect after MioVRCA restarts",
+    "设为封面": "Set as cover",
+    "设置失败": "Could not set it",
+    "不是该商品页的图片": "This picture is not from the item page",
+    "图片下载失败，请稍后重试": "Could not download the picture. Try again later",
+    // --- 2.0.11: pictures for the AI, UnitySkills' permission mode ---
+    "UnitySkills 权限模式无效": "Invalid UnitySkills permission mode",
+    "当前 UnitySkills 版本不支持切换权限模式": "This version of UnitySkills does not support changing permission modes",
+    "改为完全权限并继续": "Switch to full permission and continue",
+    "不允许": "Do not allow",
+    "审批": "Approval",
+    "完全权限": "Full permission",
+    "未知": "Unknown",
+    "最多附带 4 张图片": "Attach at most 4 pictures",
+    "图片超过 5 MB，无法发送": "The picture exceeds 5 MB and cannot be sent",
+    "无法识别的图片格式": "Unrecognized picture format",
+    "向 AI 下达指令（Ctrl+Enter 发送，可粘贴或拖入图片）": "Tell the AI what to do (Ctrl+Enter to send; paste or drop pictures)",
+    "无法读取这张图片": "This picture could not be read",
+    "Unity 中的 AI 权限": "AI permission in Unity",
+    "自动（删除、创建脚本等需要完全权限）": "Auto (deleting, creating scripts and similar need full permission)",
+    "UnitySkills 的权限模式，对这台电脑上的所有 Unity 工程生效。选择「完全权限」后，MioVRCA 仍会在删除、保存等操作前询问你。": "UnitySkills' permission mode, for every Unity project on this computer. With “Full permission”, MioVRCA still asks you before deleting, saving and similar operations.",
+    "在「AI 改模」中打开工程并连接 Unity 后可以切换；AI 遇到权限不足时也会询问你。": "Open a project in “AI modding” and connect Unity to change it. The AI also asks you when it lacks permission.",
+    "切换失败": "Could not switch",
+    "已改为完全权限": "Switched to full permission",
+    "已切换权限模式": "Permission mode switched",
+    "未改权限模式，未执行": "Mode kept; not run",
+    "权限模式未能切换，未执行": "The mode could not be switched; not run",
+    "UnitySkills 仍不允许这个操作": "UnitySkills still does not allow this operation",
+    // --- 2.0.11: settings notes kept short ---
+    "关闭窗口时闪屏、电脑卡住时可以打开，重启后生效。": "Turn on if closing the window makes the screen flicker or the PC freeze. Restart to apply.",
+    "对这台电脑上的所有 Unity 工程生效；删除等操作仍会询问。": "Applies to every Unity project on this PC; deleting and similar still ask.",
+    "在「AI 改模」中连接 Unity 后可以切换。": "Connect Unity in “AI modding” to change it.",
+    // --- 2.0.11: the pipeline page with the AI conversation beside it ---
+    "拖动调整宽度": "Drag to resize",
+    "可以直接告诉 AI 要做什么；也可以在左侧勾选素材后点「运行流水线」。": "Tell the AI what to do, or tick assets on the left and click “Run pipeline”.",
+    "收起 AI 对话": "Collapse AI chat",
+    "展开 AI 对话": "Expand AI chat",
+    // --- 2.0.11: the conversation panel's titles ---
+    "AI 对话": "AI chat",
+    "AI 设置": "AI settings"
   },
   "patterns": [
     // --- the player's スキ！ on Booth onto the wish list ---
@@ -6575,6 +6618,13 @@ I18N.add("en", {
     ["已加入素体识别规则：{x}", "Added to base rules: {x|raw}"],
     ["已从素材库移除「{x}」", "Removed “{x|raw}” from the library"],
     ["已从素材库移除 {#n} 张卡片", "Removed {n} card{n|s} from the library"],
-    ["同时移除 {#n} 个对应的网盘分享条目", "Also remove the matching netdisk share entries ({n})"]
+    ["同时移除 {#n} 个对应的网盘分享条目", "Also remove the matching netdisk share entries ({n})"],
+    // --- 2.0.11: pictures for the AI, UnitySkills' permission mode ---
+    ["UnitySkills 当前为「{x}」模式，不允许 AI 执行「{y}」。改为完全权限后，AI 可以删除物体、创建脚本、进入播放模式等；MioVRCA 仍会在这些操作前询问你。", "UnitySkills is in {x|raw} mode and does not allow the AI to run {y|raw}. Full permission lets the AI delete objects, create scripts, enter Play mode, and more. MioVRCA will still ask you before these operations."],
+    ["{#n} 张图片将随指令发送", "{n} picture{n|s} will be sent with the instruction"],
+    ["图片 {#n}", "Picture {n}"],
+    // --- 2.0.11: the pipeline page with the AI conversation beside it ---
+    ["执行了 {#n} 个操作", "Ran {n} operation{n|s}"],
+    ["（{#n} 个未成功）", "({n} failed)"]
   ]
 });

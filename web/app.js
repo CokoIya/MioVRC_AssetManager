@@ -1810,7 +1810,7 @@ function boothSec(a) {
   if (a.boothId) {
     const imgs = (b && b.images || []).slice(0, 6);
     h += `<div class="bitem">
-      ${imgs.length ? `<div class="bimgs">${imgs.map(u => `<img loading="lazy" src="/rthumb?u=${encodeURIComponent(boothImg(u, false))}" data-big="${esc(boothImg(u, true))}" alt="">`).join("")}</div>` : ""}
+      ${imgs.length ? `<div class="bimgs">${imgs.map(u => `<span class="bimg"><img loading="lazy" src="/rthumb?u=${encodeURIComponent(boothImg(u, false))}" data-big="${esc(boothImg(u, true))}" alt="">${a.virtual ? "" : `<button class="bcov" data-bcover="${esc(boothImg(u, true))}">设为封面</button>`}</span>`).join("")}</div>` : ""}
       <div class="bname">${esc(b && b.name ? b.name : "Booth #" + a.boothId)}</div>
       <div class="muted small">${[b && b.shop, b && b.price, b && b.category].filter(Boolean).map(esc).join("　") || (taskRunning("booth") ? "正在加载…" : "")}</div>
       ${b && (b.tags || []).length ? `<div class="btags">${b.tags.slice(0, 14).map(t => `<span>${esc(t)}</span>`).join("")}</div>` : ""}
@@ -2714,6 +2714,9 @@ function openSettings(focusId) {
       ${chk("s_zh", !s.hideZh, "显示中文译名")}
       <select id="s_win" class="optsel"><option value="">以独立窗口运行</option><option value="tab"${s.windowMode === "tab" ? " selected" : ""}>在浏览器标签页中运行</option></select>
       <select id="s_close" class="optsel" title="独立窗口的关闭按钮"><option value="">关闭窗口时最小化到托盘</option><option value="quit"${s.closeQuit ? " selected" : ""}>关闭窗口时退出程序</option></select></div>
+    <div class="row"><label>显示</label>
+      ${chk("s_nogpu", s.noGpu, "关闭硬件加速")}
+      <div class="muted small" style="padding-left:24px">关闭窗口时闪屏、电脑卡住时可以打开，重启后生效。</div></div>
     <div class="row"><label>提醒</label>
       <div class="soundrow">${chk("s_sound", !s.noSound, "完成或需要确认时播放提示音")}<button class="btn small" data-m="soundtest">试听</button></div></div>
     <div class="row"><label>隐私</label>
@@ -2746,6 +2749,7 @@ function openSettings(focusId) {
     tools: `<div class="row"><label>流水线 AI 服务<span class="muted small">　${AI.cfg && AI.cfg.ready ? esc(aiProvLabel(AI.cfg)) : "未配置"}</span></label>
       <div class="btnrow" style="margin-top:0"><button class="btn small" data-m="aicfg">配置 AI 服务</button></div></div>
     ${aiAllowRowHTML()}
+    ${skillsModeRowHTML()}
     ${window.vrSettingsRow ? vrSettingsRow() : ""}
     ${window.mcpSettingsRow ? mcpSettingsRow() : ""}
     ${window.fitsSettingsRow ? fitsSettingsRow() : ""}
@@ -2782,6 +2786,24 @@ async function aiAllowFill(r) {
     ? ops.map(op => `<span class="aiop"><code data-i18n="off">${esc(op)}</code><button class="linkbtn" data-aiallow="${esc(op)}">撤销</button></span>`).join("")
       + (ops.length > 1 ? `<button class="linkbtn" data-aiallow="">全部撤销</button>` : "")
     : `<span>暂无。AI 请求在 Unity 中执行操作时，可以选择「以后都允许」</span>`;
+}
+// UnitySkills' own permission mode (/api/ai/skillsmode): kept by Unity for the whole computer, so it is read from and
+// changed through the project open on the pipeline page
+function skillsModeRowHTML() {
+  const k = (AI.sess || {}).kit || {}, on = !!(AI.proj && k.alive && k.skillsOn), cur = on ? (k.mode || "") : "";
+  const opt = (v, t) => `<option value="${v}"${cur.toLowerCase() === v.toLowerCase() ? " selected" : ""}>${t}</option>`;
+  return `<div class="row" id="s_skmode"><label>Unity 中的 AI 权限</label>
+    <select id="s_skmodesel" class="optsel"${on ? "" : " disabled"}>${cur ? "" : `<option value="">${on ? "未知" : "未连接 Unity"}</option>`}${opt("Auto", "自动（删除、创建脚本等需要完全权限）")}${opt("Approval", "审批")}${opt("Bypass", "完全权限")}</select>
+    <div class="muted small">${on ? "对这台电脑上的所有 Unity 工程生效；删除等操作仍会询问。" : "在「AI 改模」中连接 Unity 后可以切换。"}</div></div>`;
+}
+async function skillsModeSet(sel) {
+  const mode = sel.value; if (!mode || !AI.proj) return;
+  sel.disabled = true; let r;
+  try { r = await api("/api/ai/skillsmode", { project: AI.proj.path, mode }); } catch (e) { r = { ok: false, err: e.message }; }
+  sel.disabled = false;
+  if (!r.ok) { toast(r.err || "切换失败", 4000); return; }
+  if (AI.sess && AI.sess.kit) AI.sess.kit.mode = r.mode;
+  toast(mode === "Bypass" ? "已改为完全权限" : "已切换权限模式"); aiFresh();
 }
 async function aiAllowRevoke(b) {
   b.disabled = true; let r;
@@ -3105,7 +3127,8 @@ function renderPipeMain() {
     pipeAssetsDraw(); aiRenderLive(); return;
   }
   g._pipe = sig;
-  gridPut(`<div class="pipe">
+  gridPut(`<div class="pipe${pipeChatOff() ? " chatoff" : ""}" style="--chatw:${pipeChatW()}px">
+    <div class="pmain">
     <div id="pipe_belt">${pipeBeltHTML()}</div>
     <section class="stn" tabindex="-1" id="stn1"><header><span class="no">1</span><h2>工程</h2><span class="pname" title="${esc(p.path)}">${esc(p.name)}<span class="sub">${esc(p.path)}</span></span>
       <div class="hacts" id="pipe_hacts"></div></header>
@@ -3115,26 +3138,62 @@ function renderPipeMain() {
       <div id="cov_prog"></div>
       <div id="pipe_assets"></div>
       <div class="addrow"><input id="pipe_add" value="${esc(f.add)}" placeholder="Assets 路径或 prefab 路径" autocomplete="off" spellcheck="false"><button class="btn small" data-pipe="add">添加</button></div></section>
+    <div class="stnpair">
     <section class="stn" tabindex="-1" id="stn3"><header><span class="no">3</span><h2>装配</h2><div class="hacts" id="recipe_acts"></div></header>
       <label class="check" title="按网格名称分组，不产生 AI 费用"><input type="checkbox" id="pipe_noai"${f.noAI ? " checked" : ""}>不使用 AI</label></section>
     <section class="stn" tabindex="-1" id="stn4"><header><span class="no">4</span><h2>菜单</h2></header>
       <div class="row"><label for="pipe_hier" title="用 > 分隔层级，支持 {分类}、{素材}、{开关}">菜单层级</label>
         <div class="inline"><input id="pipe_hier" value="${esc(f.hier || (AI.cfg || {}).hierarchy || "")}" autocomplete="off"><button class="btn small" data-ai="hierdef">恢复默认</button></div>
-        </div>
-      <div class="aigo">
-        <button class="btn big" id="pipe_go" data-ai="dress">${ICON.play}<span>运行流水线</span></button></div>
-      <div class="hint2 pipe_est" id="pipe_est"></div></section>
-    <section class="stn" tabindex="-1" id="stn5"><header><span class="no">5</span><h2>验收</h2>
-      <div class="hacts"><button class="btn small" data-quest="1" data-term="quest">Quest 版</button><button class="btn small" data-timemachine="1">时光机</button><button class="btn small" data-fitroom="1">3D 试衣间</button><button class="btn small" data-ck="run" title="检查模型能否上传、有无显示异常，并列出各项参数。不改动场景">上传前体检</button><button class="btn small" data-studio="1">宣传视频</button></div></header>
+        </div></section>
+    </div>
+    <div class="aigo">
+      <div class="hint2 pipe_est" id="pipe_est"></div>
+      <button class="btn big" id="pipe_go" data-ai="dress">${ICON.play}<span>运行流水线</span></button></div>
+    <section class="stn" tabindex="-1" id="stn5"><header><span class="no">5</span><h2>验收</h2></header>
+      <div class="stools"><button class="btn tool" data-quest="1" data-term="quest">Quest 版</button><button class="btn tool" data-timemachine="1">时光机</button><button class="btn tool" data-fitroom="1">3D 试衣间</button><button class="btn tool" data-ck="run" title="检查模型能否上传、有无显示异常，并列出各项参数。不改动场景">上传前体检</button><button class="btn tool" data-studio="1">宣传视频</button></div>
+      <div id="ck_panel"></div></section>
+    </div>
+    <aside class="pchat" id="pipe_chat" aria-label="AI 对话">
+      <div class="pchatgrip" data-pchat="grip" title="拖动调整宽度"></div>
+      <header class="pchathd"><b>AI 对话</b><span class="pchatmodel" id="ai_model"></span>
+        <button class="iconbtn" data-pchat="fold" title="收起 AI 对话" aria-label="收起 AI 对话"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 6 6 6-6 6"/></svg></button></header>
+      <button class="pchatopen" data-pchat="fold" title="展开 AI 对话"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg><span>AI 对话</span><i class="dot" id="pchat_dot"></i></button>
+      <div id="ai_cfg"></div>
+      <div class="ailog" id="ai_log"></div>
       <div class="pipe-result" id="ai_result" aria-live="polite"></div>
-      <details class="pipe-details"><summary>执行记录</summary><div class="ailog" id="ai_log"></div></details>
-      <div class="aifoot"><textarea id="ai_text" placeholder="向 AI 下达指令（Ctrl+Enter 发送）">${esc(f.text)}</textarea>
+      ${window.aiImgsHTML ? aiImgsHTML() : ""}
+      <div class="aifoot"><textarea id="ai_text" placeholder="向 AI 下达指令（Ctrl+Enter 发送，可粘贴或拖入图片）">${esc(f.text)}</textarea>
         <div class="aibtns" id="ai_btns"></div></div>
       <div class="gptline" id="gpt_use"></div>
-      <div id="ck_panel"></div></section>
+    </aside>
   </div>`);
   pipeAssetsDraw(); aiRenderLive();
 }
+// the AI conversation beside the page: folded away or not, and how wide, as the player left it
+function pipeChatOff() { try { return localStorage.getItem("vrclib.pipechat") === "off"; } catch (e) { return false; } }
+function pipeChatW() { let w = 0; try { w = +localStorage.getItem("vrclib.pipechatw") || 0; } catch (e) {} return Math.min(640, Math.max(340, w || 420)); }
+function pipeChatFold(off) {
+  const el = document.querySelector(".pipe"); if (!el) return;
+  el.classList.toggle("chatoff", off);
+  try { localStorage.setItem("vrclib.pipechat", off ? "off" : "on"); } catch (e) {}
+  if (!off) { const log = $("#ai_log"); if (log) log.scrollTop = log.scrollHeight; }
+}
+// the grip on the panel's edge: dragged, the panel takes the width the pointer leaves it
+function pipeChatGrip(e) {
+  const pipe = document.querySelector(".pipe"), chat = $("#pipe_chat"); if (!pipe || !chat) return;
+  e.preventDefault();
+  const right = chat.getBoundingClientRect().right;
+  pipe.classList.add("sizing");
+  const move = ev => { const w = Math.round(Math.min(640, Math.max(340, right - ev.clientX))); pipe.style.setProperty("--chatw", w + "px"); };
+  const up = () => {
+    pipe.classList.remove("sizing");
+    document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up);
+    try { localStorage.setItem("vrclib.pipechatw", parseInt(pipe.style.getPropertyValue("--chatw")) || 420); } catch (e) {}
+  };
+  document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
+}
+document.addEventListener("pointerdown", e => { if (e.target.closest && e.target.closest('[data-pchat="grip"]')) pipeChatGrip(e); });
+document.addEventListener("click", e => { if (e.target.closest && e.target.closest('[data-pchat="fold"]')) pipeChatFold(!document.querySelector(".pipe.chatoff")); });
 function pipeHactsHTML() {
   return `<button class="btn small" data-pipe="folder">${ICON.folder}<span>文件夹</span></button>${PIPE.tool && PIPE.tool.alcom ? `<button class="btn small" data-pipe="launch" data-what="alcom" title="管理该工程的插件">在 ALCOM 中打开</button>` : ""}`;
 }
@@ -3169,14 +3228,14 @@ function pipeAssetsHTML() {
   const bar = long ? `<div class="pafold"><span id="pafold_t">${pipeFoldText(rows)}</span><button class="btn small" data-pipe="fold" aria-expanded="${!folded}" aria-controls="pipe_assets">${folded ? "展开全部" : "收起"}</button></div>` : "";
   const end = long && !folded ? `<div class="pafold end"><button class="btn small ghost" data-pipe="fold" data-end="1" aria-expanded="true" aria-controls="pipe_assets">收起列表</button></div>` : "";
   if (!shown.length) return bar;
-  return bar + `<table class="atable"><thead><tr><th></th><th>素材</th><th>类别</th><th>工程内路径</th><th class="r">${window.nbTerm ? nbTerm("prefab", "prefab") : "prefab"}</th><th></th></tr></thead><tbody>${shown.map(a => {
+  return bar + `<table class="atable"><thead><tr><th></th><th>素材</th><th>类别</th><th class="r">${window.nbTerm ? nbTerm("prefab", "prefab") : "prefab"}</th><th></th></tr></thead><tbody>${shown.map(a => {
     const marks = [];
     if (a.worn) marks.push(`<span class="tag ok" title="该素材的 prefab 已在模型上">已装配</span>`);
     if (a.avatar) marks.push(`<span class="tag" title="包含完整模型的 prefab">完整模型</span>`);
     if (a.source) marks.push(`<span class="tag faint" title="${a.source === "导入" ? "由本软件导入" : "按文件匹配到素材库中的素材"}">${esc(a.source)}</span>`);
     if (a.extra) marks.push(`<button class="tag x" data-pipe="drop" data-folder="${esc(a.folder)}" title="移除此行">×</button>`);
     return `<tr class="${a.pick ? "on" : ""}${a.kind === "其他" ? " dim" : ""}"><td><input type="checkbox" data-ppick="${esc(a.folder)}"${a.pick ? " checked" : ""} aria-label="选择此素材"></td>
-      <td class="nm" title="${esc(a.name)}">${esc(a.name)}</td><td>${sel(a)}</td><td class="path" title="${esc(a.folder)}">${esc(a.folder)}</td><td class="r muted">${a.prefabs || ""}</td><td class="marks">${marks.join("")}</td></tr>`;
+      <td class="nm" title="${esc(a.name + " · " + a.folder)}"><span class="n">${esc(a.name)}</span><span class="p">${esc(a.folder)}</span></td><td>${sel(a)}</td><td class="r muted">${a.prefabs || ""}</td><td class="marks">${marks.join("")}</td></tr>`;
   }).join("")}</tbody></table>${end}`;
 }
 // the one thing to do next gets the coloured button: the plugins, Unity, the service, then the line itself
@@ -3205,67 +3264,109 @@ function aiStatHTML() {
   const conn = k.alive ? `已连接${k.skillsOn ? `<span class="sub">　UnitySkills 端口 ${esc(k.port)}${k.mode ? "，" + esc(k.mode) + " 模式" : ""}</span>` : k.skills ? "" : `<span class="sub">　UnitySkills 服务未启动（不影响装配和菜单）</span>`}` : "";
   h += row(ok ? "ok" : "warn", "Unity", k.hint ? `${conn ? conn + "<br>" : ""}<span class="warnline">${esc(k.hint)}</span>` : conn,
     !k.running && k.editor ? `<button class="btn small${pri("unity")}" data-ai="unity">打开 Unity</button>` : "");
-  if (!c.ready) h += row("warn", "AI 服务", "未配置", `<button class="btn small${pri("cfg")}" data-ai="cfg">配置</button>`);
-  else {
-    const vm = esc(c.eyeModel || ""), set = `<button class="btn small ghost" data-ai="cfg">配置</button>`;
-    const looks = {
-      main: ["ok", "由当前 AI 模型直接识别截图", set],
-      other: ["ok", `当前 AI 模型不支持识图，由${c.eyeOwn ? "同服务商的" : "视觉模型"} ${vm} 代为描述截图`, set],
-      unknown: ["", `首次截图时将检测当前 AI 模型是否支持识图<span class="sub">　截图同时显示在下方记录中</span>`, set],
-      none: ["warn", "当前 AI 模型不支持识图，该服务商也未提供视觉模型，截图仅显示在记录中。配置视觉模型后，AI 可检查画面", set],
-      off: ["", "已关闭，截图仅显示在记录中", set],
-    }[c.looks || "unknown"];
-    if (window.gptStatRow) h += gptStatRow(row);
-    const gpt = window.gptOn && gptOn(c);
-    if (!gpt) {
-      const info = (c.providers || []).find(x => x.id === c.provider) || {}, name = (c.profiles[c.provider] || {}).model || info.model || "";
-      h += row("ok", "AI 服务", `<span>${esc(info.label || c.provider)}</span>${name ? `<span class="sub" data-i18n="off">　${esc(name)}</span>` : ""}`, set);
-    }
-    const model = (c.profiles[c.provider] || {}).model || "", note = aiThinkNote(c.provider, model, c.thinkRefused);
-    h += row("", "思考强度", `${aiThinkSegHTML(c.think || "", "thinkq", c.provider === "qwen")}${note ? `<span class="sub thinknote">${esc(note)}</span>` : ""}`);
-    h += row(looks[0], "识图", looks[1], looks[2] || "");
-    if (window.aiUsageRow) h += aiUsageRow(row);
-  }
   return h;
 }
+// the AI's own rows (service, 思考强度, 识图, use), folded into the conversation's head; unset, the service is said
+// in plain sight
+function aiCfgHTML() {
+  const c = AI.cfg || {}, next = aiNext(), pri = w => next === w ? " primary" : "";
+  const row = (dot, key, val, btn) => `<div class="airow"><i class="dot ${dot}"></i><span class="k">${key}</span><span class="v">${val}</span>${btn || ""}</div>`;
+  let h = "";
+  if (!c.ready) return `<div class="aistat pchatwarn">${row("warn", "AI 服务", "未配置", `<button class="btn small${pri("cfg")}" data-ai="cfg">配置</button>`)}</div>`;
+  const vm = esc(c.eyeModel || ""), set = `<button class="btn small ghost" data-ai="cfg">配置</button>`;
+  const looks = {
+    main: ["ok", "由当前 AI 模型直接识别截图", set],
+    other: ["ok", `当前 AI 模型不支持识图，由${c.eyeOwn ? "同服务商的" : "视觉模型"} ${vm} 代为描述截图`, set],
+    unknown: ["", `首次截图时将检测当前 AI 模型是否支持识图<span class="sub">　截图同时显示在下方记录中</span>`, set],
+    none: ["warn", "当前 AI 模型不支持识图，该服务商也未提供视觉模型，截图仅显示在记录中。配置视觉模型后，AI 可检查画面", set],
+    off: ["", "已关闭，截图仅显示在记录中", set],
+  }[c.looks || "unknown"];
+  if (window.gptStatRow) h += gptStatRow(row);
+  const gpt = window.gptOn && gptOn(c);
+  if (!gpt) {
+    const info = (c.providers || []).find(x => x.id === c.provider) || {}, name = (c.profiles[c.provider] || {}).model || info.model || "";
+    h += row("ok", "AI 服务", `<span>${esc(info.label || c.provider)}</span>${name ? `<span class="sub" data-i18n="off">　${esc(name)}</span>` : ""}`, set);
+  }
+  const model = (c.profiles[c.provider] || {}).model || "", note = aiThinkNote(c.provider, model, c.thinkRefused);
+  h += row("", "思考强度", `${aiThinkSegHTML(c.think || "", "thinkq", c.provider === "qwen")}${note ? `<span class="sub thinknote">${esc(note)}</span>` : ""}`);
+  h += row(looks[0], "识图", looks[1], looks[2] || "");
+  if (window.aiUsageRow) h += aiUsageRow(row);
+  return `<details class="pchatcfg"${AI.cfgOpen ? " open" : ""}><summary>AI 设置</summary><div class="aistat">${h}</div></details>`;
+}
+// the service and model the conversation talks to, in its head
+function aiModelHTML() {
+  const c = AI.cfg || {};
+  if (!c.ready) return "";
+  const info = (c.providers || []).find(x => x.id === c.provider) || {}, name = ((c.profiles || {})[c.provider] || {}).model || info.model || "";
+  return `<span data-i18n="off">${esc(info.label || c.provider || "")}${name ? " · " + esc(name) : ""}</span>`;
+}
 function aiResultHTML() {
-  const steps = (AI.sess || {}).steps || [];
-  const waiting = steps.filter(s => s.kind === "ask" && s.busy);
-  const latest = steps.slice().reverse().find(s => s.kind === "say" || s.kind === "error" || (s.kind === "tool" && s.ok === false && !s.busy));
-  return aiLogHTML(waiting.length ? waiting : latest ? [latest] : [], false);
+  const waiting = ((AI.sess || {}).steps || []).filter(s => s.kind === "ask" && s.busy);
+  return aiLogHTML(waiting, false);
 }
 function aiLogHTML(steps = (AI.sess || {}).steps || [], history = true) {
-  // Pending decisions remain above the collapsed history, with only one set of action buttons.
+  // Pending decisions stay above the input, apart from the conversation, with only one set of action buttons.
   if (history) steps = steps.filter(s => s.kind !== "ask" || !s.busy);
-  if (!steps.length) return history ? `<div class="aiempty">暂无记录</div>` : "";
+  if (!steps.length) return history ? `<div class="aiempty">可以直接告诉 AI 要做什么；也可以在左侧勾选素材后点「运行流水线」。</div>` : "";
   const busyTool = steps.some(s => s.busy);
-  return steps.map(s => {
-    if (s.kind === "ask" && s.opts === "outfit") return aiOutfitHTML(s);
-    if (s.kind === "ask") {
-      // "once": an operation asked about every time (it deletes, saves, runs code…), without 「本次对话始终允许」
-      const btns = s.opts === "budget" // the run reached its limit of tokens: go on, or stop here
-        ? `<button class="btn small primary" data-ai="allow">继续运行</button><button class="btn small" data-ai="deny">停止</button>`
-        : s.opts === "save" // a scene in Unity has unsaved changes: saved on the player's word, then the step again
-        ? `<button class="btn small primary" data-ai="allow">保存并继续</button><button class="btn small" data-ai="deny">取消</button>`
-        : `<button class="btn small primary" data-ai="allow">仅本次允许</button>${s.opts === "once" ? "" : `<button class="btn small" data-ai="allowall" title="本次对话中不再询问这项操作">本次对话始终允许</button><button class="btn small" data-ai="allowforever" title="以后执行这项操作不再询问，可在「设置」→「AI 与工具」中撤销">以后都允许</button>`}<button class="btn small" data-ai="deny">拒绝</button>`;
-      return `<div class="aistep ask${s.busy ? " open" : ""}"><div>${esc(s.text)}</div>${s.busy
-        ? `<div class="btnrow">${btns}</div>`
-        : `<div class="out">${esc(s.out || "")}</div>`}</div>`;
-    }
-    if (s.kind === "tool") {
-      const mark = s.busy ? `<i class="spin"></i>` : s.ok ? `<i class="mk ok">✓</i>` : `<i class="mk bad">!</i>`;
-      const shots = (s.imgs || []).length ? `<span class="shots">${s.imgs.map((n, i) => `<img src="/shot?f=${encodeURIComponent(n)}" data-shot="${i}" data-shots="${esc(s.imgs.join("|"))}" alt="截图 ${i + 1}" title="点击放大" loading="lazy">`).join("")}</span>` : "";
-      const skip = s.busy && s.skip ? `<button class="btn small ghost aiskip" data-ai="skip" title="不再等 AI，按网格名称分组继续">跳过</button>`
-        : !s.busy && s.replan ? `<button class="btn small ghost aiskip" data-ai="replan" title="下次运行时重新请 AI 整理菜单方案">重新整理</button>` : "";
-      const took = !s.busy && s.ms >= 1000 ? `<span class="aitook" data-i18n="off">${esc(aiTook(s.ms))}</span>` : "";
-      return `<div class="aistep tool${s.busy ? " busy" : ""}">${mark}<span><b>${esc(s.text)}</b>${s.out ? `<span class="out">　${esc(s.out)}</span>` : ""}${s.busy ? aiWaitHTML(s.at) : ""}${took}${skip}${shots}</span></div>`;
-    }
-    if (s.kind === "error" && s.code && window.gptStepHTML) { const h = gptStepHTML(s); if (h) return h; }
-    if (s.kind === "known") return knownFixHTML({ title: s.text, fix: s.out });
-    // what the AI says is markdown; mdLite escapes first, so it is as safe as the plain text of the other lines
-    // (an answer cut by its length and continued by the program says so at its end)
-    return s.kind === "say" ? `<div class="aistep say md">${mdLite(s.text)}${s.continued ? `<p class="aicont">（回答较长，已自动续写）</p>` : ""}${s.forget ? `<p class="aiforget"><button class="linkbtn" data-ai="outfitforget" data-key="${esc(s.forget)}">下次再问我</button></p>` : ""}</div>` : `<div class="aistep ${s.kind === "error" ? "err" : esc(s.kind)}">${esc(s.text)}</div>`;
-  }).join("") + (history && (AI.sess || {}).busy && !busyTool ? `<div class="aistep tool busy"><i class="spin"></i><span class="out">AI 正在规划下一步…</span>${aiWaitHTML((steps[steps.length - 1] || {}).at)}</div>` : "");
+  let h = "";
+  if (!history) h = steps.map(s => aiStepHTML(s)).join("");
+  else for (let i = 0; i < steps.length;) { // three or more operations in a row: one line, opened on a click
+    let j = i; while (j < steps.length && steps[j].kind === "tool") j++;
+    if (j - i >= 3) { h += aiGroupHTML(steps.slice(i, j), i); i = j; continue; }
+    if (j === i) j++;
+    for (; i < j; i++) h += aiStepHTML(steps[i]);
+  }
+  return h + (history && (AI.sess || {}).busy && !busyTool ? `<div class="aistep tool busy"><i class="spin"></i><span class="out">AI 正在规划下一步…</span>${aiWaitHTML((steps[steps.length - 1] || {}).at)}</div>` : "");
+}
+// a run of operations: what is going on now, or how many there were and how many did not succeed; the pictures
+// they took stay in sight. Opened by the player, a group stays open across redraws (AI.openGroups).
+function aiGroupHTML(list, at) {
+  const key = String(list[0].at || 0) + ":" + at, run = list.find(s => s.busy), bad = list.filter(s => !s.busy && s.ok === false).length;
+  const open = AI.openGroups && AI.openGroups.has(key);
+  const shots = list.flatMap(s => s.imgs || []);
+  const head = run ? `<i class="spin"></i><span>${esc(run.text)}</span>${aiWaitHTML(run.at)}`
+    : `<i class="mk ${bad ? "bad" : "ok"}">${bad ? "!" : "✓"}</i><span>执行了 ${list.length} 个操作</span>${bad ? `<span class="out">（${bad} 个未成功）</span>` : ""}`;
+  return `<details class="aigroup" data-group="${esc(key)}"${open ? " open" : ""}><summary>${head}<span class="aigroupn" data-i18n="off">${list.length}</span></summary>${list.map(s => aiStepHTML(s, true)).join("")}</details>`
+    + (shots.length ? `<div class="aistep shotsonly"><span class="shots">${shots.map((n, i) => `<img src="/shot?f=${encodeURIComponent(n)}" data-shot="${i}" data-shots="${esc(shots.join("|"))}" alt="截图 ${i + 1}" title="点击放大" loading="lazy">`).join("")}</span></div>` : "");
+}
+document.addEventListener("toggle", e => {
+  const g = e.target.closest && e.target.closest(".aigroup[data-group]"); if (!g) return;
+  AI.openGroups = AI.openGroups || new Set();
+  if (g.open) AI.openGroups.add(g.dataset.group); else AI.openGroups.delete(g.dataset.group);
+}, true);
+document.addEventListener("toggle", e => { if (e.target.classList && e.target.classList.contains("pchatcfg")) AI.cfgOpen = e.target.open; }, true);
+// one step of the conversation; inGroup: inside a folded run of operations, whose pictures are shown below it
+function aiStepHTML(s, inGroup) {
+  if (s.kind === "ask" && s.opts === "outfit") return aiOutfitHTML(s);
+  if (s.kind === "ask") {
+    // "once": an operation asked about every time (it deletes, saves, runs code…), without 「本次对话始终允许」
+    const btns = s.opts === "budget" // the run reached its limit of tokens: go on, or stop here
+      ? `<button class="btn small primary" data-ai="allow">继续运行</button><button class="btn small" data-ai="deny">停止</button>`
+      : s.opts === "save" // a scene in Unity has unsaved changes: saved on the player's word, then the step again
+      ? `<button class="btn small primary" data-ai="allow">保存并继续</button><button class="btn small" data-ai="deny">取消</button>`
+      : s.opts === "skillsmode" // UnitySkills' own mode refused the operation: full permission on the player's word
+      ? `<button class="btn small primary" data-ai="allow">改为完全权限并继续</button><button class="btn small" data-ai="deny">不允许</button>`
+      : `<button class="btn small primary" data-ai="allow">仅本次允许</button>${s.opts === "once" ? "" : `<button class="btn small" data-ai="allowall" title="本次对话中不再询问这项操作">本次对话始终允许</button><button class="btn small" data-ai="allowforever" title="以后执行这项操作不再询问，可在「设置」→「AI 与工具」中撤销">以后都允许</button>`}<button class="btn small" data-ai="deny">拒绝</button>`;
+    return `<div class="aistep ask${s.busy ? " open" : ""}"><div>${esc(s.text)}</div>${s.busy
+      ? `<div class="btnrow">${btns}</div>`
+      : `<div class="out">${esc(s.out || "")}</div>`}</div>`;
+  }
+  if (s.kind === "tool") {
+    const mark = s.busy ? `<i class="spin"></i>` : s.ok ? `<i class="mk ok">✓</i>` : `<i class="mk bad">!</i>`;
+    const shots = !inGroup && (s.imgs || []).length ? `<span class="shots">${s.imgs.map((n, i) => `<img src="/shot?f=${encodeURIComponent(n)}" data-shot="${i}" data-shots="${esc(s.imgs.join("|"))}" alt="截图 ${i + 1}" title="点击放大" loading="lazy">`).join("")}</span>` : "";
+    const skip = s.busy && s.skip ? `<button class="btn small ghost aiskip" data-ai="skip" title="不再等 AI，按网格名称分组继续">跳过</button>`
+      : !s.busy && s.replan ? `<button class="btn small ghost aiskip" data-ai="replan" title="下次运行时重新请 AI 整理菜单方案">重新整理</button>` : "";
+    const took = !s.busy && s.ms >= 1000 ? `<span class="aitook" data-i18n="off">${esc(aiTook(s.ms))}</span>` : "";
+    return `<div class="aistep tool${s.busy ? " busy" : ""}">${mark}<span><b>${esc(s.text)}</b>${s.out ? `<span class="out">　${esc(s.out)}</span>` : ""}${s.busy ? aiWaitHTML(s.at) : ""}${took}${skip}${shots}</span></div>`;
+  }
+  if (s.kind === "error" && s.code && window.gptStepHTML) { const h = gptStepHTML(s); if (h) return h; }
+  if (s.kind === "known") return knownFixHTML({ title: s.text, fix: s.out });
+  // what the player said, with the pictures that went with it (aiimg.js)
+  if (s.kind === "user" && (s.imgs || []).length) return `<div class="aistep user">${esc(s.text || "")}<span class="shots">${s.imgs.map((n, i) => `<img src="/shot?f=${encodeURIComponent(n)}" data-shot="${i}" data-shots="${esc(s.imgs.join("|"))}" alt="图片 ${i + 1}" title="点击放大" loading="lazy">`).join("")}</span></div>`;
+  // what the AI says is markdown; mdLite escapes first, so it is as safe as the plain text of the other lines
+  // (an answer cut by its length and continued by the program says so at its end)
+  return s.kind === "say" ? `<div class="aistep say md">${mdLite(s.text)}${s.continued ? `<p class="aicont">（回答较长，已自动续写）</p>` : ""}${s.forget ? `<p class="aiforget"><button class="linkbtn" data-ai="outfitforget" data-key="${esc(s.forget)}">下次再问我</button></p>` : ""}</div>` : `<div class="aistep ${s.kind === "error" ? "err" : esc(s.kind)}">${esc(s.text)}</div>`;
 }
 // 「素体自带的衣服」: the base's own clothes the run found before new clothes go on, each ticked; made a menu of their
 // own, taken off, or left as they are, for the ticked ones
@@ -3310,7 +3411,7 @@ function aiBtnsHTML() {
 // only the parts that change are redrawn, so what the player is typing stays
 function aiRenderLive() {
   if (!pipeActive() || !$("#pipe_belt")) return;
-  const parts = { pipe_belt: pipeBeltHTML(), pipe_hacts: pipeHactsHTML(), ai_stat: aiStatHTML(), ai_result: aiResultHTML(), ai_log: aiLogHTML(), ai_btns: aiBtnsHTML(), recipe_acts: window.recipeActsHTML ? recipeActsHTML() : "",
+  const parts = { pipe_belt: pipeBeltHTML(), pipe_hacts: pipeHactsHTML(), ai_stat: aiStatHTML(), ai_cfg: aiCfgHTML(), ai_model: aiModelHTML(), ai_result: aiResultHTML(), ai_log: aiLogHTML(), ai_btns: aiBtnsHTML(), recipe_acts: window.recipeActsHTML ? recipeActsHTML() : "",
     pipe_est: window.aiEstimateHTML ? aiEstimateHTML() : "", gpt_use: window.gptComposerHTML ? gptComposerHTML() : "" };
   for (const id in parts) {
     const el = $("#" + id); if (!el || el.dataset.h === parts[id]) continue;
@@ -3321,10 +3422,14 @@ function aiRenderLive() {
     refocus();
   }
   const go = $("#pipe_go"); if (go) { go.classList.toggle("primary", aiNext() === "dress"); go.disabled = !!(AI.sess || {}).busy; }
+  // a question waiting for the player: the folded conversation says so, and opens
+  const asking = ((AI.sess || {}).steps || []).some(s => s.kind === "ask" && s.busy), dot = $("#pchat_dot");
+  if (dot) dot.className = "dot" + (asking ? " warn" : (AI.sess || {}).busy ? " run" : "");
+  if (asking && document.querySelector(".pipe.chatoff")) pipeChatFold(false);
 }
 // after a button did its work: draw again even if nothing in the text changed (a disabled button comes back)
 function aiFresh() {
-  for (const id of ["pipe_belt", "ai_stat", "ai_result", "ai_log", "ai_btns"]) { const el = $("#" + id); if (el) delete el.dataset.h; }
+  for (const id of ["pipe_belt", "ai_stat", "ai_cfg", "ai_result", "ai_log", "ai_btns"]) { const el = $("#" + id); if (el) delete el.dataset.h; }
   return aiPoll();
 }
 async function aiPoll() {
@@ -3355,15 +3460,16 @@ async function pipeRescan(quiet) {
 async function aiRun(body) {
   const r = await api("/api/ai/run", Object.assign({ project: AI.proj.path }, body));
   if (!r.ok) { toast(r.err || "启动失败", 5000); return false; }
+  if (document.querySelector(".pipe.chatoff")) pipeChatFold(false);
   const log = $("#ai_log"); if (log) log.scrollTop = log.scrollHeight;
-  const sec = $("#stn5"); if (sec) sec.scrollIntoView({ behavior: "smooth", block: "start" });
   aiPoll(); return true;
 }
 async function aiSend() {
   const ta = $("#ai_text"); if (!ta || (AI.sess || {}).busy) return;
-  const text = ta.value.trim(); if (!text) { ta.focus(); return; }
+  const text = ta.value.trim(), images = window.aiImgsTake ? aiImgsTake() : [];
+  if (!text && !images.length) { ta.focus(); return; }
   if (!AI.cfg.ready) { toast("请先配置 AI 服务"); pipeKeep(); AI.back = AI.proj.path; return openAICfg(); }
-  if (await aiRun({ mode: "chat", text })) { ta.value = ""; PIPE.text = ""; }
+  if (await aiRun(images.length ? { mode: "chat", text, images } : { mode: "chat", text })) { ta.value = ""; PIPE.text = ""; if (window.aiImgsClear) aiImgsClear(); }
 }
 async function pipeStart() {
   const p = AI.proj, k = (AI.sess || {}).kit || {}, noAI = $("#pipe_noai").checked, hierarchy = $("#pipe_hier").value.trim();
@@ -4159,6 +4265,15 @@ document.addEventListener("click", async e => {
       const all = [...dr.querySelectorAll(".bimgs img")].map(i => i.dataset.big);
       return showBig(all, all.indexOf(t.dataset.big));
     }
+    const bcv = t.closest("[data-bcover]"); // 「设为封面」 on a picture of the Booth item page
+    if (bcv) {
+      bcv.disabled = true;
+      const r = await api("/api/cover/booth", { key: a.key, url: bcv.dataset.bcover });
+      bcv.disabled = false;
+      if (!r.ok) { toast(r.err || "设置失败", 4000); return; }
+      toast("已设为封面"); S.coverPick = null; dr._h = null;
+      return load();
+    }
     const stc = t.closest("[data-st]");
     if (stc) {
       S.stylePick = new Set(S.stylePick || a.styles || []);
@@ -4383,14 +4498,14 @@ document.addEventListener("click", async e => {
         hideZh: !$("#s_zh").checked, noAutoMatch: !$("#s_match").checked, windowMode: $("#s_win").value, styles: lines("#s_styles"),
         noUpdateCheck: !$("#s_upd").checked, noWatch: !$("#s_watch").checked, noSync: !$("#s_sync").checked,
         downloadDir: $("#s_dldir").value.trim(), noExtract: !$("#s_extract").checked, keepZip: $("#s_keepzip").checked,
-        closeQuit: $("#s_close").value === "quit", noSound: !$("#s_sound").checked, noAIHelp: !$("#s_aihelp").checked, failReports: $("#s_failrep").checked });
+        closeQuit: $("#s_close").value === "quit", noGpu: $("#s_nogpu").checked, noSound: !$("#s_sound").checked, noAIHelp: !$("#s_aihelp").checked, failReports: $("#s_failrep").checked });
       const o = S.data.settings, same = (x, y) => JSON.stringify(x || []) === JSON.stringify(y || []);
       const noRescan = same(s.roots, o.roots) && same(s.projectRoots, o.projectRoots) && same(s.bases, o.bases) && s.autoBooth === o.autoBooth;
       const clip = $("#s_clip").checked;
       await api("/api/settings", { settings: s, noRescan });
       if ($("#s_runstats").checked !== !!o.runStats) await api("/api/stats/consent", { on: $("#s_runstats").checked }); // (with its id, and the failure reports)
       if (clip !== !o.noXyClip) await api("/api/xy/prefs", { clip }); // (the offer of copied links has a route of its own: /api/settings leaves it as it is)
-      closeModal(); toast(noRescan ? "已保存" : "已保存，正在重新扫描"); noRescan ? load() : poll(true);
+      closeModal(); toast(!!s.noGpu !== !!o.noGpu ? "已保存，重启 MioVRCA 后生效" : noRescan ? "已保存" : "已保存，正在重新扫描"); noRescan ? load() : poll(true);
     }
     return;
   }
@@ -4425,6 +4540,7 @@ document.addEventListener("change", e => {
   if (e.target.id === "setup_stats" && S.setup) { S.setup.stats = e.target.checked; return; }
   if (e.target.id === "showHidden") { S.showHidden = e.target.checked; renderSide(); renderGrid(); }
   if (e.target.id === "showHiddenProj") { S.showHiddenProj = e.target.checked; renderProjGrid(); }
+  if (e.target.id === "s_skmodesel") return skillsModeSet(e.target);
   if (e.target.id === "bulkCat" && S.bulk && e.target.value) {
     const v = e.target.value, n = S.bulk.keys.size;
     return bulkApply({ category: v === "__auto" ? "" : v }, () => v === "__auto" ? `已恢复 ${n} 个的自动分类` : `已将 ${n} 个移至「${v}」`);
